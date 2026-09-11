@@ -10,9 +10,24 @@ import { nativeEnvironment } from '../packages/entry/src/native.js';
 import { documentFixture } from './runtime-fixture.mjs';
 
 test('native helper environment excludes credentials and inherited loader overrides', () => {
-  assert.deepEqual(nativeEnvironment('/private/profile', { PATH: '/usr/bin', LANG: 'en_US.UTF-8', HOME: '/real/home', DEEPSEEK_API_KEY: 'fixture', OPENAI_API_KEY: 'fixture', NODE_OPTIONS: '--inspect', DYLD_INSERT_LIBRARIES: '/fixture' }), {
+  assert.deepEqual(nativeEnvironment('/private/profile', '/installed/program', { PATH: '/usr/bin', LANG: 'en_US.UTF-8', HOME: '/real/home', DEEPSEEK_API_KEY: 'fixture', OPENAI_API_KEY: 'fixture', NODE_OPTIONS: '--inspect', DYLD_INSERT_LIBRARIES: '/fixture' }, 'darwin'), {
     PATH: '/usr/bin', LANG: 'en_US.UTF-8', HOME: '/private/profile', USERPROFILE: '/private/profile', TMPDIR: '/private/profile', TMP: '/private/profile', TEMP: '/private/profile',
   });
+});
+
+test('Linux native helpers search only the selected package directory before system libraries', () => {
+  const programDirectory = '/installed kit/program';
+  const source = { PATH: '/usr/bin', LD_LIBRARY_PATH: '/outside:/other', LD_PRELOAD: '/outside/injected.so' };
+  const linux = nativeEnvironment('/private/profile', programDirectory, source, 'linux');
+  assert.equal(linux.LD_LIBRARY_PATH, programDirectory);
+  assert.equal(linux.LD_PRELOAD, undefined);
+  for (const platform of ['darwin', 'win32']) {
+    const env = nativeEnvironment('/private/profile', programDirectory, source, platform);
+    assert.equal(env.LD_LIBRARY_PATH, undefined);
+    assert.equal(env.LD_PRELOAD, undefined);
+    assert.equal(env.PATH, source.PATH);
+  }
+  assert.equal(source.LD_LIBRARY_PATH, '/outside:/other');
 });
 
 async function readWhenCreated(path) {
@@ -46,7 +61,7 @@ test('native cancellation waits for helper exit and cleans outputs before releas
     await writeFile(join(native, 'package.json'), JSON.stringify({ version: '0.1.0', exports: { './package.json': './package.json' } }));
     await writeFile(join(native, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: '0.1.0', platform: platformTarget(), status: 'built', engine: { kind: 'native', executable: 'helper', programDirectory: 'program' } }));
     const marker = join(root, 'started.json');
-    await writeFile(join(native, 'helper'), `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid }));\nsetInterval(() => {}, 1000);\n`, { mode: 0o700 });
+    await writeFile(join(native, 'helper'), `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid, libraryPath: process.env.LD_LIBRARY_PATH }));\nsetInterval(() => {}, 1000);\n`, { mode: 0o700 });
     const { createConverter } = await import(pathToFileURL(join(entry, 'src/index.js')).href);
     converter = await createConverter({ fontDirectories: [], timeoutMs: 30_000 });
     assert.equal(converter.backend, 'native');
@@ -56,7 +71,8 @@ test('native cancellation waits for helper exit and cleans outputs before releas
     const controller = new AbortController();
     const active = converter.render({ inputPath, outputPath }, controller.signal);
     void active.catch(() => {});
-    const { pid } = await readWhenCreated(marker);
+    const { pid, libraryPath } = await readWhenCreated(marker);
+    assert.equal(libraryPath, process.platform === 'linux' ? join(native, 'program') : undefined);
     assert.doesNotThrow(() => process.kill(pid, 0));
     const queuedController = new AbortController();
     const queued = converter.render({ inputPath, outputPath: join(root, 'queued.pdf') }, queuedController.signal);

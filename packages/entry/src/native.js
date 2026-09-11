@@ -2,16 +2,17 @@
 import { spawn } from 'node:child_process';
 import { ConversionError, failureCode } from './errors.js';
 
-/** Pass platform loader/locale settings and a private home, excluding ambient credentials. */
-export function nativeEnvironment(profile, source = process.env) {
+/** Linux searches the verified program directory; ambient loader overrides and credentials are excluded. */
+export function nativeEnvironment(profile, programDirectory, source = process.env, platform = process.platform) {
   const env = Object.fromEntries(['PATH', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'LANG', 'LC_ALL', 'TZ']
     .filter(key => source[key] !== undefined).map(key => [key, source[key]]));
+  if (platform === 'linux') env.LD_LIBRARY_PATH = programDirectory;
   return Object.assign(env, { HOME: profile, USERPROFILE: profile, TMPDIR: profile, TMP: profile, TEMP: profile });
 }
 
 export async function runNative(engine, options, input, output, profile, fonts, signal) {
   signal.throwIfAborted();
-  const env = nativeEnvironment(profile);
+  const env = nativeEnvironment(profile, engine.programDirectory);
   const child = spawn(engine.executable, ['--program-directory', engine.programDirectory, '--input-path', input,
     '--output-path', output, '--profile-directory', profile, '--max-output-bytes', String(options.maxOutputBytes),
     '--max-image-resolution', String(options.maxImageResolution), ...fonts.flatMap(path => ['--font-file', path])],
