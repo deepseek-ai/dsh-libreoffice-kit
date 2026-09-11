@@ -81,6 +81,11 @@ export function verifyEngineMetadata(manifest, prebuild) {
   assert(prebuild.version === manifest.version && manifest.name === `${entryName}-${prebuild.platform}`, 'Engine package identity/version mismatch');
   const target = targets[prebuild.platform];
   const engine = prebuild.engine;
+  if (engine?.glibcMinimum !== undefined) {
+    assert(target?.libc === 'glibc' && typeof engine.glibcMinimum === 'string'
+      && /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$/.test(engine.glibcMinimum)
+      && engine.glibcMinimum.split('.').every(part => Number.isSafeInteger(Number(part))), 'Invalid native glibcMinimum');
+  }
   const exact = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);
   if (prebuild.platform === 'wasm') {
     assert(manifest.os === undefined && manifest.cpu === undefined && manifest.libc === undefined, 'Required WASM package must install on every host');

@@ -7,7 +7,8 @@ import { assert, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { verifyEntryPackage } from './verify-entry.mjs';
 import { entryName, hostTarget, isMain, readJson, root } from './platform-matrix.mjs';
 
-export function verifyPackedInstall(directory, { wasmOnly = false, keep } = {}) {
+/** expectedBackend asserts actual selection; only wasmOnly controls whether native is installed. */
+export function verifyPackedInstall(directory, { wasmOnly = false, expectedBackend = wasmOnly ? 'wasm' : 'native', keep } = {}) {
   if (keep) assert(!existsSync(keep), `Retained installation destination already exists: ${keep}`);
   const release = readJson(join(directory, 'release.json'));
   assert(release.schemaVersion === 1, 'Unsupported release manifest');
@@ -34,10 +35,10 @@ export function verifyPackedInstall(directory, { wasmOnly = false, keep } = {}) 
     cpSync(join(root, 'scripts/smoke-installed.mjs'), join(consumer, 'smoke.mjs'));
     cpSync(join(root, 'test/runtime-linked-fixture.mjs'), join(consumer, 'runtime-linked-fixture.mjs'));
     cpSync(join(root, 'test/fixtures'), join(consumer, 'fixtures'), { recursive: true });
-    run(process.execPath, ['smoke.mjs', wasmOnly ? 'wasm' : 'native'], { cwd: consumer,
+    run(process.execPath, ['smoke.mjs', expectedBackend], { cwd: consumer,
       env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' }, timeout: 180_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
-    assert(result.backend === (wasmOnly ? 'wasm' : 'native') && result.pdfBytes > 100, 'Installed conversion did not return the expected PDF/backend');
+    assert(result.backend === expectedBackend && result.pdfBytes > 100, 'Installed conversion did not return the expected PDF/backend');
     assert(['docx', 'xlsx', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
       'Installed conversion must include DOCX, XLSX, and PPTX PDFs');
     if (keep) {

@@ -40,7 +40,7 @@ test('an absent native package selects required WASM; corrupt installed native n
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-resolver-test-'));
   try {
     await mkdir(join(root, 'assets'));
-    await writeFile(join(root, 'package.json'), JSON.stringify({ version: '0.1.0' }));
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-wasm', version: '0.1.0' }));
     for (const file of ['soffice.cjs', 'soffice.wasm', 'soffice.data', 'soffice.data.js.metadata']) await writeFile(join(root, 'assets', file), 'fixture');
     await writeFile(join(root, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: '0.1.0', platform: 'wasm', status: 'built', engine: {
       kind: 'wasm', loader: 'assets/soffice.cjs', wasm: 'assets/soffice.wasm', data: 'assets/soffice.data', metadata: 'assets/soffice.data.js.metadata', programDirectory: '/instdir/program',

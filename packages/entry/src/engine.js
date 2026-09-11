@@ -34,9 +34,16 @@ function asset(root, value) {
   return path;
 }
 
-/** Installed but incomplete packages are errors; absence alone enables WASM fallback. */
-export async function resolveEngine(resolvePackage = name => require.resolve(`${name}/package.json`), packageExists = installedPackageExists) {
-  const target = platformTarget();
+function glibcVersion(value) {
+  return typeof value === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$/.test(value)
+    && value.split('.').every(part => Number.isSafeInteger(Number(part))) ? value.split('.').map(Number) : undefined;
+}
+
+/** Absence or a known unsupported glibc version permits fallback; invalid installations reject. */
+export async function resolveEngine(resolvePackage = name => require.resolve(`${name}/package.json`), packageExists = installedPackageExists,
+  { platform = process.platform, arch = process.arch, report = () => process.report.getReport() } = {}) {
+  const details = platform === 'linux' ? report() : undefined;
+  const target = platformTarget(platform, arch, () => details);
   let packageFile;
   if (target) {
     const name = `@deepseek-ai/libreoffice-kit-${target}`;
@@ -46,13 +53,26 @@ export async function resolveEngine(resolvePackage = name => require.resolve(`${
       if (packageExists(name)) throw new Error(`Installed LibreOfficeKit package is incomplete: ${name}`, { cause: error });
     }
   }
-  const backend = packageFile ? 'native' : 'wasm';
-  packageFile ??= resolvePackage('@deepseek-ai/libreoffice-kit-wasm');
+  if (packageFile) {
+    const engine = await readEngine(packageFile, 'native', target);
+    const minimum = glibcVersion(engine.glibcMinimum);
+    const host = glibcVersion(details?.header?.glibcVersionRuntime);
+    const unsupported = minimum && host && minimum.some((part, index) => part > (host[index] ?? 0)
+      && minimum.slice(0, index).every((prior, priorIndex) => prior === (host[priorIndex] ?? 0)));
+    if (!unsupported) return engine;
+  }
+  return readEngine(resolvePackage('@deepseek-ai/libreoffice-kit-wasm'), 'wasm', 'wasm');
+}
+
+async function readEngine(packageFile, backend, target) {
   const root = dirname(packageFile);
   const [pkg, manifest] = await Promise.all([readFile(packageFile, 'utf8').then(JSON.parse), readFile(resolve(root, 'prebuilds.json'), 'utf8').then(JSON.parse)]);
-  if (pkg.version !== '0.1.0' || manifest.version !== pkg.version || manifest.schemaVersion !== 1 || manifest.status !== 'built'
-    || manifest.engine?.kind !== backend || manifest.platform !== (backend === 'native' ? target : 'wasm')) throw new Error(`Installed LibreOfficeKit ${backend} package has an incompatible or incomplete manifest.`);
+  if (pkg.name !== `@deepseek-ai/libreoffice-kit-${target}` || pkg.version !== '0.1.0' || manifest.version !== pkg.version || manifest.schemaVersion !== 1 || manifest.status !== 'built'
+    || manifest.engine?.kind !== backend || manifest.platform !== target) throw new Error(`Installed LibreOfficeKit ${backend} package has an incompatible or incomplete manifest.`);
+  const minimum = manifest.engine.glibcMinimum;
+  if (minimum !== undefined && (!target.endsWith('-glibc') || !glibcVersion(minimum))) throw new Error('Installed LibreOfficeKit engine has an invalid glibcMinimum.');
   const engine = { backend, root, programDirectory: manifest.engine.programDirectory };
+  if (minimum !== undefined) engine.glibcMinimum = minimum;
   const fields = backend === 'native' ? ['executable', 'programDirectory'] : ['loader', 'wasm', 'data', 'metadata'];
   for (const name of fields) {
     engine[name] = asset(root, manifest.engine[name]);

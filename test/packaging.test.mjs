@@ -52,6 +52,22 @@ test('native manifest rejects OS, CPU, libc, path and receipt mismatches', () =>
   assert.throws(() => verifyEngineMetadata({ ...wasm.manifest, os: ['linux'] }, wasm.prebuild), /every host/);
 });
 
+test('glibc minima are optional for old receipts and valid only on glibc targets', () => {
+  for (const row of packageMatrix()) {
+    const prebuild = structuredClone(row.prebuild);
+    delete prebuild.engine.glibcMinimum;
+    assert.doesNotThrow(() => verifyEngineMetadata(row.manifest, prebuild));
+    prebuild.engine.glibcMinimum = '2.38';
+    if (prebuild.platform.endsWith('-glibc')) {
+      assert.doesNotThrow(() => verifyEngineMetadata(row.manifest, prebuild));
+      for (const invalid of [null, 2.38, '2', '02.38', '2.38.0.1', 'GLIBC_2.38', '2.38 ', '9007199254740992.0']) {
+        prebuild.engine.glibcMinimum = invalid;
+        assert.throws(() => verifyEngineMetadata(row.manifest, prebuild), /Invalid native glibcMinimum/);
+      }
+    } else assert.throws(() => verifyEngineMetadata(row.manifest, prebuild), /Invalid native glibcMinimum/);
+  }
+});
+
 test('paths reject escape sequences and symlinks', (t) => {
   for (const path of ['', '/absolute', '../escape', 'program/../../escape', 'program\\file', 'C:/file', 'program//file', 'program/./file', 'program/\0file'])
     assert.throws(() => safePath(path), /Unsafe package path/);

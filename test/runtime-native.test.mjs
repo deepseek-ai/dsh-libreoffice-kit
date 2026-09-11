@@ -58,8 +58,8 @@ test('native cancellation waits for helper exit and cleans outputs before releas
     for (const dependency of ['fflate', 'fontkit', 'saxes']) await symlink(await realpath(join(source, 'node_modules', dependency)), join(modules, dependency));
     const native = join(namespace, `libreoffice-kit-${platformTarget()}`);
     await mkdir(join(native, 'program'), { recursive: true });
-    await writeFile(join(native, 'package.json'), JSON.stringify({ version: '0.1.0', exports: { './package.json': './package.json' } }));
-    await writeFile(join(native, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: '0.1.0', platform: platformTarget(), status: 'built', engine: { kind: 'native', executable: 'helper', programDirectory: 'program' } }));
+    await writeFile(join(native, 'package.json'), JSON.stringify({ name: `@deepseek-ai/libreoffice-kit-${platformTarget()}`, version: '0.1.0', exports: { './package.json': './package.json' } }));
+    await writeFile(join(native, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: '0.1.0', platform: platformTarget(), status: 'built', engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: process.report.getReport().header.glibcVersionRuntime } }));
     const marker = join(root, 'started.json');
     await writeFile(join(native, 'helper'), `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid, libraryPath: process.env.LD_LIBRARY_PATH }));\nsetInterval(() => {}, 1000);\n`, { mode: 0o700 });
     const { createConverter } = await import(pathToFileURL(join(entry, 'src/index.js')).href);

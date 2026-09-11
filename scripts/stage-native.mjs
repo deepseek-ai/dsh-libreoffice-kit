@@ -3,9 +3,11 @@ import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync,
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
+import { glibcMinimum } from '../engine/native/glibc-minimum.mjs';
 import { source } from '../engine/native/configure.mjs';
 import { isMain, readJson, root, targets } from './platform-matrix.mjs';
 import { assert, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
+import { stageLinuxRuntime } from './stage-linux-runtime.mjs';
 
 export function stageNative({ platform, core, build, repo = root }) {
   assert(targets[platform], `Unknown native platform: ${platform}`);
@@ -50,8 +52,8 @@ export function stageNative({ platform, core, build, repo = root }) {
   copyInstalled(instdir, join(dir, 'program'));
   copyFileSync(join(build, `libreoffice-kit${targets[platform].os === 'win32' ? '.exe' : ''}`), join(dir, prebuild.engine.executable));
   if (targets[platform].os !== 'win32') chmodSync(join(dir, prebuild.engine.executable), 0o755);
-  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs',
-    'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
+  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
+    'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
     ...corePatchFiles(platform, repo)];
   const packagedSource = [];
   for (const file of sourceFiles) {
@@ -90,6 +92,8 @@ export function stageNative({ platform, core, build, repo = root }) {
     ],
     files: Object.fromEntries(['bin', 'program', 'sources', 'licenses'].flatMap(inventory)),
   };
+  stageLinuxRuntime(dir, result);
+  if (platform.endsWith('-glibc')) result.engine.glibcMinimum = glibcMinimum(dir, Object.keys(result.files));
   writeFileSync(join(dir, 'prebuilds.json'), `${JSON.stringify(result, null, 2)}\n`);
   return verifyEnginePackage(dir);
 }

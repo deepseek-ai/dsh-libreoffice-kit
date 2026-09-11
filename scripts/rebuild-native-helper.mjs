@@ -5,9 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { source } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { buildHelper } from '../engine/native/build-helper.mjs';
+import { glibcMinimum } from '../engine/native/glibc-minimum.mjs';
 import { assert, sha256, verifyEnginePackage, verifyNativeImage } from './verify-artifacts.mjs';
 import { hostTarget, isMain, readJson, root } from './platform-matrix.mjs';
 import { run } from './pack-utils.mjs';
+import { stageLinuxRuntime } from './stage-linux-runtime.mjs';
 
 export function verifyCoreReuse(directory, core, repo = root) {
   const prebuild = readJson(join(directory, 'prebuilds.json'));
@@ -45,7 +47,7 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   verifyNativeImage(executable, platform);
   copyFileSync(executable, join(directory, prebuild.engine.executable));
   if (!platform.startsWith('win32-')) chmodSync(join(directory, prebuild.engine.executable), 0o755);
-  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', ...patches];
+  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
   for (const file of updated) {
     const destination = `sources/${file}`;
     mkdirSync(join(directory, destination, '..'), { recursive: true });
@@ -58,6 +60,8 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   if (!prebuild.source.files.includes(receipt)) prebuild.source.files.push(receipt);
   prebuild.files[receipt] = sha256(join(directory, receipt));
   prebuild.files[prebuild.engine.executable] = sha256(join(directory, prebuild.engine.executable));
+  stageLinuxRuntime(directory, prebuild);
+  if (platform.endsWith('-glibc')) prebuild.engine.glibcMinimum = glibcMinimum(directory, Object.keys(prebuild.files));
   writeFileSync(join(directory, 'prebuilds.json'), `${JSON.stringify(prebuild, null, 2)}\n`);
   return verifyEnginePackage(directory);
 }

@@ -1,6 +1,6 @@
 # LibreOffice Kit
 
-Convert private disk DOCX, XLSX, and PPTX files to PDF in Node.js 22.19 or later. The entry package selects its installed OS/architecture/libc package and runs the native LibreOfficeKit helper. An absent platform package selects the required Node WebAssembly package. Installed packages with missing assets, incompatible manifests, or failing engines reject the conversion. Runtime downloads and compilation are not used.
+Convert private disk DOCX, XLSX, and PPTX files to PDF in Node.js 22.19 or later. The entry package selects its installed OS/architecture/libc package and runs the native LibreOfficeKit helper. An absent platform package or a known host glibc version below its recorded `engine.glibcMinimum` selects the required shared Node WebAssembly package. Installed packages with missing assets, incompatible manifests, or failing engines reject the conversion. Runtime downloads and compilation are not used.
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';

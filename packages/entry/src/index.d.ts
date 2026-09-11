@@ -64,8 +64,9 @@ export interface Converter {
 }
 
 /**
- * Resolve validated defaults and the installed platform engine, or required WASM assets when absent.
- * Installed but corrupt, incompatible, or unusable native packages reject; they never select fallback.
+ * Resolve validated defaults and the installed native or shared WASM engine.
+ * Absent native packages or a known host glibc below the recorded minimum select shared WASM.
+ * Installed but corrupt, invalid, or failing native packages reject; they never select fallback.
  * @param options Optional host limits and font/GPU settings.
  * @returns A serial converter that must be disposed after use.
  */

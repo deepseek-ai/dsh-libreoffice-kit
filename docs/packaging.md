@@ -8,7 +8,7 @@ There is exactly one WASM package per version, without npm `os`, `cpu`, or `libc
 
 Every engine package exports `./prebuilds.json` and `./package.json`. Resolve `@deepseek-ai/libreoffice-kit-<platform>/prebuilds.json` relative to the entry package. Its containing directory is the engine package root. All manifest file paths use `/` and are relative to that directory, never the current working directory or a source checkout. The entry exports ESM `./src/index.js` and declarations `./src/index.d.ts`.
 
-The native platform identifiers are `darwin-arm64`, `darwin-x64`, `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64`, and `win32-arm64`. Linux packages declare matching npm `libc` metadata. Unknown libc must choose WASM, not guess a native ABI. A missing matching optional package chooses the required WASM package. An installed package with an invalid manifest, missing files, a wrong architecture, or an unusable engine is an error and must not silently fall back.
+The native platform identifiers are `darwin-arm64`, `darwin-x64`, `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64`, and `win32-arm64`. Linux packages declare matching npm `libc` metadata. Unknown libc must choose WASM, not guess a native ABI. A missing matching optional package or a known host glibc below the package's recorded minimum chooses the required shared WASM package. An installed package with an invalid manifest, missing files, a wrong architecture, or an unusable engine is an error and must not silently fall back.
 
 Native manifest fields:
 
@@ -30,6 +30,8 @@ Native manifest fields:
 ```
 
 Windows uses `bin/libreoffice-kit.exe`. The worker loads this package's compiled LibreOfficeKit through the upstream C API. `program/` preserves the Core installation's relative resource and library paths. The manifest's `programDirectory` identifies the library directory inside it: typically `program/program` on Linux/Windows and `program/LibreOfficeDev.app/Contents/Frameworks` on macOS. Staging omits macOS's `MacOS/urelibs` build-tool alias to avoid duplicating the entire `Frameworks` directory; the source receipt records the omission. No system `soffice` executable is invoked.
+
+Linux glibc builds record `engine.glibcMinimum` as a numeric version such as `"2.38"`. Staging derives it from the highest GLIBC version dependency of every ELF in `bin/` and `program/`, after adding bundled libraries; exported version definitions do not contribute. `GLIBC_ABI_DT_RELR` requires glibc 2.36, and unknown GLIBC capability tags reject staging. The entry validates the native identity, required assets, and minimum before comparing Node's reported host glibc. Older manifests without this optional field remain readable but cannot select fallback by version. This check does not establish compatibility with every distribution or other C++ ABIs.
 
 The WASM manifest uses `platform: "wasm"` and this `engine` object:
 

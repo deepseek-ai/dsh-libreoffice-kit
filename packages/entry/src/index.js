@@ -61,7 +61,7 @@ async function runWorker(data, signal, onFonts) {
  * Resolve the installed engine and deployment limits without starting LibreOffice.
  * @param {import('./index.js').ConverterOptions} [options] Conversion, font, and optional GPU limits.
  * @returns {Promise<import('./index.js').Converter>} A serial converter; dispose it after use.
- * @throws If configuration or an installed engine package is invalid. Only absent platform packages select WASM.
+ * @throws If configuration or an installed engine package is invalid. Absence or a known unsupported glibc version selects WASM.
  */
 export async function createConverter(options) {
   const resolvedOptions = resolveOptions(options);
