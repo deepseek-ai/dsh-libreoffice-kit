@@ -46,6 +46,7 @@ if (process.platform === 'win32') {
   flags.push(`--with-visual-studio=${visualStudio}`, '--without-lxml');
   if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio}`);
 }
+if (platform.endsWith('-musl')) flags.push('--disable-xmlhelp');
 if (!args.includes('--resume')) writeFileSync(join(build, 'autogen.input'), `${flags.join('\n')}\n`);
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
@@ -57,9 +58,12 @@ if (process.platform === 'win32') {
   // Keep MSVC's linker ahead of Cygwin's unrelated link.exe utility.
   buildEnvironment[pathKey] = [dirname(make), dirname(compiler.stdout.trim().split(/\r?\n/)[0]), join(cygwin, 'bin'), buildEnvironment[pathKey]].join(';');
 }
-if (!args.includes('--resume')) run(shell, [shellPath(join(core, 'autogen.sh'))], build, buildEnvironment);
+const coreEnvironment = { ...buildEnvironment };
+// Core's Make rules own INCLUDE as compiler flags; MSVC's environment uses a path list.
+if (process.platform === 'win32') for (const key of Object.keys(coreEnvironment)) if (key.toUpperCase() === 'INCLUDE') delete coreEnvironment[key];
+if (!args.includes('--resume')) run(shell, [shellPath(join(core, 'autogen.sh'))], build, coreEnvironment);
 if (args.includes('--configure-only')) process.exit(0);
-run(make, ['build'], build, buildEnvironment);
+run(make, ['build'], build, coreEnvironment);
 const executable = join(build, `libreoffice-kit${process.platform === 'win32' ? '.exe' : ''}`);
 buildHelper({ platform, core, executable, cwd: build, env: buildEnvironment });
 run(process.execPath, [join(root, 'scripts/stage-native.mjs'), '--platform', platform, '--source', core, '--build', build], root);
