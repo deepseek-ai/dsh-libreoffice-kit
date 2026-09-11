@@ -28,6 +28,17 @@ try {
   const pdf = await readFile(outputPath);
   assert.equal(pdf.subarray(0, 5).toString('ascii'), '%PDF-');
   assert.match(pdf.subarray(-2048).toString('latin1'), /%%EOF/);
+  const formats = { docx: { backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts } };
+  for (const [extension, fixture] of [['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
+    const formatOutput = resolve(`roundtrip.${extension}.pdf`);
+    const converted = await converter.render({ inputPath: resolve('fixtures', fixture), outputPath: formatOutput });
+    const bytes = await readFile(formatOutput);
+    assert.equal(converted.backend, converter.backend);
+    assert.equal(bytes.subarray(0, 5).toString('ascii'), '%PDF-', `${extension} output is not PDF`);
+    assert.match(bytes.subarray(-2048).toString('latin1'), /%%EOF/, `${extension} PDF is incomplete`);
+    assert.ok(bytes.length > 100, `${extension} PDF is empty`);
+    formats[extension] = { backend: converted.backend, pdfBytes: bytes.length, missingFonts: converted.missingFonts };
+  }
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const url = `http://127.0.0.1:${server.address().port}/linked-image.png`;
   await (await fetch(url)).arrayBuffer();
@@ -40,7 +51,7 @@ try {
   await converter.render({ inputPath: externalInput, outputPath: externalOutput });
   assert.equal((await readFile(externalOutput)).subarray(0, 5).toString('ascii'), '%PDF-');
   assert.equal(requests, 0, 'Document conversion fetched an external HTTP image');
-  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests })}\n`);
+  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats })}\n`);
 } finally {
   await converter.dispose();
   if (server.listening) {

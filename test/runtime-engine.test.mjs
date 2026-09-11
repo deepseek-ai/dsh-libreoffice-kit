@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { documentFixture } from './runtime-fixture.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
-test('real engine converts disk OOXML, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {
+test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {
   const { createConverter, ConversionError } = await import(pathToFileURL(enabled).href);
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-real-runtime-test-'));
   const converter = await createConverter({ gpu: 'off', timeoutMs: 90_000 });
@@ -20,6 +20,19 @@ test('real engine converts disk OOXML, rejects unsafe inputs, and drains cancell
     assert.equal((await readFile(outputPath)).subarray(0, 5).toString(), '%PDF-');
     assert.ok((await stat(outputPath)).size > 100);
     assert.ok(result.missingFonts.includes('Unavailable Test Font'));
+    const formats = { docx: { backend: result.backend, pdfBytes: (await stat(outputPath)).size } };
+    for (const [extension, fixture] of [['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
+      const input = join(root, `document.${extension}`);
+      const output = join(root, `document.${extension}.pdf`);
+      await writeFile(input, await readFile(new URL(`./fixtures/${fixture}`, import.meta.url)));
+      const converted = await converter.render({ inputPath: input, outputPath: output });
+      const bytes = await readFile(output);
+      assert.equal(converted.backend, converter.backend);
+      assert.equal(bytes.subarray(0, 5).toString('ascii'), '%PDF-', `${extension} output is not PDF`);
+      assert.match(bytes.subarray(-2048).toString('latin1'), /%%EOF/, `${extension} PDF is incomplete`);
+      assert.ok(bytes.length > 100, `${extension} PDF is empty`);
+      formats[extension] = { backend: converted.backend, pdfBytes: bytes.length };
+    }
     await assert.rejects(converter.render({ inputPath, outputPath }), error => error.code === 'EEXIST');
     assert.equal((await readFile(outputPath)).subarray(0, 5).toString(), '%PDF-');
     const wrong = join(root, 'invalid.docx');
@@ -49,6 +62,6 @@ test('real engine converts disk OOXML, rejects unsafe inputs, and drains cancell
     await assert.rejects(stat(cancelledOutput), error => error.code === 'ENOENT');
     await converter.dispose();
     await assert.rejects(converter.render({ inputPath, outputPath: join(root, 'disposed.pdf') }), /disposed/);
-    console.log(JSON.stringify({ backend: converter.backend, pdfBytes: (await stat(outputPath)).size, missingFonts: result.missingFonts, imageScaling: result.imageScaling }));
+    console.log(JSON.stringify({ backend: converter.backend, pdfBytes: (await stat(outputPath)).size, missingFonts: result.missingFonts, imageScaling: result.imageScaling, formats }));
   } finally { await converter.dispose(); await rm(root, { recursive: true, force: true }); }
 });

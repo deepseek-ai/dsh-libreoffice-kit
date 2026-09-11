@@ -33,14 +33,18 @@ export function verifyPackedInstall(directory, { wasmOnly = false, keep } = {}) 
     }
     cpSync(join(root, 'scripts/smoke-installed.mjs'), join(consumer, 'smoke.mjs'));
     cpSync(join(root, 'test/runtime-linked-fixture.mjs'), join(consumer, 'runtime-linked-fixture.mjs'));
+    cpSync(join(root, 'test/fixtures'), join(consumer, 'fixtures'), { recursive: true });
     run(process.execPath, ['smoke.mjs', wasmOnly ? 'wasm' : 'native'], { cwd: consumer,
       env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' }, timeout: 180_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
     assert(result.backend === (wasmOnly ? 'wasm' : 'native') && result.pdfBytes > 100, 'Installed conversion did not return the expected PDF/backend');
+    assert(['docx', 'xlsx', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
+      'Installed conversion must include DOCX, XLSX, and PPTX PDFs');
     if (keep) {
       mkdirSync(dirname(keep), { recursive: true });
-      for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'external.docx', 'external.pdf'])
+      for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'roundtrip.xlsx.pdf', 'roundtrip.pptx.pdf', 'external.docx', 'external.pdf'])
         rmSync(join(consumer, file));
+      rmSync(join(consumer, 'fixtures'), { recursive: true });
       try { renameSync(consumer, keep); }
       catch (error) {
         if (error.code !== 'EXDEV') throw error;
