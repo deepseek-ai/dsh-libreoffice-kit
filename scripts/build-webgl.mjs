@@ -22,9 +22,14 @@ const source = join(work, 'node_modules/node-gles-webgl2');
 for (const name of readdirSync(join(root, 'engine/webgl/patches')).filter(file => file.endsWith('.patch')).sort()) {
   const patch = join(root, 'engine/webgl/patches', name);
   const args = ['apply', '--unsafe-paths', `--directory=${source}`];
-  const check = reverse => spawnSync('git', [...args, '--check', ...(reverse ? ['--reverse'] : []), patch], { cwd: tmpdir(), stdio: 'ignore' }).status === 0;
-  if (check(false)) run('git', [...args, patch], tmpdir());
-  else assert(check(true), `WebGL source differs from ${name}`);
+  const check = reverse => spawnSync('git', [...args, '--check', ...(reverse ? ['--reverse'] : []), patch], { cwd: tmpdir(), encoding: 'utf8' });
+  const forward = check(false);
+  if (forward.status === 0) run('git', [...args, patch], tmpdir());
+  else {
+    const reverse = check(true);
+    const details = [forward, reverse].map(result => (result.error?.message ?? result.stderr ?? '').trim().slice(0, 4096)).join('\n');
+    assert(reverse.status === 0, `WebGL source differs from ${name}:\n${details}`);
+  }
 }
 run(process.execPath, [join(work, 'node_modules/node-gyp/bin/node-gyp.js'), 'rebuild'], source);
 console.log(JSON.stringify(stageWebGL({ source })));

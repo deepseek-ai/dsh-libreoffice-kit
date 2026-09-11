@@ -1,2 +1,2 @@
 # Unified patches retain upstream whitespace in context and nested patch data.
-engine/**/*.patch -whitespace
+engine/**/*.patch -whitespace -text

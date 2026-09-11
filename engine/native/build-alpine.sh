@@ -14,8 +14,8 @@ if [ "${LIBREOFFICE_REUSE_CORE:-false}" = true ]; then
 else
   node scripts/build-native.mjs --platform "$1" --jobs 4
 fi
+node scripts/archive-engine.mjs "$1"
 npm install --global --ignore-scripts pnpm@11.7.0
 pnpm install --ignore-scripts --frozen-lockfile
 LIBREOFFICE_RUNTIME_ENTRY="$PWD/packages/entry/src/index.js" LIBREOFFICE_RUNTIME_EXPECT_BACKEND=native \
   node --test test/runtime-engine.test.mjs
-node scripts/archive-engine.mjs "$1"
