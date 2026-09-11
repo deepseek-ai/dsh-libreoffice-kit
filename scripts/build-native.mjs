@@ -44,7 +44,7 @@ const flags = configureFlags(platform, shellPath(tarballs), parallelism);
 if (process.platform === 'win32') {
   const visualStudio = process.env.LIBREOFFICE_KIT_VISUAL_STUDIO ?? '2022';
   if (!['2022', '2026'].includes(visualStudio)) throw new Error('LIBREOFFICE_KIT_VISUAL_STUDIO must be 2022 or 2026');
-  flags.push(`--with-visual-studio=${visualStudio}`, '--without-lxml');
+  flags.push(`--with-visual-studio=${visualStudio}`, '--without-lxml', '--enable-skia');
   if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio}`);
 }
 if (platform.endsWith('-musl')) flags.push('--disable-xmlhelp', '--disable-poppler', '--disable-gpgmepp');
@@ -53,6 +53,8 @@ const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
 const buildEnvironment = { ...process.env, MAKE: shellPath(make) };
 if (process.platform === 'win32') {
+  // UCRT's builtin offsetof supports the constant expressions required by Skia and PDFium.
+  buildEnvironment.ENVCFLAGSCXX = `${buildEnvironment.ENVCFLAGSCXX ?? ''} -D_CRT_USE_BUILTIN_OFFSETOF=1`.trim();
   const compiler = spawnSync('where.exe', ['cl.exe'], { encoding: 'utf8' });
   if (compiler.status !== 0) throw new Error('Initialize the MSVC developer command environment before building');
   const pathKey = Object.keys(buildEnvironment).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';

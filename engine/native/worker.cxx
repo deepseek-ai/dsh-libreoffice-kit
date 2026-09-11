@@ -220,7 +220,9 @@ int execute(const std::vector<std::string>& args)
         code = 1;
     }
     std::fclose(result);
-    return code;
+    // convert() has destroyed both LOK handles, and the result stream is closed.
+    // Writer's static clipboard teardown must not query the released LOK singleton.
+    std::_Exit(code);
 }
 }
 
@@ -239,14 +241,6 @@ int wmain(int argc, wchar_t** argv)
 #else
 int main(int argc, char** argv)
 {
-    const int code = execute({argv, argv + argc});
-#ifdef __APPLE__
-    // Document/office handles and result output are closed by execute(). The
-    // app-loop-free Mac process cannot run Writer's clipboard static teardown
-    // after LOK has released its singleton; process exit releases those globals.
-    std::_Exit(code);
-#else
-    return code;
-#endif
+    return execute({argv, argv + argc});
 }
 #endif
