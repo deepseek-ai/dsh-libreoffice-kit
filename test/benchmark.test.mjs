@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { runMeasuredProcess } from '../benchmarks/process.mjs';
 
 test('benchmark transports results independently of engine stdout and records unavailable GPU paths without timings', { timeout: 30_000 }, async () => {
@@ -56,6 +58,12 @@ writeFileSync(${JSON.stringify(marker)},JSON.stringify({pid:child.pid}));process
     assert.equal(outcome.killed, true);
     assert.match(outcome.failure, /deadline/);
     const { pid } = JSON.parse(await readFile(marker, 'utf8'));
-    assert.throws(() => process.kill(pid, 0), error => error.code === 'ESRCH');
+    try {
+      const { stdout } = await promisify(execFile)('ps', ['-p', String(pid), '-o', 'stat=']);
+      // Linux init may retain an exited orphan as a zombie until its next waitpid.
+      assert.match(stdout.trim(), /^Z/, `Benchmark descendant ${pid} is still running.`);
+    } catch (error) {
+      if (error.code !== 1 || error.stdout.trim() !== '') throw error;
+    }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

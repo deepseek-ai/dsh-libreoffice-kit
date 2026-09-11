@@ -81,11 +81,30 @@ test('minimal architecture headers do not pass executable release validation', (
   const file = join(scratch(t), 'fake');
   writeFileSync(file, bytes); chmodSync(file, 0o755);
   assert.throws(() => verifyNativeImage(file, 'darwin-arm64'), /no load commands/);
+  bytes.writeUInt32LE(8, 12);
+  verifyNativeHeader(bytes, 'darwin-arm64', true);
+  assert.throws(() => verifyNativeHeader(bytes, 'darwin-arm64'), /Wrong Mach-O/);
+  writeFileSync(file, bytes);
+  assert.throws(() => verifyNativeImage(file, 'darwin-arm64', true), /no load commands/);
+});
+
+test('optional graphics require hashed assets and corresponding source and licenses', () => {
+  const wasm = packageMatrix().find(entry => entry.prebuild.platform === 'wasm');
+  const prebuild = structuredClone(wasm.prebuild);
+  prebuild.graphics = { 'darwin-arm64': { status: 'built', binding: 'assets/graphics/darwin-arm64/nodejs_gl_binding.node', libraries: ['assets/graphics/darwin-arm64/libEGL.dylib', 'assets/graphics/darwin-arm64/libGLESv2.dylib'], sourceFiles: ['sources/graphics/darwin-arm64/build.json'], receipt: 'sources/graphics/darwin-arm64/build.json' } };
+  prebuild.status = 'built';
+  prebuild.files = {};
+  assert.throws(() => verifyEngineMetadata(wasm.manifest, prebuild), /Missing hashed graphics asset/);
+  prebuild.graphics['linux-x64-musl'] = prebuild.graphics['darwin-arm64'];
+  delete prebuild.graphics['darwin-arm64'];
+  assert.throws(() => verifyEngineMetadata(wasm.manifest, prebuild), /Unknown\/unbuilt graphics platform/);
 });
 
 test('native recipes preserve upstream platform differences', () => {
   assert.ok(configureFlags('linux-x64-glibc', '/build/tarballs', 8).includes('--disable-gui'));
+  assert.ok(configureFlags('linux-x64-glibc', '/build/tarballs', 8).includes('--without-gssapi'));
   assert.ok(configureFlags('linux-arm64-musl', '/build/tarballs', 8).includes('--without-x'));
+  assert.ok(configureFlags('linux-arm64-musl', '/build/tarballs', 8).includes('--without-gssapi'));
   assert.ok(!configureFlags('darwin-arm64', '/build/tarballs', 8).includes('--disable-gui'));
   assert.ok(!configureFlags('darwin-arm64', '/build/tarballs', 8).includes('--disable-skia'));
   assert.ok(!configureFlags('win32-arm64', '/build/tarballs', 8).includes('--disable-gui'));

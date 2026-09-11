@@ -1,6 +1,6 @@
 /** Preserve Core's installed relative layout and record every redistributed byte. */
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { source } from '../engine/native/configure.mjs';
 import { isMain, readJson, root, targets } from './platform-matrix.mjs';
@@ -25,7 +25,21 @@ export function stageNative({ platform, core, build, repo = root }) {
   const prebuild = readJson(join(dir, 'prebuilds.json'));
   for (const part of ['bin', 'program', 'sources', 'licenses']) rmSync(join(dir, part), { recursive: true, force: true });
   for (const part of ['bin', 'sources', 'licenses']) mkdirSync(join(dir, part), { recursive: true });
-  cpSync(instdir, join(dir, 'program'), { recursive: true, dereference: true });
+  function copyInstalled(from, to, ancestors = new Set()) {
+    const resolved = realpathSync(from);
+    assert(!ancestors.has(resolved), `Core installation contains a symlink cycle: ${from}`);
+    assert([build, core].some((base) => { const path = relative(base, resolved); return path === '' || (!path.startsWith('..') && !isAbsolute(path)); }), `Core installation links outside its source/build: ${from}`);
+    const info = statSync(resolved);
+    if (info.isDirectory()) {
+      mkdirSync(to, { recursive: true });
+      for (const child of readdirSync(resolved)) copyInstalled(join(resolved, child), join(to, child), new Set([...ancestors, resolved]));
+    } else {
+      assert(info.isFile(), `Unexpected Core installation special file: ${from}`);
+      copyFileSync(resolved, to);
+      chmodSync(to, info.mode & 0o777);
+    }
+  }
+  copyInstalled(instdir, join(dir, 'program'));
   copyFileSync(join(build, `libreoffice-kit${targets[platform].os === 'win32' ? '.exe' : ''}`), join(dir, prebuild.engine.executable));
   if (targets[platform].os !== 'win32') chmodSync(join(dir, prebuild.engine.executable), 0o755);
   const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/build-alpine.sh',

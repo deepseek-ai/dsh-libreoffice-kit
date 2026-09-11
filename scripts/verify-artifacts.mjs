@@ -100,6 +100,19 @@ export function verifyEngineMetadata(manifest, prebuild) {
     assert(payloadRoots.includes(file.split('/')[0]) && hashPattern.test(hash), `Invalid file inventory entry: ${file}`);
   }
   assert(Array.isArray(prebuild.licenses), 'Engine licenses must be an array');
+  if (prebuild.graphics !== undefined) {
+    assert(prebuild.platform === 'wasm' && prebuild.status === 'built' && prebuild.graphics && typeof prebuild.graphics === 'object' && !Array.isArray(prebuild.graphics), 'Optional graphics require a built WASM package');
+    for (const [platform, graphics] of Object.entries(prebuild.graphics)) {
+      assert(/^(darwin|linux|win32)-(arm64|x64)$/.test(platform) && graphics.status === 'built', 'Unknown/unbuilt graphics platform');
+      const prefix = `assets/graphics/${platform}/`;
+      assert(graphics.binding === `${prefix}nodejs_gl_binding.node` && Array.isArray(graphics.libraries) && graphics.libraries.length >= 2,
+        'Graphics payload lacks its binding/libraries');
+      for (const file of [graphics.binding, ...graphics.libraries]) assert(file.startsWith(prefix) && Object.hasOwn(prebuild.files, file), `Missing hashed graphics asset: ${file}`);
+      assert(Array.isArray(graphics.sourceFiles) && graphics.sourceFiles.length > 0 && graphics.sourceFiles.includes(graphics.receipt), 'Missing graphics build receipt');
+      for (const file of graphics.sourceFiles) assert(file.startsWith(`sources/graphics/${platform}/`) && prebuild.source?.files?.includes(file), `Missing graphics source: ${file}`);
+      for (const component of ['node-gles-webgl2', 'ANGLE']) assert(prebuild.licenses.some(license => license.component === component && license.path.startsWith(`licenses/graphics/${platform}/`)), `Missing graphics license: ${component}`);
+    }
+  }
   if (prebuild.status === 'unbuilt') {
     assert(Object.keys(prebuild.files).length === 0 && prebuild.source === null && prebuild.licenses.length === 0,
       'Unbuilt target must not claim built files or source/license receipts');
@@ -119,37 +132,37 @@ export function verifyEngineMetadata(manifest, prebuild) {
 }
 
 /** Header-only checks accept minimal test fixtures; they are not release validation. */
-export function verifyNativeHeader(bytes, platform) {
+export function verifyNativeHeader(bytes, platform, shared = false) {
   const target = targets[platform];
   assert(target, `Unknown native target: ${platform}`);
   if (target.os === 'linux') {
     assert(bytes.length >= 64 && bytes.readUInt32LE(0) === 0x464c457f && bytes[4] === 2 && bytes[5] === 1, 'Expected little-endian ELF64 image');
     assert(bytes.readUInt16LE(18) === (target.cpu === 'x64' ? 62 : 183), 'Wrong ELF architecture');
-    assert([2, 3].includes(bytes.readUInt16LE(16)), 'Wrong ELF executable type');
+    assert((shared ? [3] : [2, 3]).includes(bytes.readUInt16LE(16)), 'Wrong ELF executable/library type');
   } else if (target.os === 'darwin') {
     assert(bytes.length >= 32 && bytes.readUInt32LE(0) === 0xfeedfacf, 'Expected thin Mach-O 64-bit image');
     assert(bytes.readUInt32LE(4) === (target.cpu === 'x64' ? 0x01000007 : 0x0100000c), 'Wrong Mach-O architecture');
-    assert(bytes.readUInt32LE(12) === 2, 'Expected Mach-O executable');
+    assert((shared ? [6, 8] : [2]).includes(bytes.readUInt32LE(12)), 'Wrong Mach-O executable/library type');
   } else {
     assert(bytes.length >= 64 && bytes.readUInt16LE(0) === 0x5a4d, 'Expected PE executable');
     const pe = bytes.readUInt32LE(60);
     assert(pe >= 64 && pe + 26 <= bytes.length && bytes.readUInt32LE(pe) === 0x4550, 'Truncated or invalid PE header');
     assert(bytes.readUInt16LE(pe + 4) === (target.cpu === 'x64' ? 0x8664 : 0xaa64), 'Wrong PE architecture');
-    assert(bytes.readUInt16LE(pe + 24) === 0x20b && (bytes.readUInt16LE(pe + 22) & 0x2002) === 2, 'Expected PE32+ executable, not a DLL');
+    assert(bytes.readUInt16LE(pe + 24) === 0x20b && (bytes.readUInt16LE(pe + 22) & 0x2002) === (shared ? 0x2002 : 2), 'Wrong PE32+ executable/DLL type');
   }
 }
 
 /** Require executable code records in addition to the format/architecture header. */
-export function verifyNativeImage(file, platform) {
+export function verifyNativeImage(file, platform, shared = false) {
   const bytes = readFileSync(file);
-  verifyNativeHeader(bytes, platform);
+  verifyNativeHeader(bytes, platform, shared);
   const target = targets[platform];
-  if (target.os !== 'win32') assert((statSync(file).mode & 0o111) !== 0, 'Native engine is not executable');
+  if (process.platform !== 'win32' && target.os !== 'win32') assert((statSync(file).mode & 0o111) !== 0, 'Native engine is not executable');
   if (target.os === 'linux') {
     const offset = Number(bytes.readBigUInt64LE(32));
     const width = bytes.readUInt16LE(54);
     const count = bytes.readUInt16LE(56);
-    assert(bytes.readBigUInt64LE(24) !== 0n && width >= 56 && count > 0 && offset >= 64 && offset + width * count <= bytes.length, 'ELF image has no executable program table');
+    assert((shared || bytes.readBigUInt64LE(24) !== 0n) && width >= 56 && count > 0 && offset >= 64 && offset + width * count <= bytes.length, 'ELF image has no executable program table');
     let code = false;
     let interpreter;
     for (let index = 0; index < count; index++) {
@@ -188,7 +201,7 @@ export function verifyNativeImage(file, platform) {
     const count = bytes.readUInt16LE(pe + 6);
     const optionalSize = bytes.readUInt16LE(pe + 20);
     const sections = pe + 24 + optionalSize;
-    assert(optionalSize >= 112 && count > 0 && sections + count * 40 <= bytes.length && bytes.readUInt32LE(pe + 40) !== 0, 'PE image has no executable sections');
+    assert(optionalSize >= 112 && count > 0 && sections + count * 40 <= bytes.length && (shared || bytes.readUInt32LE(pe + 40) !== 0), 'PE image has no executable sections');
     let code = false;
     for (let index = 0; index < count; index++) {
       const record = sections + index * 40;
@@ -212,6 +225,9 @@ export function verifyEnginePackage(dir) {
   assert(JSON.stringify(declared) === JSON.stringify(actual), 'Payload inventory contains missing or undeclared files');
   for (const file of declared) assert(sha256(regularFile(dir, file)) === prebuild.files[file], `Artifact checksum mismatch: ${file}`);
   for (const license of prebuild.licenses) assert(readFileSync(regularFile(dir, license.path), 'utf8').trim().length > 0, `Empty license: ${license.path}`);
+  for (const [platform, graphics] of Object.entries(prebuild.graphics ?? {})) {
+    for (const file of [graphics.binding, ...graphics.libraries]) verifyNativeImage(regularFile(dir, file), platform.startsWith('linux-') ? `${platform}-glibc` : platform, true);
+  }
   const engine = prebuild.engine;
   if (engine.kind === 'native') {
     verifyNativeImage(regularFile(dir, engine.executable), prebuild.platform);

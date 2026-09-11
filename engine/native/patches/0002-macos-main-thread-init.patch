@@ -1,0 +1,21 @@
+diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
+--- a/desktop/source/lib/init.cxx
++++ b/desktop/source/lib/init.cxx
+@@ -147,7 +147,7 @@
+ #include <com/sun/star/view/XSelectionSupplier.hpp>
+ 
+ #include <editeng/flstitem.hxx>
+-#ifdef IOS
++#if defined IOS || defined MACOSX
+ #include <sfx2/app.hxx>
+ #endif
+ #include <sfx2/objsh.hxx>
+@@ -8274,7 +8274,7 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char* pU
+             // CommandLineArgs):
+             desktop::Desktop::GetCommandLineArgs().setHeadless();
+ 
+-#ifdef IOS
++#if defined IOS || defined MACOSX
+             if (InitVCL())
+             {
+                 static bool bFirstTime = true;

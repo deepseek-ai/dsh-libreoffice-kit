@@ -18,7 +18,7 @@ export function configureFlags(platform, tarballs, parallelism) {
   ];
   if (!platform.startsWith('darwin-')) flags.push('--disable-skia');
   if (platform.startsWith('linux-')) flags.push('--disable-gui', '--disable-gtk3', '--disable-qt5', '--disable-qt6', '--disable-gen', '--without-x',
-    '--without-system-cairo', '--without-system-fontconfig', '--without-system-freetype', '--without-system-harfbuzz', '--without-system-graphite');
+    '--without-gssapi', '--without-system-cairo', '--without-system-fontconfig', '--without-system-freetype', '--without-system-harfbuzz', '--without-system-graphite');
   // Core's configure rejects --disable-gui on macOS and Windows; LOK initializes headless itself.
   if (platform.startsWith('darwin-')) flags.push('--enable-bogus-pkg-config');
   if (platform.startsWith('win32-')) flags.push(`--host=${platform.endsWith('arm64') ? 'aarch64' : 'x86_64'}-pc-cygwin`);

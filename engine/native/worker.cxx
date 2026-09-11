@@ -29,6 +29,11 @@
 
 namespace fs = std::filesystem;
 namespace {
+struct ConversionError : std::runtime_error {
+    const char* code;
+    ConversionError(const char* code, const std::string& message) : std::runtime_error(message), code(code) {}
+};
+
 struct Request {
     std::string program, input, output, profile;
     std::vector<std::string> fonts;
@@ -142,7 +147,11 @@ void registerFont(const std::string& font, LibreOfficeKit* office)
 void convert(const Request& request)
 {
     fs::create_directories(fs::u8path(request.profile));
+#ifdef __APPLE__
     environment("SAL_LOK_OPTIONS", "unipoll");
+#else
+    environment("SAL_LOK_OPTIONS", "");
+#endif
     environment("SAL_DISABLE_OPENCL", "1");
     environment("LOK_HOST_ALLOWLIST", "^$");
 #ifndef _WIN32
@@ -154,7 +163,11 @@ void convert(const Request& request)
 #endif
 #if !defined(__APPLE__) && !defined(_WIN32)
     const auto fontConfig = fs::u8path(request.profile) / "fonts.conf";
-    std::ofstream(fontConfig) << "<?xml version=\"1.0\"?><!DOCTYPE fontconfig SYSTEM \"fonts.dtd\"><fontconfig></fontconfig>\n";
+    std::ofstream config;
+    config.exceptions(std::ios::badbit | std::ios::failbit);
+    config.open(fontConfig);
+    config << "<?xml version=\"1.0\"?><!DOCTYPE fontconfig SYSTEM \"fonts.dtd\"><fontconfig></fontconfig>\n";
+    config.close();
     environment("FONTCONFIG_FILE", fontConfig.u8string());
 #endif
     const auto profileUrl = fileUrl(request.profile);
@@ -164,7 +177,7 @@ void convert(const Request& request)
 #endif
     std::unique_ptr<LibreOfficeKit, void(*)(LibreOfficeKit*)> office(lok_init_2(request.program.c_str(), profileUrl.c_str()),
         [](LibreOfficeKit* value) { value->pClass->destroy(value); });
-    if (!office) throw std::runtime_error("LibreOfficeKit initialization failed");
+    if (!office) throw ConversionError("unavailable", "LibreOfficeKit initialization failed");
 #if !defined(__APPLE__) && !defined(_WIN32)
     for (const auto& font : request.fonts) registerFont(font, office.get());
 #endif
@@ -180,11 +193,11 @@ void convert(const Request& request)
         throw std::runtime_error(officeError(office.get()));
     if (fs::file_size(fs::u8path(request.output)) > request.maxOutput) {
         fs::remove(fs::u8path(request.output));
-        throw std::runtime_error("PDF exceeds maxOutputBytes");
+        throw ConversionError("output-too-large", "PDF exceeds maxOutputBytes");
     }
     char header[5] = {};
     std::ifstream(fs::u8path(request.output), std::ios::binary).read(header, sizeof header);
-    if (std::memcmp(header, "%PDF-", sizeof header) != 0) throw std::runtime_error("LibreOffice did not produce PDF bytes");
+    if (std::memcmp(header, "%PDF-", sizeof header) != 0) throw ConversionError("invalid-output", "LibreOffice did not produce PDF bytes");
 }
 
 int execute(const std::vector<std::string>& args)
@@ -203,11 +216,14 @@ int execute(const std::vector<std::string>& args)
     try {
         convert(parse(args));
         std::fprintf(result, "{\"ok\":true,\"missingFonts\":[]}\n");
+    } catch (const ConversionError& error) {
+        std::fprintf(result, "{\"ok\":false,\"code\":%s,\"error\":%s}\n", jsonString(error.code).c_str(), jsonString(error.what()).c_str());
+        code = 1;
     } catch (const std::exception& error) {
-        std::fprintf(result, "{\"ok\":false,\"error\":%s}\n", jsonString(error.what()).c_str());
+        std::fprintf(result, "{\"ok\":false,\"code\":\"failed\",\"error\":%s}\n", jsonString(error.what()).c_str());
         code = 1;
     } catch (...) {
-        std::fprintf(result, "{\"ok\":false,\"error\":\"Unknown LibreOfficeKit exception\"}\n");
+        std::fprintf(result, "{\"ok\":false,\"code\":\"failed\",\"error\":\"Unknown LibreOfficeKit exception\"}\n");
         code = 1;
     }
     std::fclose(result);
@@ -228,5 +244,16 @@ int wmain(int argc, wchar_t** argv)
     return execute(args);
 }
 #else
-int main(int argc, char** argv) { return execute({argv, argv + argc}); }
+int main(int argc, char** argv)
+{
+    const int code = execute({argv, argv + argc});
+#ifdef __APPLE__
+    // Document/office handles and result output are closed by execute(). The
+    // app-loop-free Mac process cannot run Writer's clipboard static teardown
+    // after LOK has released its singleton; process exit releases those globals.
+    std::_Exit(code);
+#else
+    return code;
+#endif
+}
 #endif
