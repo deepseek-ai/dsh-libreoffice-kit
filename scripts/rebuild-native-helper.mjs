@@ -41,7 +41,7 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   verifyNativeImage(executable, platform);
   copyFileSync(executable, join(directory, prebuild.engine.executable));
   if (!platform.startsWith('win32-')) chmodSync(join(directory, prebuild.engine.executable), 0o755);
-  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs'];
+  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs'];
   for (const file of updated) {
     const destination = `sources/${file}`;
     mkdirSync(join(directory, destination, '..'), { recursive: true });

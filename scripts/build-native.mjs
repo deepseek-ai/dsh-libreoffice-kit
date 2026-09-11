@@ -1,9 +1,10 @@
 /** Build pinned Core and the owned LOK worker; installation never invokes this script. */
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { configureFlags, source } from '../engine/native/configure.mjs';
 import { buildHelper } from '../engine/native/build-helper.mjs';
+import { windowsCoreEnvironment } from '../engine/native/core-environment.mjs';
 import { hostTarget, root, targets } from './platform-matrix.mjs';
 
 const args = process.argv.slice(2);
@@ -46,7 +47,7 @@ if (process.platform === 'win32') {
   flags.push(`--with-visual-studio=${visualStudio}`, '--without-lxml');
   if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio}`);
 }
-if (platform.endsWith('-musl')) flags.push('--disable-xmlhelp');
+if (platform.endsWith('-musl')) flags.push('--disable-xmlhelp', '--disable-poppler');
 if (!args.includes('--resume')) writeFileSync(join(build, 'autogen.input'), `${flags.join('\n')}\n`);
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
@@ -58,9 +59,9 @@ if (process.platform === 'win32') {
   // Keep MSVC's linker ahead of Cygwin's unrelated link.exe utility.
   buildEnvironment[pathKey] = [dirname(make), dirname(compiler.stdout.trim().split(/\r?\n/)[0]), join(cygwin, 'bin'), buildEnvironment[pathKey]].join(';');
 }
-const coreEnvironment = { ...buildEnvironment };
-// Core's Make rules own INCLUDE as compiler flags; MSVC's environment uses a path list.
-if (process.platform === 'win32') for (const key of Object.keys(coreEnvironment)) if (key.toUpperCase() === 'INCLUDE') delete coreEnvironment[key];
+const coreEnvironment = process.platform === 'win32'
+  ? windowsCoreEnvironment(buildEnvironment, ['config_host.mk.in', 'solenv/gbuild/platform/com_MSC_class.mk'].map(file => readFileSync(join(core, file), 'utf8')).join('\n'))
+  : buildEnvironment;
 if (!args.includes('--resume')) run(shell, [shellPath(join(core, 'autogen.sh'))], build, coreEnvironment);
 if (args.includes('--configure-only')) process.exit(0);
 run(make, ['build'], build, coreEnvironment);
