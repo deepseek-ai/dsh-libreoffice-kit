@@ -1,10 +1,55 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
 import { debianFields, stageLinuxRuntime, verifyInstalledFile, verifyLinuxClosure } from '../scripts/stage-linux-runtime.mjs';
+import { acquireAlpineRuntime, alpineRuntimePackages, verifyAlpineMetadata } from '../engine/native/alpine-runtime.mjs';
+
+for (const [platform, architecture] of [['linux-arm64-musl', 'aarch64'], ['linux-x64-musl', 'x86_64']]) {
+  test(`${platform} acquires the pinned URL privately and rejects altered bytes before verification or extraction`, t => {
+    const directory = mkdtempSync(join(tmpdir(), 'libreoffice-alpine-acquisition-'));
+    t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
+    let checkedVersions = 0;
+    let downloads = 0;
+    const execute = (command, args) => {
+      if (command === 'apk' && args[0] === '--print-arch') return architecture;
+      if (command === 'apk' && args[0] === 'info') {
+        const spec = alpineRuntimePackages[checkedVersions++];
+        assert.deepEqual(args, ['info', '--installed', '--verbose', `${spec.name}=${spec.version}`]);
+        return `${spec.name}-${spec.version}`;
+      }
+      assert.equal(command, 'curl', 'No fetch, signature verification, extraction or source acquisition may precede the pinned archive hash check');
+      assert.equal(checkedVersions, alpineRuntimePackages.length);
+      assert.equal(downloads++, 0);
+      const spec = alpineRuntimePackages[0];
+      assert.equal(args.at(-1), `https://dl-cdn.alpinelinux.org/alpine/v3.22/main/${architecture}/${spec.name}-${spec.version}.apk`);
+      const destination = args[args.indexOf('--output') + 1];
+      assert.equal(destination, join(directory, spec.name, `${spec.name}-${spec.version}.apk`));
+      writeFileSync(destination, 'altered APK download', { flag: 'wx' });
+      return '';
+    };
+    assert.throws(() => acquireAlpineRuntime(platform, directory, execute), /Alpine download checksum mismatch/);
+    assert.equal(downloads, 1);
+  });
+}
+
+test('Alpine acquisition refuses an unaudited installed version before creating output or downloading', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'libreoffice-alpine-version-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
+  let checkedVersions = 0;
+  const execute = (command, args) => {
+    assert.equal(command, 'apk');
+    if (args[0] === '--print-arch') return 'aarch64';
+    assert.equal(args[0], 'info');
+    const spec = alpineRuntimePackages[checkedVersions++];
+    return checkedVersions === alpineRuntimePackages.length ? `${spec.name}-unaudited` : `${spec.name}-${spec.version}`;
+  };
+  assert.throws(() => acquireAlpineRuntime('linux-arm64-musl', directory, execute), /Unaudited installed Alpine version/);
+  assert.equal(checkedVersions, alpineRuntimePackages.length);
+  assert.deepEqual(readdirSync(directory), []);
+});
 
 function elf(machine = 183) {
   const bytes = Buffer.alloc(128);
@@ -15,7 +60,10 @@ function elf(machine = 183) {
   bytes.writeBigUInt64LE(120n, 72); bytes.writeBigUInt64LE(8n, 96);
   return bytes;
 }
-function fixture(t) {
+function fixture(t, platform = 'linux-arm64-glibc') {
+  const musl = platform.endsWith('-musl');
+  const machine = platform.includes('-arm64-') ? 183 : 62;
+  const architecture = musl ? machine === 183 ? 'aarch64' : 'x86_64' : 'arm64';
   const directory = mkdtempSync(join(tmpdir(), 'libreoffice-linux-libraries-'));
   t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
   const program = join(directory, 'program/program');
@@ -23,29 +71,32 @@ function fixture(t) {
   mkdirSync(join(directory, 'licenses'));
   writeFileSync(join(directory, 'licenses/LibreOffice-MPL-2.0.txt'), 'MPL notice fixture\n');
   const native = join(program, 'libsofficeapp.so');
-  writeFileSync(native, elf(), { mode: 0o755 });
+  writeFileSync(native, elf(machine), { mode: 0o755 });
   const files = ['program/program/libsofficeapp.so', 'licenses/LibreOffice-MPL-2.0.txt'];
-  const prebuild = { platform: 'linux-arm64-glibc', engine: { programDirectory: 'program/program' }, source: { files: [] }, licenses: [], files: Object.fromEntries(files.map(file => [file, sha256(join(directory, file))])) };
-  const specs = [
+  const prebuild = { platform, engine: { programDirectory: 'program/program' }, source: { files: [] }, licenses: [], files: Object.fromEntries(files.map(file => [file, sha256(join(directory, file))])) };
+  const specs = musl ? alpineRuntimePackages.map(spec => [spec.name, spec.files]) : [
     ['libnss3', ['libfreebl3.so', 'libfreeblpriv3.so', 'libnss3.so', 'libnssckbi.so', 'libnssdbm3.so', 'libnssutil3.so', 'libsmime3.so', 'libsoftokn3.so', 'libssl3.so', 'libfreebl3.chk', 'libfreeblpriv3.chk', 'libnssdbm3.chk', 'libsoftokn3.chk']],
     ['libnspr4', ['libnspr4.so', 'libplc4.so', 'libplds4.so']],
     ['libsqlite3-0', ['libsqlite3.so.0']],
   ];
   const acquired = specs.map(([name, names]) => {
+    const alpine = alpineRuntimePackages.find(spec => spec.name === name);
     const folder = join(directory, 'archives', name);
     mkdirSync(folder, { recursive: true });
     const copyright = join(folder, 'copyright');
     writeFileSync(copyright, `${name} copyright notice\n`);
-    return { name, version: '1.2.3-1', architecture: 'arm64', source: { name, version: '1.2.3-1', archives: [] }, archive: { url: 'https://example.invalid/library.deb', sha256: 'a'.repeat(64) }, copyright,
+    return { name, version: alpine?.version ?? '1.2.3-1', architecture, source: { name, version: '1.2.3-1', archives: [], aportsCommit: alpine?.source.commit }, archive: { url: 'https://example.invalid/library', sha256: alpine?.apkSha256[architecture] ?? 'a'.repeat(64) }, copyright,
       metadata: { 'binary-control.txt': `Package: ${name}\n`, 'apt-metadata.json': '{}\n', 'source.dsc': `Source: ${name}\n` },
       files: names.map(name => {
         const from = join(folder, name);
-        writeFileSync(from, name.includes('.so') ? elf() : Buffer.from('NSS check value'), { mode: 0o644 });
+        writeFileSync(from, name.includes('.so') ? elf(machine) : Buffer.from('NSS check value'), { mode: 0o644 });
         return { name, from, sha256: sha256(from) };
       }) };
   });
   const needed = { 'libsofficeapp.so': ['libnss3.so', 'libnspr4.so'], 'libnss3.so': ['libnssutil3.so', 'libplc4.so', 'libplds4.so'], 'libsoftokn3.so': ['libsqlite3.so.0'], 'libsqlite3.so.0': ['libm.so.6'] };
-  const inspect = file => [...(needed[basename(file)] ?? []), 'libc.so.6'].map(name => ` 0x0000000000000001 (NEEDED) Shared library: [${name}]`).join('\n');
+  if (musl) { needed['libsofficeapp.so'].push('libintl.so.8'); needed['libsqlite3.so.0'] = []; }
+  const libc = musl ? `libc.musl-${architecture}.so.1` : 'libc.so.6';
+  const inspect = file => [...(needed[basename(file)] ?? []), libc].map(name => ` 0x0000000000000001 (NEEDED) Shared library: [${name}]`).join('\n');
   const options = { acquire: () => acquired, inspect };
   return { directory, program, prebuild, acquired, inspect, needed, options };
 }
@@ -126,5 +177,46 @@ test('reuse refuses missing or rehashed runtime modules', t => {
 });
 
 test('other platforms do not acquire Debian libraries', () => {
-  for (const platform of ['darwin-arm64', 'win32-x64', 'linux-arm64-musl']) stageLinuxRuntime('/unused', { platform }, { acquire: () => assert.fail('not a glibc package') });
+  for (const platform of ['darwin-arm64', 'win32-x64']) stageLinuxRuntime('/unused', { platform }, { acquire: () => assert.fail('not a Linux package') });
+});
+
+for (const platform of ['linux-arm64-musl', 'linux-x64-musl']) test(`${platform} packages Alpine modules and libintl with a musl-only base`, t => {
+  const f = fixture(t, platform);
+  const before = sha256(join(f.program, 'libsofficeapp.so'));
+  stageLinuxRuntime(f.directory, f.prebuild, f.options);
+  const receipt = JSON.parse(readFileSync(join(f.directory, 'sources/linux-runtime/receipt.json')));
+  assert.equal(sha256(join(f.program, 'libsofficeapp.so')), before);
+  assert.equal(receipt.packages.length, 4);
+  assert.equal(receipt.closure.elfFiles, 16);
+  assert.deepEqual(receipt.closure.systemLibraries, [`libc.musl-${platform.includes('-arm64-') ? 'aarch64' : 'x86_64'}.so.1`]);
+  for (const name of ['libnssckbi-testlib.so', 'libnsssysinit.so', 'libintl.so.8']) assert.ok(f.prebuild.files[`program/program/${name}`]);
+  assert.equal(Object.keys(f.prebuild.files).some(name => name.endsWith('.chk') || name.endsWith('libnssdbm3.so')), false);
+  assert.ok(f.prebuild.licenses.some(item => item.component === 'GNU libintl' && item.spdx === 'LGPL-2.1-or-later'));
+  stageLinuxRuntime(f.directory, f.prebuild, { ...f.options, acquire: () => assert.fail('reuse preserves authenticated Alpine bytes') });
+  f.needed['libsofficeapp.so'] = ['libc.so.6'];
+  assert.throws(() => verifyLinuxClosure(f.directory, f.prebuild, f.inspect), /Unbundled Linux runtime dependency/);
+});
+
+test('an unaudited Alpine version, source or APK is rejected before any Core directory changes', t => {
+  for (const field of ['version', 'source', 'archive']) {
+    const f = fixture(t, 'linux-arm64-musl');
+    const before = JSON.stringify(f.prebuild);
+    const last = f.acquired.at(-1);
+    if (field === 'version') last.version = '999-r0';
+    if (field === 'source') last.source.aportsCommit = '0'.repeat(40);
+    if (field === 'archive') last.archive.sha256 = '0'.repeat(64);
+    assert.throws(() => stageLinuxRuntime(f.directory, f.prebuild, f.options), /Unaudited Alpine runtime receipt/);
+    assert.equal(JSON.stringify(f.prebuild), before);
+    assert.throws(() => readFileSync(join(f.program, 'libnss3.so')), { code: 'ENOENT' });
+  }
+});
+
+test('Alpine metadata requires exact package, source commit, architecture and license identities', () => {
+  const spec = alpineRuntimePackages[0];
+  const control = 'pkgname = nss\npkgver = 3.114-r0\narch = aarch64\norigin = nss\ncommit = 5b1a79380a4a5e98f259ad98bff2c7e8563b19c4\nlicense = MPL-2.0\ndatahash = ' + 'a'.repeat(64) + '\ndepend = so:libnspr4.so\ndepend = so:libsqlite3.so.0\n';
+  assert.equal(verifyAlpineMetadata(control, spec, 'aarch64').depend.length, 2);
+  for (const change of [control.replace('3.114-r0', '3.115-r0'), control.replace('arch = aarch64', 'arch = x86_64'), control.replace(spec.source.commit, '0'.repeat(40)), `${control}pkgname = nss\n`, control.replace('MPL-2.0', 'unknown')]) {
+    assert.throws(() => verifyAlpineMetadata(change, spec, 'aarch64'), /Unaudited Alpine/);
+  }
+  assert.throws(() => verifyAlpineMetadata(`${control}no field\n`, spec, 'aarch64'), /Invalid Alpine/);
 });

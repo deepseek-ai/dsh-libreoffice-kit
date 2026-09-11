@@ -1,9 +1,10 @@
-/** Package the Debian NSS, NSPR, and SQLite runtime used by an existing glibc Core. */
+/** Package fixed Linux third-party runtime libraries without replacing Core program bytes. */
 import { constants, chmodSync, closeSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { run } from './pack-utils.mjs';
 import { assert, safePath, sha256, verifyNativeHeader, verifyNativeImage } from './verify-artifacts.mjs';
+import { acquireAlpineRuntime, alpineRuntimePackages } from '../engine/native/alpine-runtime.mjs';
 
 const packages = [
   { name: 'libnss3', component: 'NSS', files: ['libfreebl3.so', 'libfreeblpriv3.so', 'libnss3.so', 'libnssckbi.so', 'libnssdbm3.so', 'libnssutil3.so', 'libsmime3.so', 'libsoftokn3.so', 'libssl3.so', 'libfreebl3.chk', 'libfreeblpriv3.chk', 'libnssdbm3.chk', 'libsoftokn3.chk'] },
@@ -110,10 +111,12 @@ function header(file) {
   return bytes;
 }
 
-/** Every non-glibc/runtime dependency must have its loader name in the owned program directory. */
+/** Every non-base dependency must have its loader name in the owned program directory. */
 export function verifyLinuxClosure(directory, prebuild, inspect = file => run('readelf', ['--wide', '--dynamic', file], { env: { ...process.env, LC_ALL: 'C' } })) {
   const machine = prebuild.platform.includes('-arm64-') ? 183 : 62;
-  const loader = machine === 183 ? 'ld-linux-aarch64.so.1' : 'ld-linux-x86-64.so.2';
+  const musl = prebuild.platform.endsWith('-musl');
+  const loader = musl ? `libc.musl-${machine === 183 ? 'aarch64' : 'x86_64'}.so.1` : machine === 183 ? 'ld-linux-aarch64.so.1' : 'ld-linux-x86-64.so.2';
+  const base = musl ? new Set(['libstdc++.so.6', 'libgcc_s.so.1', 'libz.so.1']) : baseLibraries;
   const external = new Set();
   let elfFiles = 0;
   for (const name of Object.keys(prebuild.files).filter(name => /^(bin|program)\//.test(name))) {
@@ -127,7 +130,7 @@ export function verifyLinuxClosure(directory, prebuild, inspect = file => run('r
     assert(dependencies.length === (dynamic.match(/\(NEEDED\)/g) ?? []).length, `Unparsed ELF dependency in ${name}`);
     for (const match of dependencies) {
       const library = match[1];
-      if (baseLibraries.has(library) || library === loader) { external.add(library); continue; }
+      if (base.has(library) || library === loader) { external.add(library); continue; }
       assert(basename(library) === library, `Absolute or relative ELF dependency: ${library}`);
       const provider = `${prebuild.engine.programDirectory}/${library}`;
       assert(Object.hasOwn(prebuild.files, provider), `Unbundled Linux runtime dependency: ${name} needs ${library}`);
@@ -139,19 +142,27 @@ export function verifyLinuxClosure(directory, prebuild, inspect = file => run('r
   return { elfFiles, systemLibraries: [...external].sort() };
 }
 
-/** Supplement glibc builds without replacing any existing Core program byte. Musl uses a separate APK recipe. */
-export function stageLinuxRuntime(directory, prebuild, { acquire = acquireDebianRuntime, inspect } = {}) {
-  if (!prebuild.platform.endsWith('-glibc')) return;
+/** Supplement matching glibc and musl builds, retaining validated runtime receipts during helper reuse. */
+export function stageLinuxRuntime(directory, prebuild, { acquire, inspect } = {}) {
+  if (!prebuild.platform.endsWith('-glibc') && !prebuild.platform.endsWith('-musl')) return;
+  const musl = prebuild.platform.endsWith('-musl');
+  const specs = musl ? alpineRuntimePackages : packages;
+  const architecture = musl ? prebuild.platform.includes('-arm64-') ? 'aarch64' : 'x86_64' : prebuild.platform.includes('-arm64-') ? 'arm64' : 'amd64';
+  acquire ??= musl ? acquireAlpineRuntime : acquireDebianRuntime;
+  const validate = (item, spec) => {
+    assert(item && item.architecture === architecture && item.files.length === spec.files.length, `Invalid Linux runtime package: ${spec.name}`);
+    if (musl) assert(item.version === spec.version && item.source.aportsCommit === spec.source.commit && item.archive.sha256 === spec.apkSha256[architecture], `Unaudited Alpine runtime receipt: ${spec.name}`);
+  };
   const register = (path, source = false) => {
     prebuild.files[path] = sha256(join(directory, path));
     if (source && !prebuild.source.files.includes(path)) prebuild.source.files.push(path);
   };
   if (Object.hasOwn(prebuild.files, receiptPath)) {
     const receipt = JSON.parse(readFileSync(join(directory, receiptPath), 'utf8'));
-    assert(receipt.platform === prebuild.platform && receipt.packages.length === packages.length, 'Linux runtime receipt has a different platform/package set');
-    for (const spec of packages) {
+    assert(receipt.platform === prebuild.platform && receipt.packages.length === specs.length, 'Linux runtime receipt has a different platform/package set');
+    for (const spec of specs) {
       const record = receipt.packages.find(item => item.name === spec.name);
-      assert(record && record.files.length === spec.files.length, `Missing Linux runtime package receipt: ${spec.name}`);
+      validate(record, spec);
       for (const name of spec.files) {
         const file = `${prebuild.engine.programDirectory}/${name}`;
         const saved = record.files.find(item => item.name === name);
@@ -164,16 +175,16 @@ export function stageLinuxRuntime(directory, prebuild, { acquire = acquireDebian
   const work = mkdtempSync(join(tmpdir(), 'libreoffice-linux-runtime-'));
   try {
     const acquired = acquire(prebuild.platform, work);
-    assert(acquired.length === packages.length, 'Linux runtime acquisition did not return the three required packages');
+    assert(acquired.length === specs.length, 'Linux runtime acquisition did not return the required packages');
+    for (const spec of specs) validate(acquired.find(item => item.name === spec.name), spec);
     const records = [];
     const put = (path, bytes, source = false) => {
       mkdirSync(dirname(join(directory, path)), { recursive: true });
       writeFileSync(join(directory, path), bytes, { flag: 'wx' });
       register(path, source);
     };
-    for (const spec of packages) {
+    for (const spec of specs) {
       const item = acquired.find(item => item.name === spec.name);
-      assert(item && item.architecture === (prebuild.platform.includes('-arm64-') ? 'arm64' : 'amd64') && item.files.length === spec.files.length, `Invalid Linux runtime package: ${spec.name}`);
       for (const name of spec.files) {
         const file = item.files.find(file => file.name === name);
         assert(file && sha256(file.from) === file.sha256, `Missing or changed Linux runtime module: ${name}`);
@@ -195,7 +206,7 @@ export function stageLinuxRuntime(directory, prebuild, { acquire = acquireDebian
       }
       const licensePath = `licenses/linux-runtime/${spec.name}.txt`;
       put(licensePath, readFileSync(item.copyright));
-      prebuild.licenses.push({ component: spec.component, spdx: `LicenseRef-${spec.component}-Debian`, path: licensePath });
+      prebuild.licenses.push({ component: spec.component, spdx: spec.spdx ?? `LicenseRef-${spec.component}-Debian`, path: licensePath });
       const { metadata, copyright, files, ...identity } = item;
       records.push({ ...identity, files: files.map(({ from, ...file }) => file), sourceFiles, licensePath });
     }

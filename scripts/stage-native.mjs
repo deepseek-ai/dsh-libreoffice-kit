@@ -52,7 +52,7 @@ export function stageNative({ platform, core, build, repo = root }) {
   copyInstalled(instdir, join(dir, 'program'));
   copyFileSync(join(build, `libreoffice-kit${targets[platform].os === 'win32' ? '.exe' : ''}`), join(dir, prebuild.engine.executable));
   if (targets[platform].os !== 'win32') chmodSync(join(dir, prebuild.engine.executable), 0o755);
-  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
+  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs', 'engine/native/alpine-runtime.mjs', 'engine/native/alpine-runtime.json',
     'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
     ...corePatchFiles(platform, repo)];
   const packagedSource = [];
