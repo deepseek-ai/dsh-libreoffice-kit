@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Force -Path $toolsDirectory | Out-Null
 # URLs and hashes are pinned by Core's .config/admin_java_and_deps.winget.
 $downloads = @(
     @{ Name = 'make.exe'; Uri = 'https://dev-www.libreoffice.org/bin/cygwin/make-4.2.1-msvc.exe'; Sha256 = '146d6f2b0ea57647b11b506a95048a7be73232e1feeeccbc1013651f992423d8' },
-    @{ Name = 'pkgconf.exe'; Uri = 'https://dev-www.libreoffice.org/extern/pkgconf-2.4.3.exe'; Sha256 = '791cd6dbc56f7268fbf9c4652d6634b0f5c59687ab4e504565e58245952edd41' }
+    @{ Name = 'pkgconf-2.4.3.exe'; Uri = 'https://dev-www.libreoffice.org/extern/pkgconf-2.4.3.exe'; Sha256 = '791cd6dbc56f7268fbf9c4652d6634b0f5c59687ab4e504565e58245952edd41' }
 )
 foreach ($download in $downloads) {
     $destination = Join-Path $toolsDirectory $download.Name
@@ -32,10 +32,13 @@ $python = (Get-Command python.exe -ErrorAction Stop).Source
 if ($LASTEXITCODE -ne 0) { throw 'Core requires a native Windows Python interpreter for build tools.' }
 $pythonForBuild = & (Join-Path $CygwinDirectory 'bin/cygpath.exe') -m -s $python
 if ($LASTEXITCODE -ne 0 -or -not $pythonForBuild) { throw 'Cannot resolve the native Windows Python path.' }
+$pkgConfig = & (Join-Path $CygwinDirectory 'bin/cygpath.exe') -m -s (Join-Path $toolsDirectory 'pkgconf-2.4.3.exe')
+if ($LASTEXITCODE -ne 0 -or -not $pkgConfig) { throw 'Cannot resolve the native Windows pkgconf path.' }
 
 "LIBREOFFICE_KIT_CYGWIN=$CygwinDirectory" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 "LIBREOFFICE_KIT_MAKE=$(Join-Path $toolsDirectory 'make.exe')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 "LIBREOFFICE_KIT_VISUAL_STUDIO=$year" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-"PKG_CONFIG=$(Join-Path $toolsDirectory 'pkgconf.exe')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+"PKG_CONFIG=$pkgConfig" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+"PKG_CONFIG_FOR_BUILD=$pkgConfig" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 "PYTHON_FOR_BUILD=$pythonForBuild" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 Write-Output "Windows Core tools ready: Visual Studio $year; Cygwin $CygwinDirectory; pinned native GNU Make and pkgconf."
