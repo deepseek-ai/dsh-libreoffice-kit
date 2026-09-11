@@ -53,7 +53,7 @@ function inventory(dir, prefix) {
   }
   assert(lstatSync(join(dir, prefix)).isDirectory(), `Not a regular payload directory: ${prefix}`);
   return entries.flatMap((entry) => {
-    const name = `${prefix}/${entry.name}`;
+    const name = prefix ? `${prefix}/${entry.name}` : entry.name;
     assert(entry.isFile() || entry.isDirectory(), `Symlink or special payload file: ${name}`);
     return entry.isDirectory() ? inventory(dir, name) : [name];
   });
@@ -102,16 +102,7 @@ export function verifyEngineMetadata(manifest, prebuild) {
   assert(Array.isArray(prebuild.licenses), 'Engine licenses must be an array');
   if (prebuild.graphics !== undefined) {
     assert(prebuild.platform === 'wasm' && prebuild.status === 'built' && prebuild.graphics && typeof prebuild.graphics === 'object' && !Array.isArray(prebuild.graphics), 'Optional graphics require a built WASM package');
-    for (const [platform, graphics] of Object.entries(prebuild.graphics)) {
-      assert(/^(darwin|linux|win32)-(arm64|x64)$/.test(platform) && graphics.status === 'built', 'Unknown/unbuilt graphics platform');
-      const prefix = `assets/graphics/${platform}/`;
-      assert(graphics.binding === `${prefix}nodejs_gl_binding.node` && Array.isArray(graphics.libraries) && graphics.libraries.length >= 2,
-        'Graphics payload lacks its binding/libraries');
-      for (const file of [graphics.binding, ...graphics.libraries]) assert(file.startsWith(prefix) && Object.hasOwn(prebuild.files, file), `Missing hashed graphics asset: ${file}`);
-      assert(Array.isArray(graphics.sourceFiles) && graphics.sourceFiles.length > 0 && graphics.sourceFiles.includes(graphics.receipt), 'Missing graphics build receipt');
-      for (const file of graphics.sourceFiles) assert(file.startsWith(`sources/graphics/${platform}/`) && prebuild.source?.files?.includes(file), `Missing graphics source: ${file}`);
-      for (const component of ['node-gles-webgl2', 'ANGLE']) assert(prebuild.licenses.some(license => license.component === component && license.path.startsWith(`licenses/graphics/${platform}/`)), `Missing graphics license: ${component}`);
-    }
+    verifyGraphicsMetadata(prebuild);
   }
   if (prebuild.status === 'unbuilt') {
     assert(Object.keys(prebuild.files).length === 0 && prebuild.source === null && prebuild.licenses.length === 0,
@@ -129,6 +120,42 @@ export function verifyEngineMetadata(manifest, prebuild) {
     assert(typeof license.component === 'string' && license.component.length > 0 && typeof license.spdx === 'string' && license.spdx.length > 0
       && typeof license.path === 'string' && license.path.startsWith('licenses/') && Object.hasOwn(prebuild.files, license.path), 'Missing hashed redistribution license');
   }
+}
+
+/** The same graphics records are used in build overlays and the final WASM package. */
+function verifyGraphicsMetadata(prebuild) {
+  for (const [platform, graphics] of Object.entries(prebuild.graphics)) {
+    assert(/^(darwin|linux|win32)-(arm64|x64)$/.test(platform) && graphics.status === 'built', 'Unknown/unbuilt graphics platform');
+    const prefix = `assets/graphics/${platform}/`;
+    assert(graphics.binding === `${prefix}nodejs_gl_binding.node` && Array.isArray(graphics.libraries) && graphics.libraries.length >= 2,
+      'Graphics payload lacks its binding/libraries');
+    for (const file of [graphics.binding, ...graphics.libraries]) assert(file.startsWith(prefix) && Object.hasOwn(prebuild.files, file), `Missing hashed graphics asset: ${file}`);
+    assert(Array.isArray(graphics.sourceFiles) && graphics.sourceFiles.length > 0 && graphics.sourceFiles.includes(graphics.receipt), 'Missing graphics build receipt');
+    for (const file of graphics.sourceFiles) assert(file.startsWith(`sources/graphics/${platform}/`) && prebuild.source?.files?.includes(file), `Missing graphics source: ${file}`);
+    for (const component of ['node-gles-webgl2', 'ANGLE']) assert(prebuild.licenses.some(license => license.component === component && license.path.startsWith(`licenses/graphics/${platform}/`)), `Missing graphics license: ${component}`);
+  }
+}
+
+/** Verify a single-platform graphics overlay without requiring any WASM assets. */
+export function verifyGraphicsOverlay(dir) {
+  const prebuild = readJson(regularFile(dir, 'prebuilds.json'));
+  assert(prebuild.schemaVersion === 1 && /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(prebuild.version), 'Unsupported graphics overlay schema/version');
+  assert(prebuild.graphics && typeof prebuild.graphics === 'object' && !Array.isArray(prebuild.graphics)
+    && Object.keys(prebuild.graphics).length === 1, 'Overlay requires exactly one graphics platform');
+  const platform = Object.keys(prebuild.graphics)[0];
+  assert(prebuild.files && typeof prebuild.files === 'object' && !Array.isArray(prebuild.files), 'Overlay requires a hash inventory');
+  for (const [file, hash] of Object.entries(prebuild.files)) {
+    safePath(file);
+    assert(['assets', 'sources', 'licenses'].some(prefix => file.startsWith(`${prefix}/graphics/${platform}/`)) && hashPattern.test(hash), `Invalid overlay file: ${file}`);
+  }
+  assert(Array.isArray(prebuild.source?.files) && new Set(prebuild.source.files).size === prebuild.source.files.length
+    && prebuild.source.files.every(file => file.startsWith('sources/') && Object.hasOwn(prebuild.files, file)), 'Missing hashed overlay source');
+  assert(Array.isArray(prebuild.licenses) && prebuild.licenses.every(license => typeof license.component === 'string' && license.component.length > 0
+    && typeof license.spdx === 'string' && license.spdx.length > 0 && typeof license.path === 'string'
+    && license.path.startsWith('licenses/') && Object.hasOwn(prebuild.files, license.path)), 'Missing hashed overlay license');
+  verifyGraphicsMetadata(prebuild);
+  verifyPayload(dir, prebuild, inventory(dir, '').filter(file => file !== 'prebuilds.json'));
+  return { platform, files: Object.keys(prebuild.files).length };
 }
 
 /** Header-only checks accept minimal test fixtures; they are not release validation. */
@@ -214,20 +241,25 @@ export function verifyNativeImage(file, platform, shared = false) {
   }
 }
 
-/** Full payload gate: checksums, source/license closure, resources, and real engine exports. */
-export function verifyEnginePackage(dir) {
-  const manifest = readJson(regularFile(dir, 'package.json'));
-  const prebuild = readJson(regularFile(dir, 'prebuilds.json'));
-  verifyEngineMetadata(manifest, prebuild);
-  assert(prebuild.status === 'built', `${prebuild.platform}: unbuilt target cannot be packed or released`);
+function verifyPayload(dir, prebuild, actual) {
   const declared = Object.keys(prebuild.files).sort();
-  const actual = payloadRoots.flatMap((prefix) => inventory(dir, prefix)).sort();
+  actual.sort();
   assert(JSON.stringify(declared) === JSON.stringify(actual), 'Payload inventory contains missing or undeclared files');
   for (const file of declared) assert(sha256(regularFile(dir, file)) === prebuild.files[file], `Artifact checksum mismatch: ${file}`);
   for (const license of prebuild.licenses) assert(readFileSync(regularFile(dir, license.path), 'utf8').trim().length > 0, `Empty license: ${license.path}`);
   for (const [platform, graphics] of Object.entries(prebuild.graphics ?? {})) {
     for (const file of [graphics.binding, ...graphics.libraries]) verifyNativeImage(regularFile(dir, file), platform.startsWith('linux-') ? `${platform}-glibc` : platform, true);
   }
+}
+
+/** Full payload gate: checksums, source/license closure, resources, and real engine exports. */
+export function verifyEnginePackage(dir) {
+  const manifest = readJson(regularFile(dir, 'package.json'));
+  const prebuild = readJson(regularFile(dir, 'prebuilds.json'));
+  verifyEngineMetadata(manifest, prebuild);
+  assert(prebuild.status === 'built', `${prebuild.platform}: unbuilt target cannot be packed or released`);
+  verifyPayload(dir, prebuild, payloadRoots.flatMap((prefix) => inventory(dir, prefix)));
+  const declared = Object.keys(prebuild.files);
   const engine = prebuild.engine;
   if (engine.kind === 'native') {
     verifyNativeImage(regularFile(dir, engine.executable), prebuild.platform);

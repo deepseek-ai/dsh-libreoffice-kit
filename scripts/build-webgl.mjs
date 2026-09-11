@@ -1,6 +1,6 @@
 /** Build optional WebGL assets explicitly; this script is never an install hook. */
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { hostTarget, root } from './platform-matrix.mjs';
@@ -8,6 +8,7 @@ import { assert } from './verify-artifacts.mjs';
 import { npmCli } from './pack-utils.mjs';
 import { stageWebGL } from './stage-webgl.mjs';
 
+assert(process.argv.length <= 3, 'Usage: node scripts/build-webgl.mjs [new-overlay-directory]');
 const platform = hostTarget();
 assert(platform && !platform.endsWith('-musl'), 'The pinned ANGLE package has no musl build');
 const work = join(root, '.build/webgl');
@@ -32,4 +33,4 @@ for (const name of readdirSync(join(root, 'engine/webgl/patches')).filter(file =
   }
 }
 run(process.execPath, [join(work, 'node_modules/node-gyp/bin/node-gyp.js'), 'rebuild'], source);
-console.log(JSON.stringify(stageWebGL({ source })));
+console.log(JSON.stringify(stageWebGL({ source, ...(process.argv[2] ? { destination: resolve(process.argv[2]) } : {}) })));

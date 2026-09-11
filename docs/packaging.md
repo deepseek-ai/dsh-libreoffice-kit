@@ -2,6 +2,8 @@
 
 The package family shares one version. The ESM entry `@deepseek-ai/libreoffice-kit` requires `@deepseek-ai/libreoffice-kit-wasm` and lists the native packages and `webgpu` adapter as optional dependencies. Installation performs no compilation or downloads outside the package manager. All packages require Node.js >=22.19. Internal development dependencies use `workspace:*`; packing replaces those values with the exact family version in an isolated staging directory.
 
+There is exactly one WASM package per version, without npm `os`, `cpu`, or `libc` restrictions. All hosts install identical loader, `.wasm`, and resource-data bytes. WebGPU and WebGL select optional native GPU bindings at runtime; neither requires a different LibreOffice WASM build. The complete release contains the shared WASM tarball once alongside the native platform tarballs. Verification on multiple hosts installs that same candidate without rebuilding it.
+
 ## Loader manifest, schema version 1
 
 Every engine package exports `./prebuilds.json` and `./package.json`. Resolve `@deepseek-ai/libreoffice-kit-<platform>/prebuilds.json` relative to the entry package. Its containing directory is the engine package root. All manifest file paths use `/` and are relative to that directory, never the current working directory or a source checkout. The entry exports ESM `./src/index.js` and declarations `./src/index.d.ts`.
