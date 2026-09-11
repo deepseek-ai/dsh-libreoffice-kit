@@ -27,7 +27,7 @@ Native manifest fields:
 }
 ```
 
-Windows uses `bin/libreoffice-kit.exe`. The worker loads this package's compiled LibreOfficeKit through the upstream C API. `program/` preserves the Core installation's relative resource and library paths. The manifest's `programDirectory` identifies the library directory inside it: typically `program/program` on Linux/Windows and `program/LibreOfficeDev.app/Contents/Frameworks` on macOS. No system `soffice` executable is invoked.
+Windows uses `bin/libreoffice-kit.exe`. The worker loads this package's compiled LibreOfficeKit through the upstream C API. `program/` preserves the Core installation's relative resource and library paths. The manifest's `programDirectory` identifies the library directory inside it: typically `program/program` on Linux/Windows and `program/LibreOfficeDev.app/Contents/Frameworks` on macOS. Staging omits macOS's `MacOS/urelibs` build-tool alias to avoid duplicating the entire `Frameworks` directory; the source receipt records the omission. No system `soffice` executable is invoked.
 
 The WASM manifest uses `platform: "wasm"` and this `engine` object:
 
@@ -42,7 +42,7 @@ The WASM manifest uses `platform: "wasm"` and this `engine` object:
 }
 ```
 
-Only the WASM `programDirectory` is a virtual filesystem path. Its other paths resolve relative to the installed package. The Emscripten loader exports a CommonJS factory consumed from the Node worker. CPU execution remains available when the optional GPU adapter has no usable device; the manifest makes no GPU performance claim.
+Only the WASM `programDirectory` is a virtual filesystem path. Its other paths resolve relative to the installed package. The Emscripten loader exports a CommonJS factory consumed from the Node worker. Optional `graphics` entries map an `os-arch` platform to its hashed binding, ANGLE libraries, source files and build receipt. Graphics files reside under `assets/graphics/<os>-<arch>/`; entries do not imply a usable hardware device. CPU execution remains available when optional GPU adapters are unavailable.
 
 Resolve either manifest to `{ backend, packageName, packageRoot, manifest, ...paths }`. Native `paths` are `{ executablePath, programDirectory }`; WASM `paths` are `{ loaderPath, wasmPath, dataPath, metadataPath, programDirectory }`. Every `*Path` and the native `programDirectory` is absolute. This is the single artifact descriptor consumed by the entry's native process or WASM worker implementation; packaging scripts do not own runtime selection.
 
@@ -56,8 +56,10 @@ Format/header unit fixtures are never release evidence. Release verification als
 
 ## Native worker
 
-The entry starts one worker per document and supplies absolute `--program-directory`, `--input-path`, `--output-path`, and `--profile-directory` paths, required `--max-output-bytes` and `--max-image-resolution` limits, and repeated `--font-file` arguments for selected fonts. The profile and output are private to that conversion. The worker returns one stdout JSON line, either `{ "ok": true, "missingFonts": [] }` or `{ "ok": false, "error": "..." }`; diagnostics use stderr. The entry computes missing fonts from the source document and selected font files. Cancellation terminates the worker and waits for its exit before deleting files.
+The entry starts one worker per document and supplies absolute `--program-directory`, `--input-path`, `--output-path`, and `--profile-directory` paths, required `--max-output-bytes` and `--max-image-resolution` limits, and repeated `--font-file` arguments for selected fonts. The profile and output are private to that conversion. The worker returns one stdout JSON line, either `{ "ok": true, "missingFonts": [] }` or `{ "ok": false, "code": "failed", "error": "..." }`; diagnostics use stderr. Known initialization, output-limit and PDF-validation failures retain `unavailable`, `output-too-large` and `invalid-output` codes. The entry computes missing fonts from the source document and selected font files. Cancellation terminates the worker and waits for its exit before deleting files.
 
-Font registration uses process-local CoreText on macOS, private GDI fonts on Windows, and LOKit `addfont` with an empty Fontconfig configuration on Linux. macOS/Windows can also use system fonts; the entry's font byte budgets cover explicitly selected files and do not cap all native font-library memory. POSIX `RLIMIT_FSIZE` caps each output file; Windows checks the completed PDF's size. PDF image downsampling uses the configured maximum image resolution.
+On macOS the owned Core patch initializes Cocoa and the Sfx application on the process main thread. Each conversion destroys its document and office handles and closes the result stream before exiting the process; remaining Core globals are released by process exit because Writer's static clipboard teardown requires the desktop application loop. Linux and Windows use LOKit's ordinary thread initialization and teardown.
+
+Font registration uses process-local CoreText on macOS, private GDI fonts on Windows, and LOKit `addfont` with an empty Fontconfig configuration on Linux. macOS/Windows can also use system fonts; the entry's font byte budgets cover explicitly selected files and do not cap all native font-library memory. The worker checks the completed PDF's size and deletes an oversized file before Node reads it. `maxOutputBytes` limits the returned PDF and its read buffer; native temporary disk files can grow until export completes. PDF image downsampling uses the configured maximum image resolution.
 
 The owned Core patch passes `UpdateDocMode::NO_UPDATE` to document loading. The worker uses LOKit's supported `Batch=true,EnableMacrosExecution=false` options and sets an empty matching host allowlist. These controls suppress document updates, macro execution, and LOK network host access; they do not establish an operating-system sandbox around native code.

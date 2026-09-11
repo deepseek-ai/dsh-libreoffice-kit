@@ -1,5 +1,6 @@
 /** Per-render native helper process ownership and bounded result transport. */
 import { spawn } from 'node:child_process';
+import { ConversionError, failureCode } from './errors.js';
 
 /** Pass platform loader/locale settings and a private home, excluding ambient credentials. */
 export function nativeEnvironment(profile, source = process.env) {
@@ -30,12 +31,15 @@ export async function runNative(engine, options, input, output, profile, fonts, 
   try {
     const code = await new Promise((resolve, reject) => {
       child.once('error', error => { failure ??= error; });
-      child.once('close', code => failure ? reject(failure) : resolve(code));
+      child.once('close', (code, signal) => {
+        if (signal === 'SIGXFSZ') failure ??= new ConversionError('output-too-large', 'LibreOffice exceeded its output file-size limit.');
+        if (failure) reject(failure); else resolve(code);
+      });
       if (signal.aborted) abort();
     });
     signal.throwIfAborted();
     let result;
     try { result = JSON.parse(stdout); } catch (cause) { throw new Error(`LibreOffice helper returned an invalid response (exit ${code}). ${stderr}`, { cause }); }
-    if (code !== 0 || result.ok !== true) throw new Error(`LibreOffice native conversion failed: ${result.error ?? stderr ?? `exit ${code}`}`);
+    if (code !== 0 || result.ok !== true) throw new ConversionError(failureCode(result), `LibreOffice native conversion failed: ${result.error ?? stderr ?? `exit ${code}`}`);
   } finally { signal.removeEventListener('abort', abort); }
 }

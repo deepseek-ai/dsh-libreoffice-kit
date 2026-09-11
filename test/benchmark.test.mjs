@@ -9,6 +9,26 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { runMeasuredProcess } from '../benchmarks/process.mjs';
 
+test('benchmark children omit ambient credentials and Node overrides while retaining locale settings', { timeout: 15_000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'libreoffice-benchmark-environment-'));
+  try {
+    const moduleUrl = new URL('../benchmarks/process.mjs', import.meta.url).href;
+    const childScript = `process.stdout.write(JSON.stringify({ secretAbsent:process.env.KIT_TEST_SECRET===undefined,
+      nodeOptionsAbsent:process.env.NODE_OPTIONS===undefined, unrelatedAbsent:process.env.KIT_TEST_UNRELATED===undefined,
+      localeSecretAbsent:process.env.LC_SECRET===undefined, locale:process.env.LANG, timezone:process.env.TZ }));`;
+    const controller = `import {runMeasuredProcess} from ${JSON.stringify(moduleUrl)};
+      const result=await runMeasuredProcess(process.execPath,['-e',${JSON.stringify(childScript)}],${JSON.stringify(root)},5000);
+      if(result.exitCode!==0||result.killed||result.failure)throw new Error(JSON.stringify(result));`;
+    await promisify(execFile)(process.execPath, ['--input-type=module', '-e', controller], {
+      env: { ...process.env, KIT_TEST_SECRET: 'synthetic-secret', KIT_TEST_UNRELATED: 'synthetic-override',
+        LC_SECRET: 'synthetic-secret', NODE_OPTIONS: '--no-warnings', LANG: 'C', TZ: 'UTC' }, timeout: 10_000,
+    });
+    assert.deepEqual(JSON.parse(await readFile(join(root, 'stdout.log'), 'utf8')), {
+      secretAbsent: true, nodeOptionsAbsent: true, unrelatedAbsent: true, localeSecretAbsent: true, locale: 'C', timezone: 'UTC',
+    });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('benchmark transports results independently of engine stdout and records unavailable GPU paths without timings', { timeout: 30_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-benchmark-transport-'));
   try {
@@ -31,6 +51,7 @@ return {backend:${JSON.stringify(backend)},missingFonts:[],imageScaling:{backend
       '--native-entry', join(root, 'native.mjs'), '--wasm-entry', join(root, 'wasm.mjs'), '--repetitions', '1'], root, 20_000);
     assert.equal(measured.exitCode, 0, await readFile(join(root, 'stderr.log'), 'utf8'));
     const samples = (await readFile(join(output, 'samples.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(JSON.parse(await readFile(join(output, 'environment.json'), 'utf8')).childEnvironment.sanitized, true);
     assert.equal(samples.length, 10);
     for (const sample of samples) {
       if (['wasm-webgl1', 'wasm-webgl2'].includes(sample.variant)) {

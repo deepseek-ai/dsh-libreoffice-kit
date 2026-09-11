@@ -84,6 +84,7 @@ if (values['child-job']) {
   await writeFile(join(output, 'environment.json'), `${JSON.stringify({ timestamp: new Date().toISOString(),
     node: process.version, platform: platform(), arch: process.arch, cpu: cpus()[0].model,
     logicalCpus: cpus().length, memoryGiB: totalmem() / 1024 ** 3, options, repetitions, variants,
+    childEnvironment: { sanitized: true, policy: 'Only platform executable paths, home/temp paths, locale/timezone, and display connection settings are inherited. NODE_OPTIONS, credentials, and loader/driver overrides are excluded; values are not recorded.' },
     memory: 'Job-lifetime aggregate RSS of the benchmark child and descendants sampled every 100 ms; includes import, validation and disposal, excludes controller. Reuse rows share the whole-job peak. Node maxRSS includes its workers but excludes native child. Sampling failures are retained.',
     clock: 'createConverter + render to closed PDF output; excludes module import, PDF validation, disposal, network, and frontend rendering. OS disk cache is not cleared.',
     reuse: 'The same converter retains font metadata. Every render starts a new native process or WASM Worker.',

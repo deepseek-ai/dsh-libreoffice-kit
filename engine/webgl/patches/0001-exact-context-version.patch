@@ -1,0 +1,17 @@
+--- a/binding/egl_context_wrapper.cc
++++ b/binding/egl_context_wrapper.cc
+@@ -266,10 +266,10 @@
+     context_attributes.push_back(EGL_TRUE);
+   }
+ 
+-  // TODO(kreeger): This is only needed to avoid validation.
+-  // This is needed for OES_TEXTURE_HALF_FLOAT textures uploading as FLOAT
+-  context_attributes.push_back(EGL_CONTEXT_OPENGL_NO_ERROR_KHR);
+-  context_attributes.push_back(EGL_TRUE);
++  if (egl_extensions->HasExtension("EGL_ANGLE_create_context_backwards_compatible")) {
++    context_attributes.push_back(EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE);
++    context_attributes.push_back(EGL_FALSE);
++  }
+ 
+   context_attributes.push_back(EGL_NONE);
+ 

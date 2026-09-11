@@ -24,19 +24,19 @@ export interface ConverterOptions {
   maxFontFileBytes?: number;
   /** Complete original font bytes imported per conversion. Default: 512 MiB. Native platform fonts remain OS-managed. */
   maxLoadedFontBytes?: number;
-  /** Optional Node WebGPU image scaling; unavailable adapters use the existing CPU filter. Default: auto. */
-  gpu?: 'auto' | 'off';
+  /** Auto tries WebGPU, WebGL2, WebGL1, then CPU; off uses CPU. Explicit choices try one provider and report CPU with a reason when unavailable. */
+  gpu?: 'auto' | 'off' | 'webgpu' | 'webgl2' | 'webgl1';
   /** Maximum CPU/GPU staging bytes for one image operation. Default: 256 MiB. */
   maxGpuBytes?: number;
   /** Deadline for one GPU operation; timeout resumes the CPU filter. Default: 5000 ms. */
   gpuTimeoutMs?: number;
-  /** Deadline for adapter initialization. Default: 10000 ms. */
+  /** Deadline for each GPU provider's initialization attempt. Default: 10000 ms. */
   gpuInitializationTimeoutMs?: number;
 }
 
 /** Conversion diagnostics; native engines do not use the WASM image callback counters. */
 export interface ImageScaling {
-  backend: 'native' | 'cpu' | 'webgpu';
+  backend: 'native' | 'cpu' | 'webgpu' | 'webgl2' | 'webgl1';
   reason?: string;
   adapter?: unknown;
   attempted: number;
@@ -70,3 +70,13 @@ export interface Converter {
  * @returns A serial converter that must be disposed after use.
  */
 export function createConverter(options?: ConverterOptions): Promise<Converter>;
+
+/** Stable categories for invalid source/output, configured limits, unavailable engines, and conversion failure. */
+export type ConversionErrorCode = 'input-too-large' | 'output-too-large' | 'invalid-document' | 'unsupported-format'
+  | 'invalid-output' | 'timeout' | 'unavailable' | 'failed';
+
+/** Converter failures preserve their code across worker and native helper transports. Filesystem errors and caller abort reasons remain unchanged. */
+export class ConversionError extends Error {
+  readonly code: ConversionErrorCode;
+  constructor(code: ConversionErrorCode, message: string, options?: ErrorOptions);
+}

@@ -39,6 +39,6 @@ export function resolveOptions(input = {}) {
   }
   if (!Array.isArray(result.fontFallbacks) || result.fontFallbacks.some(group => !Array.isArray(group) || group.length < 2 || group.some(value => typeof value !== 'string' || !value))) throw new TypeError('fontFallbacks must contain groups of at least two font names.');
   result.fontFallbacks = result.fontFallbacks.map(group => [...group]);
-  if (!['auto', 'off'].includes(result.gpu)) throw new TypeError('gpu must be auto or off.');
+  if (!['auto', 'off', 'webgpu', 'webgl2', 'webgl1'].includes(result.gpu)) throw new TypeError('gpu must be auto, off, webgpu, webgl2, or webgl1.');
   return result;
 }

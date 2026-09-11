@@ -6,6 +6,7 @@ import { inspectDocument } from './ooxml.js';
 import { createFontLoader, preloadFonts } from './font-loader.js';
 import { indexSystemFonts } from './fonts.js';
 import { convertWithWasm } from './wasm.js';
+import { ConversionError, failureCode } from './errors.js';
 
 try {
   const { inputPath, extension, options, engine, scratch } = workerData;
@@ -14,6 +15,7 @@ try {
   const faces = workerData.fontFaces ?? indexSystemFonts({ directories: options.fontDirectories, maxFiles: options.maxFontFiles, maxFileBytes: options.maxFontFileBytes });
   if (!workerData.fontFaces) parentPort.postMessage({ kind: 'fonts', faces });
   if (engine.backend === 'wasm') {
+    if (faces.length === 0) throw new ConversionError('unavailable', 'No usable fonts were found. Install fonts or configure fontDirectories before converting documents.');
     const result = await convertWithWasm({ engine, bytes, extension, options, document, faces });
     parentPort.postMessage({ ok: true, ...result }, [result.pdf.buffer]);
   } else {
@@ -28,5 +30,5 @@ try {
     parentPort.postMessage({ ok: true, fonts: fonts.files, missingFonts: fonts.missingFonts });
   }
 } catch (error) {
-  parentPort.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error), stack: error?.stack });
+  parentPort.postMessage({ ok: false, code: failureCode(error), error: error instanceof Error ? error.message : String(error), stack: error?.stack });
 }

@@ -1,5 +1,5 @@
 /** Preserve Core's installed relative layout and record every redistributed byte. */
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { source } from '../engine/native/configure.mjs';
@@ -20,12 +20,19 @@ export function stageNative({ platform, core, build, repo = root }) {
   const libraryDirectory = join(setting('INSTROOT'), setting('LIBO_LIB_FOLDER'));
   const relativeLibrary = relative(instdir, libraryDirectory).replaceAll('\\', '/');
   assert(relativeLibrary && !relativeLibrary.startsWith('..'), 'Core library directory escapes instdir');
+  const omitted = [];
+  if (targets[platform].os === 'darwin') {
+    const alias = join(setting('INSTROOT'), 'MacOS/urelibs');
+    assert(lstatSync(alias).isSymbolicLink() && realpathSync(alias) === realpathSync(libraryDirectory), 'Unexpected Core build-tool library alias');
+    omitted.push(relative(instdir, alias).replaceAll('\\', '/'));
+  }
   const dir = join(repo, 'packages', platform);
   const manifest = readJson(join(dir, 'package.json'));
   const prebuild = readJson(join(dir, 'prebuilds.json'));
   for (const part of ['bin', 'program', 'sources', 'licenses']) rmSync(join(dir, part), { recursive: true, force: true });
   for (const part of ['bin', 'sources', 'licenses']) mkdirSync(join(dir, part), { recursive: true });
   function copyInstalled(from, to, ancestors = new Set()) {
+    if (omitted.includes(relative(instdir, from).replaceAll('\\', '/'))) return;
     const resolved = realpathSync(from);
     assert(!ancestors.has(resolved), `Core installation contains a symlink cycle: ${from}`);
     assert([build, core].some((base) => { const path = relative(base, resolved); return path === '' || (!path.startsWith('..') && !isAbsolute(path)); }), `Core installation links outside its source/build: ${from}`);
@@ -42,8 +49,8 @@ export function stageNative({ platform, core, build, repo = root }) {
   copyInstalled(instdir, join(dir, 'program'));
   copyFileSync(join(build, `libreoffice-kit${targets[platform].os === 'win32' ? '.exe' : ''}`), join(dir, prebuild.engine.executable));
   if (targets[platform].os !== 'win32') chmodSync(join(dir, prebuild.engine.executable), 0o755);
-  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/build-alpine.sh',
-    'scripts/build-native.mjs', 'scripts/stage-native.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
+  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs',
+    'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
     ...readdirSync(join(repo, 'engine/native/patches')).filter((name) => name.endsWith('.patch')).map((name) => `engine/native/patches/${name}`)];
   const packagedSource = [];
   for (const file of sourceFiles) {
@@ -57,7 +64,7 @@ export function stageNative({ platform, core, build, repo = root }) {
   assert(changes.status === 0, 'Cannot record corresponding Core source changes');
   writeFileSync(join(dir, 'sources/core-changes.patch'), changes.stdout);
   packagedSource.push('sources/core-changes.patch');
-  writeFileSync(join(dir, 'sources/core.json'), `${JSON.stringify({ ...source, version, configure: readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n') }, null, 2)}\n`);
+  writeFileSync(join(dir, 'sources/core.json'), `${JSON.stringify({ ...source, version, omittedBuildAliases: omitted, configure: readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n') }, null, 2)}\n`);
   packagedSource.push('sources/core.json');
   copyFileSync(join(core, 'COPYING.MPL'), join(dir, 'licenses/LibreOffice-MPL-2.0.txt'));
   copyFileSync(join(repo, 'NOTICE'), join(dir, 'licenses/DeepSeek-Harness-MIT.txt'));

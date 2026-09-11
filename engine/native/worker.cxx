@@ -23,7 +23,6 @@
 #ifdef _WIN32
 #include <io.h>
 #else
-#include <sys/resource.h>
 #include <unistd.h>
 #endif
 
@@ -154,13 +153,6 @@ void convert(const Request& request)
 #endif
     environment("SAL_DISABLE_OPENCL", "1");
     environment("LOK_HOST_ALLOWLIST", "^$");
-#ifndef _WIN32
-    // Limit individual writes, including the PDF, even when an export grows unexpectedly.
-    struct rlimit limit;
-    if (getrlimit(RLIMIT_FSIZE, &limit) != 0) throw std::runtime_error("Cannot inspect worker file-size limit");
-    limit.rlim_cur = std::min<rlim_t>(limit.rlim_max, request.maxOutput);
-    if (setrlimit(RLIMIT_FSIZE, &limit) != 0) throw std::runtime_error("Cannot enforce worker file-size limit");
-#endif
 #if !defined(__APPLE__) && !defined(_WIN32)
     const auto fontConfig = fs::u8path(request.profile) / "fonts.conf";
     std::ofstream config;
@@ -191,6 +183,7 @@ void convert(const Request& request)
     const auto output = fileUrl(request.output);
     if (!document->pClass->saveAs(document.get(), output.c_str(), "pdf", options.c_str()))
         throw std::runtime_error(officeError(office.get()));
+    // Reject before Node reads the PDF; this limit does not cap temporary disk use.
     if (fs::file_size(fs::u8path(request.output)) > request.maxOutput) {
         fs::remove(fs::u8path(request.output));
         throw ConversionError("output-too-large", "PDF exceeds maxOutputBytes");

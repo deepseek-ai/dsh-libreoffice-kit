@@ -7,21 +7,25 @@ import { Worker } from 'node:worker_threads';
 import { runNative } from './native.js';
 import { resolveOptions } from './options.js';
 import { resolveEngine } from './engine.js';
+import { ConversionError, failureCode } from './errors.js';
+export { ConversionError } from './errors.js';
 
-async function readBounded(path, limit, signal) {
+async function readBounded(path, limit, signal, role) {
   const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
   try {
     const before = await file.stat();
-    if (!before.isFile() || before.size < 1 || before.size > limit) throw new Error('Document must be a nonempty regular file within its byte limit.');
+    const invalid = role === 'input' ? 'invalid-document' : 'invalid-output';
+    if (!before.isFile() || before.size < 1) throw new ConversionError(invalid, 'Document must be a nonempty regular file.');
+    if (before.size > limit) throw new ConversionError(`${role}-too-large`, `Document exceeds its ${role} byte limit.`);
     const bytes = Buffer.alloc(before.size);
     for (let offset = 0; offset < bytes.length;) {
       signal.throwIfAborted();
       const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset);
-      if (!bytesRead) throw new Error('Document was truncated while reading.');
+      if (!bytesRead) throw new ConversionError(invalid, 'Document was truncated while reading.');
       offset += bytesRead;
     }
     const after = await file.stat();
-    if (['size', 'mtimeMs', 'ctimeMs'].some(key => before[key] !== after[key])) throw new Error('Document changed while reading.');
+    if (['size', 'mtimeMs', 'ctimeMs'].some(key => before[key] !== after[key])) throw new ConversionError(invalid, 'Document changed while reading.');
     signal.throwIfAborted();
     return bytes;
   } finally { await file.close(); }
@@ -29,18 +33,21 @@ async function readBounded(path, limit, signal) {
 
 async function runWorker(data, signal, onFonts) {
   signal.throwIfAborted();
-  const worker = new Worker(new URL('./worker.js', import.meta.url), { workerData: data, name: 'libreoffice-conversion' });
+  const worker = new Worker(new URL('./worker.js', import.meta.url), { workerData: data, name: 'libreoffice-conversion', execArgv: [], stdout: true, stderr: true });
+  // Emscripten pthread diagnostics must not enter the embedding application's stdout protocol.
+  worker.stdout.resume();
+  worker.stderr.resume();
   let abort;
   try {
     return await new Promise((resolve, reject) => {
       abort = () => reject(signal.reason);
       signal.addEventListener('abort', abort, { once: true });
       worker.once('error', reject);
-      worker.once('exit', code => reject(new Error(`LibreOffice worker exited before returning a result (${code}).`)));
+      worker.once('exit', code => reject(new ConversionError('failed', `LibreOffice worker exited before returning a result (${code}).`)));
       worker.on('message', message => {
         if (message.kind === 'fonts') onFonts(message.faces);
         else if (message.ok) resolve(message);
-        else reject(new Error(message.error));
+        else reject(new ConversionError(failureCode(message), message.error));
       });
       if (signal.aborted) abort();
     });
@@ -58,7 +65,8 @@ async function runWorker(data, signal, onFonts) {
  */
 export async function createConverter(options) {
   const resolvedOptions = resolveOptions(options);
-  const engine = await resolveEngine();
+  let engine;
+  try { engine = await resolveEngine(); } catch (cause) { throw new ConversionError('unavailable', cause.message, { cause }); }
   const lifetime = new AbortController();
   const active = new Set();
   const waiting = new Set();
@@ -85,11 +93,11 @@ export async function createConverter(options) {
       || !isAbsolute(request.inputPath) || !isAbsolute(request.outputPath) || request.inputPath.includes('\0') || request.outputPath.includes('\0')) throw new TypeError('inputPath and outputPath must be absolute filesystem paths.');
     if (resolve(request.inputPath) === resolve(request.outputPath)) throw new Error('Input and output paths must differ.');
     const extension = extname(request.inputPath).slice(1).toLowerCase();
-    if (!['docx', 'xlsx', 'pptx'].includes(extension)) throw new Error('Input extension must be docx, xlsx, or pptx.');
+    if (!['docx', 'xlsx', 'pptx'].includes(extension)) throw new ConversionError('unsupported-format', 'Input extension must be docx, xlsx, or pptx.');
     await acquire(signal);
     const deadline = new AbortController();
     const stopped = AbortSignal.any([signal, deadline.signal]);
-    const timer = setTimeout(() => deadline.abort(new Error('LibreOffice conversion timed out.')), resolvedOptions.timeoutMs);
+    const timer = setTimeout(() => deadline.abort(new ConversionError('timeout', 'LibreOffice conversion timed out.')), resolvedOptions.timeoutMs);
     let scratch;
     let output;
     let succeeded = false;
@@ -97,7 +105,7 @@ export async function createConverter(options) {
     try {
       stopped.throwIfAborted();
       output = await open(request.outputPath, 'wx', 0o600);
-      const bytes = await readBounded(request.inputPath, resolvedOptions.maxInputBytes, stopped);
+      const bytes = await readBounded(request.inputPath, resolvedOptions.maxInputBytes, stopped, 'input');
       scratch = await mkdtemp(join(tmpdir(), 'libreoffice-kit-'));
       const inputPath = join(scratch, `document.${extension}`);
       const input = await open(inputPath, 'wx', 0o600);
@@ -109,9 +117,10 @@ export async function createConverter(options) {
         await mkdir(profile, { mode: 0o700 });
         const path = join(scratch, 'document.pdf');
         await runNative(engine, resolvedOptions, inputPath, path, profile, result.fonts, stopped);
-        pdf = await readBounded(path, resolvedOptions.maxOutputBytes, stopped);
+        pdf = await readBounded(path, resolvedOptions.maxOutputBytes, stopped, 'output');
       } else pdf = result.pdf;
-      if (!pdf || pdf.length > resolvedOptions.maxOutputBytes || Buffer.from(pdf.subarray(0, 5)).toString() !== '%PDF-') throw new Error('LibreOffice did not produce a bounded PDF.');
+      if (pdf?.length > resolvedOptions.maxOutputBytes) throw new ConversionError('output-too-large', 'LibreOffice PDF exceeds its output byte limit.');
+      if (!pdf || Buffer.from(pdf.subarray(0, 5)).toString() !== '%PDF-') throw new ConversionError('invalid-output', 'LibreOffice did not produce a PDF.');
       stopped.throwIfAborted();
       await output.writeFile(pdf);
       stopped.throwIfAborted();

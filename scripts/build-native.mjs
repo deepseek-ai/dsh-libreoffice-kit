@@ -1,8 +1,9 @@
 /** Build pinned Core and the owned LOK worker; installation never invokes this script. */
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { configureFlags, source } from '../engine/native/configure.mjs';
+import { buildHelper } from '../engine/native/build-helper.mjs';
 import { hostTarget, root, targets } from './platform-matrix.mjs';
 
 const args = process.argv.slice(2);
@@ -39,17 +40,25 @@ function shellPath(file) {
   return result.stdout.trim();
 }
 const flags = configureFlags(platform, shellPath(tarballs), parallelism);
+if (process.platform === 'win32') {
+  const visualStudio = process.env.LIBREOFFICE_KIT_VISUAL_STUDIO ?? '2022';
+  if (!['2022', '2026'].includes(visualStudio)) throw new Error('LIBREOFFICE_KIT_VISUAL_STUDIO must be 2022 or 2026');
+  flags.push(`--with-visual-studio=${visualStudio}`, '--without-lxml');
+}
 if (!args.includes('--resume')) writeFileSync(join(build, 'autogen.input'), `${flags.join('\n')}\n`);
-const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? join(cygwin, 'bin/make.exe') : 'make';
+const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
+if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
 const buildEnvironment = { ...process.env, MAKE: shellPath(make) };
+if (process.platform === 'win32') {
+  const compiler = spawnSync('where.exe', ['cl.exe'], { encoding: 'utf8' });
+  if (compiler.status !== 0) throw new Error('Initialize the MSVC developer command environment before building');
+  const pathKey = Object.keys(buildEnvironment).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+  // Keep MSVC's linker ahead of Cygwin's unrelated link.exe utility.
+  buildEnvironment[pathKey] = [dirname(make), dirname(compiler.stdout.trim().split(/\r?\n/)[0]), join(cygwin, 'bin'), buildEnvironment[pathKey]].join(';');
+}
 if (!args.includes('--resume')) run(shell, [shellPath(join(core, 'autogen.sh'))], build, buildEnvironment);
 if (args.includes('--configure-only')) process.exit(0);
 run(make, ['build'], build, buildEnvironment);
 const executable = join(build, `libreoffice-kit${process.platform === 'win32' ? '.exe' : ''}`);
-if (process.platform === 'win32') {
-  run('cl.exe', ['/nologo', '/std:c++17', '/EHsc', `/I${join(core, 'include')}`, join(root, 'engine/native/worker.cxx'), `/Fe:${executable}`, 'gdi32.lib'], build);
-} else {
-  run('c++', ['-std=c++17', '-O2', `-I${join(core, 'include')}`, join(root, 'engine/native/worker.cxx'), '-o', executable,
-    ...(process.platform === 'darwin' ? ['-mmacosx-version-min=11.0', '-framework', 'CoreFoundation', '-framework', 'CoreText'] : ['-ldl'])], build);
-}
+buildHelper({ platform, core, executable, cwd: build, env: buildEnvironment });
 run(process.execPath, [join(root, 'scripts/stage-native.mjs'), '--platform', platform, '--source', core, '--build', build], root);

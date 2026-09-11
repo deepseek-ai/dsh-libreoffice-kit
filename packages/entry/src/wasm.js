@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { createImageScaler } from './gpu/index.mjs';
 import { createFontLoader, memoryFontConfig, preloadFonts } from './font-loader.js';
+import { ConversionError } from './errors.js';
 
 const require = createRequire(import.meta.url);
 function engineError(module, office) {
@@ -66,11 +67,13 @@ export async function convertWithWasm({ engine, bytes, extension, options, docum
       ExportBookmarks: { type: 'boolean', value: 'true' }, ReduceImageResolution: { type: 'boolean', value: 'true' },
       MaxImageResolution: { type: 'long', value: String(options.maxImageResolution) },
     })]);
-    if (!succeeded || !module.FS.analyzePath(output).exists) throw engineError(module, office);
+    if (!succeeded) throw engineError(module, office);
+    if (!module.FS.analyzePath(output).exists) throw new ConversionError('invalid-output', 'LibreOffice did not create its PDF output.');
     const status = module.FS.stat(output);
-    if (!module.FS.isFile(status.mode) || status.size > options.maxOutputBytes) throw new Error('Generated PDF is not a bounded regular file.');
+    if (!module.FS.isFile(status.mode)) throw new ConversionError('invalid-output', 'Generated PDF is not a regular file.');
+    if (status.size > options.maxOutputBytes) throw new ConversionError('output-too-large', 'Generated PDF exceeds its output byte limit.');
     const pdf = module.FS.readFile(output);
-    if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') throw new Error('LibreOffice did not produce a PDF.');
+    if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') throw new ConversionError('invalid-output', 'LibreOffice did not produce a PDF.');
     return { pdf, missingFonts: fontLoader.missingFonts,
       imageScaling: { backend: scaler.backend, reason: scaler.reason, adapter: scaler.adapter, ...scaler.stats } };
   } catch (error) {

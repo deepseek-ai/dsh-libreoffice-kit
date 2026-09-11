@@ -11,7 +11,9 @@ const commandOptions = { timeout: 2_000, killSignal: 'SIGKILL', maxBuffer: 16 * 
 /** Run an owned child group; deadlines include termination and sampling cleanup. */
 export async function runMeasuredProcess(command, args, directory, timeoutMs) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 0x7fffffff) throw new RangeError('Benchmark deadline exceeds the Node timer range.');
-  const child = spawn(command, args, { detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+  const allowed = /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|HOME|USERPROFILE|HOMEDRIVE|HOMEPATH|TMPDIR|TMP|TEMP|LANG|LC_ALL|LC_CTYPE|LC_NUMERIC|LC_TIME|LC_COLLATE|LC_MONETARY|LC_MESSAGES|TZ|DISPLAY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR)$/i;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => allowed.test(key)));
+  const child = spawn(command, args, { detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env });
   const logged = Promise.all([
     pipeline(child.stdout, createWriteStream(join(directory, 'stdout.log'), { flags: 'wx' })),
     pipeline(child.stderr, createWriteStream(join(directory, 'stderr.log'), { flags: 'wx' })),
@@ -29,7 +31,7 @@ export async function runMeasuredProcess(command, args, directory, timeoutMs) {
     if (samplePending || process.platform === 'win32' || !child.pid) return;
     samplePending = (async () => {
       try {
-        const { stdout } = await execute('ps', ['-axo', 'pid=,ppid=,rss='], { ...commandOptions, signal: sampleAbort.signal });
+        const { stdout } = await execute('ps', ['-axo', 'pid=,ppid=,rss='], { ...commandOptions, env, signal: sampleAbort.signal });
         const processes = stdout.trim().split('\n').map(line => line.trim().split(/\s+/).map(Number));
         const descendants = new Set([child.pid]);
         for (let previous = -1; previous !== descendants.size;) {
@@ -59,7 +61,7 @@ export async function runMeasuredProcess(command, args, directory, timeoutMs) {
   const terminate = () => termination ??= (async () => {
     if (!child.pid) return;
     if (process.platform === 'win32') {
-      await execute('taskkill', ['/PID', String(child.pid), '/T', '/F'], { ...commandOptions, timeout: 5_000 });
+      await execute('taskkill', ['/PID', String(child.pid), '/T', '/F'], { ...commandOptions, env, timeout: 5_000 });
     } else {
       try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
     }

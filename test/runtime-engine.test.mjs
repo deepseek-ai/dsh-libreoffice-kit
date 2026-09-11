@@ -8,10 +8,11 @@ import { documentFixture } from './runtime-fixture.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 test('real engine converts disk OOXML, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {
-  const { createConverter } = await import(pathToFileURL(enabled).href);
+  const { createConverter, ConversionError } = await import(pathToFileURL(enabled).href);
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-real-runtime-test-'));
   const converter = await createConverter({ gpu: 'off', timeoutMs: 90_000 });
   try {
+    if (process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND) assert.equal(converter.backend, process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND);
     const inputPath = join(root, 'document.docx');
     const outputPath = join(root, 'document.pdf');
     await writeFile(inputPath, documentFixture('Node worker conversion 中文', 'Unavailable Test Font'));
@@ -24,8 +25,17 @@ test('real engine converts disk OOXML, rejects unsafe inputs, and drains cancell
     const wrong = join(root, 'invalid.docx');
     const invalidOutput = join(root, 'invalid.pdf');
     await writeFile(wrong, 'not a zip');
-    await assert.rejects(converter.render({ inputPath: wrong, outputPath: invalidOutput }), /bounded OOXML/);
+    await assert.rejects(converter.render({ inputPath: wrong, outputPath: invalidOutput }), error => error instanceof ConversionError && error.code === 'invalid-document');
     await assert.rejects(stat(invalidOutput), error => error.code === 'ENOENT');
+    await assert.rejects(converter.render({ inputPath: join(root, 'wrong.txt'), outputPath: invalidOutput }), error => error.code === 'unsupported-format');
+    for (const [options, code] of [[{ maxInputBytes: 1 }, 'input-too-large'], [{ maxOutputBytes: 1 }, 'output-too-large'], [{ timeoutMs: 1 }, 'timeout'],
+      ...(converter.backend === 'wasm' ? [[{ fontDirectories: [] }, 'unavailable']] : [])]) {
+      const bounded = await createConverter({ gpu: 'off', timeoutMs: 90_000, ...options });
+      const path = join(root, `${code}.pdf`);
+      try { await assert.rejects(bounded.render({ inputPath, outputPath: path }), error => error instanceof ConversionError && error.code === code, `Expected ${code} for ${JSON.stringify(options)}`); }
+      finally { await bounded.dispose(); }
+      await assert.rejects(stat(path), error => error.code === 'ENOENT');
+    }
     const cancelledOutput = join(root, 'cancelled.pdf');
     const controller = new AbortController();
     const cancel = converter.render({ inputPath, outputPath: cancelledOutput }, controller.signal);

@@ -21,7 +21,10 @@ export function platformTarget(platform = process.platform, arch = process.arch,
   if (!['arm64', 'x64'].includes(arch)) return undefined;
   if (platform === 'darwin' || platform === 'win32') return `${platform}-${arch}`;
   if (platform !== 'linux') return undefined;
-  return `linux-${arch}-${report().header.glibcVersionRuntime ? 'glibc' : 'musl'}`;
+  const details = report();
+  const libc = details.header?.glibcVersionRuntime ? 'glibc'
+    : details.sharedObjects?.some(file => /(?:^|\/)ld-musl-[^/]+\.so\.1$|(?:^|\/)libc\.musl-[^/]+\.so\.1$/.test(file)) ? 'musl' : undefined;
+  return libc ? `linux-${arch}-${libc}` : undefined;
 }
 
 function asset(root, value) {

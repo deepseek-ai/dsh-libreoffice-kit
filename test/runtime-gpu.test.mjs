@@ -11,12 +11,12 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 const entry = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 const input = process.env.LIBREOFFICE_GPU_DOCUMENT;
-test('real Node WASM PDF conversion uses GPU scaling and preserves Chinese/English text', { skip: !entry || !input, timeout: 180_000 }, async () => {
+for (const gpu of ['webgpu', 'webgl2', 'webgl1']) test(`real Node WASM ${gpu} conversion preserves Chinese/English text`, { skip: !entry || !input, timeout: 180_000 }, async () => {
   const saved = process.env.LIBREOFFICE_VALIDATION_DIR;
   if (saved) await mkdir(resolve(saved), { recursive: true });
-  const root = await mkdtemp(join(saved ? resolve(saved) : tmpdir(), 'gpu-'));
+  const root = await mkdtemp(join(saved ? resolve(saved) : tmpdir(), `${gpu}-`));
   const { createConverter } = await import(pathToFileURL(entry).href);
-  const converter = await createConverter({ gpu: 'auto', timeoutMs: 120_000, maxImageResolution: 144 });
+  const converter = await createConverter({ gpu, timeoutMs: 120_000, maxImageResolution: 192 });
   try {
     const outputPath = join(root, 'report.pdf');
     const result = await converter.render({ inputPath: resolve(input), outputPath });
@@ -29,7 +29,7 @@ test('real Node WASM PDF conversion uses GPU scaling and preserves Chinese/Engli
       chineseTextPresent: text.replaceAll(/\s/g, '').includes('中文排版测试：文档预览、表格与图片。'), fontReport: fonts, pdfInfo: info };
     await Promise.all([writeFile(join(root, 'result.json'), `${JSON.stringify(evidence, null, 2)}\n`), writeFile(join(root, 'text.txt'), text), writeFile(join(root, 'fonts.txt'), fonts), writeFile(join(root, 'pdfinfo.txt'), info)]);
     assert.equal(result.backend, 'wasm');
-    assert.equal(result.imageScaling.backend, 'webgpu');
+    assert.equal(result.imageScaling.backend, gpu);
     assert.ok(result.imageScaling.attempted > 0);
     assert.ok(result.imageScaling.accelerated > 0);
     assert.equal(result.imageScaling.failed, 0);
