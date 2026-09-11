@@ -47,7 +47,7 @@ if (process.platform === 'win32') {
   flags.push(`--with-visual-studio=${visualStudio}`, '--without-lxml');
   if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio}`);
 }
-if (platform.endsWith('-musl')) flags.push('--disable-xmlhelp', '--disable-poppler');
+if (platform.endsWith('-musl')) flags.push('--disable-xmlhelp', '--disable-poppler', '--disable-gpgmepp');
 if (!args.includes('--resume')) writeFileSync(join(build, 'autogen.input'), `${flags.join('\n')}\n`);
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
