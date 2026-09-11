@@ -1,8 +1,9 @@
 /** Build pinned Core and the owned LOK worker; installation never invokes this script. */
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { configureFlags, source } from '../engine/native/configure.mjs';
+import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { buildHelper } from '../engine/native/build-helper.mjs';
 import { windowsCoreEnvironment } from '../engine/native/core-environment.mjs';
 import { hostTarget, root, targets } from './platform-matrix.mjs';
@@ -24,11 +25,11 @@ function run(command, argv, cwd, env = process.env) {
 }
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: core, encoding: 'utf8' });
 if (revision.status !== 0 || revision.stdout.trim() !== source.revision) throw new Error(`Core must be checked out at ${source.revision}`);
-for (const name of readdirSync(join(root, 'engine/native/patches')).filter((name) => name.endsWith('.patch')).sort()) {
-  const patch = join(root, 'engine/native/patches', name);
+for (const file of corePatchFiles(platform)) {
+  const patch = join(root, file);
   const check = (reverse) => spawnSync('git', ['apply', '--check', ...(reverse ? ['--reverse'] : []), patch], { cwd: core, stdio: 'ignore' }).status === 0;
   if (check(false)) run('git', ['apply', patch], core);
-  else if (!check(true)) throw new Error(`Core source differs from ${name}`);
+  else if (!check(true)) throw new Error(`Core source differs from ${file}`);
 }
 mkdirSync(build, { recursive: true });
 mkdirSync(tarballs, { recursive: true });

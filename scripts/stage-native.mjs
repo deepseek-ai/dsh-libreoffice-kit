@@ -2,6 +2,7 @@
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { source } from '../engine/native/configure.mjs';
 import { isMain, readJson, root, targets } from './platform-matrix.mjs';
 import { assert, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
@@ -49,9 +50,9 @@ export function stageNative({ platform, core, build, repo = root }) {
   copyInstalled(instdir, join(dir, 'program'));
   copyFileSync(join(build, `libreoffice-kit${targets[platform].os === 'win32' ? '.exe' : ''}`), join(dir, prebuild.engine.executable));
   if (targets[platform].os !== 'win32') chmodSync(join(dir, prebuild.engine.executable), 0o755);
-  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs',
+  const sourceFiles = ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/build-alpine.sh', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs',
     'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
-    ...readdirSync(join(repo, 'engine/native/patches')).filter((name) => name.endsWith('.patch')).map((name) => `engine/native/patches/${name}`)];
+    ...corePatchFiles(platform, repo)];
   const packagedSource = [];
   for (const file of sourceFiles) {
     const destination = `sources/${file}`;
