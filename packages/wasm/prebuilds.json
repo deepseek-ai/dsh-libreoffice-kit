@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "platform": "wasm",
+  "status": "built",
+  "engine": {
+    "kind": "wasm",
+    "loader": "assets/soffice.cjs",
+    "wasm": "assets/soffice.wasm",
+    "data": "assets/soffice.data",
+    "metadata": "assets/soffice.data.js.metadata",
+    "programDirectory": "/instdir/program"
+  },
+  "files": {
+    "assets/manifest.json": "077d6ddd20ce58df62ed49b9b30ad400d9e3b631eb57cfcc296f674e4c3bba90",
+    "assets/soffice.cjs": "dd000936e9f43decf2ba95d859a9b06f8e8cf4a0a1d7da83d6a8eef90035b46c",
+    "assets/soffice.data": "f825bbbbd4cd52a1db8b6f2bb158a5ce47bfd5c0507e019fa57e02270c21d588",
+    "assets/soffice.data.js.metadata": "6d8573e16330cb733dbccf9ad9574bb13d6c044469de174fd1dc3deefdd0d811",
+    "assets/soffice.wasm": "a7ca87ca95b10c5668954d60771571cb1d75fbd9630999ba3ae3eaa9db40eaad",
+    "sources/autogen.input": "8298f649164a74ecdaa368a04ff6b358443f0b889ce28bcf03171b872f12f50a",
+    "sources/build-autogen.input": "0629ce69100bdb874b33c17215d3dc547fa0c551f607b83dd0ceea22af39db2b",
+    "sources/build.mjs": "2425fc19dc4028702652c13eed1133a964737d173770bc5d2761a007568b4289",
+    "sources/lok.cxx": "11a55e450a52f3da23938db21a2e78c895cd195fe921122265334f6f04ceb00b",
+    "sources/patches/0001-macos-build-tools.patch": "eeb6258c0dbc386160d904be7001a0bf7d279c9e5d2f91964c4578e26f649374",
+    "sources/patches/0002-system-font-demand.patch": "ba7ad63917c021c970393ca70251a3414a0024a2d3ed8c139998dcc93e80a718",
+    "sources/patches/0003-node-runtime.patch": "ae41bc43e9a693e546ababdd9863644eea28aafe9de83e7ba0e32455ffe15831",
+    "sources/patches/0004-system-fonts-only.patch": "3d6e23df5a61c26a18dee7909109c25115b52c0ac0ea04719245adffe3083cde",
+    "sources/patches/0005-cross-build-rules.patch": "a9ad0814ec48b15cde6db008e45fded10cef87a518abf566ff6748c7a3c6757e",
+    "sources/patches/0006-wasm-external-platforms.patch": "8cbef6be577728a68d8b62dcdc973b51d9fcc5342089cf02d5e0aab8586d38af",
+    "sources/patches/0007-host-image-scale.patch": "649e7cf2e5c327c04e7cd9dfab5720182a796aa8f7a8364453a89fff63b9e398",
+    "sources/patches/0008-disable-link-updates.patch": "cf91a360d4b8ec068a5ab928d823b2adf24ec23e63e68f5ce6a9f5957d49fba9",
+    "sources/source-changes.patch": "53b19b54c4fc05a963b0129426610f5e6e06bd7ea1192249deda9d18a0d61334",
+    "sources/source.json": "097cf736dd0fa69a5071bbdc5255f2c818a7511536b17b3cb2a1a92f48e6f2f0",
+    "sources/stage.mjs": "33d7565d1ea979019ca0bdb14c3e1fc6873bd3f090422b2c41921d079e87a663",
+    "licenses/DeepSeek-Harness-MIT.txt": "47ccbad65c1fc8acfac684e718e7d5f7993809cbfcce4541e6a1c7b2b0d613c4",
+    "licenses/LICENSE": "83c66801ff9ee4daefd602c78672736ca322506c661e14d45d7562c4eb8476eb",
+    "licenses/NOTICE": "8d34210ebbfaee4ba258ef7b30c3044170f356ab82c8259c81b53860bcdeef7b"
+  },
+  "source": {
+    "repository": "https://github.com/LibreOffice/core.git",
+    "revision": "bce0998afefdbc355585ca324285661a2170ba77",
+    "version": "26.8.0.3",
+    "files": [
+      "sources/autogen.input",
+      "sources/build-autogen.input",
+      "sources/build.mjs",
+      "sources/lok.cxx",
+      "sources/patches/0001-macos-build-tools.patch",
+      "sources/patches/0002-system-font-demand.patch",
+      "sources/patches/0003-node-runtime.patch",
+      "sources/patches/0004-system-fonts-only.patch",
+      "sources/patches/0005-cross-build-rules.patch",
+      "sources/patches/0006-wasm-external-platforms.patch",
+      "sources/patches/0007-host-image-scale.patch",
+      "sources/patches/0008-disable-link-updates.patch",
+      "sources/source-changes.patch",
+      "sources/source.json",
+      "sources/stage.mjs"
+    ]
+  },
+  "licenses": [
+    {
+      "component": "LibreOffice",
+      "spdx": "MPL-2.0",
+      "path": "licenses/LICENSE"
+    },
+    {
+      "component": "DeepSeek Harness portions",
+      "spdx": "MIT",
+      "path": "licenses/DeepSeek-Harness-MIT.txt"
+    },
+    {
+      "component": "LibreOffice third-party notices",
+      "spdx": "LicenseRef-LibreOffice-Notices",
+      "path": "licenses/NOTICE"
+    }
+  ]
+}

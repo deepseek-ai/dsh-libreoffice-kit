@@ -1,0 +1,23 @@
+--host=wasm32-local-emscripten
+--disable-gui
+--disable-qt5
+--disable-qt6
+--disable-gen
+--with-wasm-module=writer calc impress
+--with-package-format=emscripten
+--disable-debug
+--disable-dbgutil
+--disable-symbols
+--disable-pch
+--disable-werror
+--without-java
+--enable-python=no
+--without-fonts
+--disable-opencl
+--disable-opengl
+--disable-skia
+--without-doxygen
+--without-help
+--without-myspell-dicts
+--disable-emscripten-proxy-to-pthread
+--with-build-platform-configure-options=--enable-bogus-pkg-config

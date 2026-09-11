@@ -1,0 +1,87 @@
+diff --git a/configure.ac b/configure.ac
+index 32651cf64..61263583d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -3870,8 +3870,13 @@ if test $_os = Darwin; then
+     if test ! -d "$MACOSX_SDK_PATH"; then
+         AC_MSG_ERROR([Could not find an appropriate macOS SDK])
+     fi
+-    macosx_sdk=`xcodebuild -version -sdk "$MACOSX_SDK_PATH" SDKVersion`
+-    MACOSX_SDK_BUILD_VERSION=$(xcodebuild -version -sdk "$MACOSX_SDK_PATH" ProductBuildVersion)
++    if test "$libo_build_tools_only" = yes; then
++        macosx_sdk=$(xcrun --sdk macosx --show-sdk-version)
++        MACOSX_SDK_BUILD_VERSION=$(xcrun --sdk macosx --show-sdk-build-version)
++    else
++        macosx_sdk=`xcodebuild -version -sdk "$MACOSX_SDK_PATH" SDKVersion`
++        MACOSX_SDK_BUILD_VERSION=$(xcodebuild -version -sdk "$MACOSX_SDK_PATH" ProductBuildVersion)
++    fi
+     # format changed between 10.9 and 10.10 - up to 10.9 it was just four digits (1090), starting
+     # with macOS 10.10 it was switched to account for x.y.z with six digits, 10.10 is 101000,
+     # 10.10.2 is 101002
+@@ -3910,27 +3915,39 @@ if test $_os = Darwin; then
+     FRAMEWORKSHOME="$MACOSX_SDK_PATH/System/Library/Frameworks"
+     MACOSX_DEPLOYMENT_TARGET="$with_macosx_version_min_required"
+ 
+-    AC_MSG_CHECKING([whether Xcode is new enough])
+-    my_xcode_ver1=$(xcrun xcodebuild -version | head -n 1)
+-    my_xcode_ver2=${my_xcode_ver1#Xcode }
+-    my_xcode_ver3=$(printf %s "$my_xcode_ver2" | $AWK -F. '{ print $1*100+($2<100?$2:99) }')
+-    if test "$my_xcode_ver3" -ge 1403; then
+-        AC_MSG_RESULT([yes ($my_xcode_ver2)])
+-        if test $MAC_OS_X_VERSION_MIN_REQUIRED -lt 120000; then
+-            if test "$my_xcode_ver3" -eq 1500; then
+-                dnl the bug was already fixed on 15.1 and 15.2 still has the same OS requirements as 15.0
+-                dnl in other words all affected users could update to a working Xcode version
+-                AC_MSG_WARN([Use a current version of XCode or bump the minimum deployment target])
+-                AC_MSG_WARN([[see https://developer.apple.com/documentation/xcode-release-notes/xcode-15-release-notes#Linking]])
+-                AC_MSG_ERROR([Xcode 15.0 has a bug in the new linker that causes runtime crashes on macOS 11 - aborting])
+-            fi
++    if test "$libo_build_tools_only" = yes; then
++        # Cross-build tools use the installed SDK and clang; they do not package a macOS app.
++        AC_MSG_CHECKING([whether the build-tools clang is new enough])
++        libo_build_clang=$(xcrun clang -dumpversion)
++        libo_build_clang_major=${libo_build_clang%%.*}
++        if test "$libo_build_clang_major" -lt 14; then
++            AC_MSG_ERROR([clang $libo_build_clang is too old for the macOS build tools])
+         fi
++        AC_MSG_RESULT([$libo_build_clang])
++        MACOSX_XCODE_BUILD_VERSION=
+     else
+-        AC_MSG_ERROR(["$my_xcode_ver1" is too old or unrecognized, must be at least Xcode 14.3])
+-    fi
++        AC_MSG_CHECKING([whether Xcode is new enough])
++        my_xcode_ver1=$(xcrun xcodebuild -version | head -n 1)
++        my_xcode_ver2=${my_xcode_ver1#Xcode }
++        my_xcode_ver3=$(printf %s "$my_xcode_ver2" | $AWK -F. '{ print $1*100+($2<100?$2:99) }')
++        if test "$my_xcode_ver3" -ge 1403; then
++            AC_MSG_RESULT([yes ($my_xcode_ver2)])
++            if test $MAC_OS_X_VERSION_MIN_REQUIRED -lt 120000; then
++                if test "$my_xcode_ver3" -eq 1500; then
++                    dnl the bug was already fixed on 15.1 and 15.2 still has the same OS requirements as 15.0
++                    dnl in other words all affected users could update to a working Xcode version
++                    AC_MSG_WARN([Use a current version of XCode or bump the minimum deployment target])
++                    AC_MSG_WARN([[see https://developer.apple.com/documentation/xcode-release-notes/xcode-15-release-notes#Linking]])
++                    AC_MSG_ERROR([Xcode 15.0 has a bug in the new linker that causes runtime crashes on macOS 11 - aborting])
++                fi
++            fi
++        else
++            AC_MSG_ERROR(["$my_xcode_ver1" is too old or unrecognized, must be at least Xcode 14.3])
++        fi
+ 
+-    my_xcode_ver1=$(xcrun xcodebuild -version | tail -n 1)
+-    MACOSX_XCODE_BUILD_VERSION=${my_xcode_ver1#Build version }
++        my_xcode_ver1=$(xcrun xcodebuild -version | tail -n 1)
++        MACOSX_XCODE_BUILD_VERSION=${my_xcode_ver1#Build version }
++    fi
+ 
+     LIBTOOL=/usr/bin/libtool
+     INSTALL_NAME_TOOL=install_name_tool
+@@ -6358,7 +6375,7 @@ if test "$cross_compiling" = "yes"; then
+         $with_build_platform_configure_options \
+         --srcdir=$srcdir
+ 
+-    ./configure \
++    libo_build_tools_only=yes ./configure \
+         $sub_conf_defaults \
+         --with-parallelism="$with_parallelism" \
+         --with-theme="$with_theme" \

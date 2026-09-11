@@ -1,0 +1,41 @@
+{
+  "name": "@deepseek-ai/libreoffice-kit-linux-arm64-musl",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MPL-2.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",
+    "directory": "packages/linux-arm64-musl"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "description": "Prebuilt LibreOfficeKit engine for linux-arm64-musl",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "musl"
+  ],
+  "exports": {
+    "./prebuilds.json": "./prebuilds.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "prebuilds.json",
+    "bin/",
+    "program/",
+    "sources/",
+    "licenses/"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/verify-artifacts.mjs ."
+  }
+}

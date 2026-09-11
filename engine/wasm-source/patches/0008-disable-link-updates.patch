@@ -1,0 +1,30 @@
+diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
+index a605030eb..7a89e6f85 100644
+--- a/desktop/source/lib/init.cxx
++++ b/desktop/source/lib/init.cxx
+@@ -98,6 +98,7 @@
+ 
+ #include <com/sun/star/connection/XConnection.hpp>
+ #include <com/sun/star/document/MacroExecMode.hpp>
++#include <com/sun/star/document/UpdateDocMode.hpp>
+ #include <com/sun/star/beans/XPropertySet.hpp>
+ #include <com/sun/star/container/XNameAccess.hpp>
+ #include <com/sun/star/document/XTypeDetection.hpp>
+@@ -2947,16 +2948,11 @@ static LibreOfficeKitDocument* lo_documentLoadWithOptions(LibreOfficeKit* pThis,
+             comphelper::makePropertyValue(u"FilterOptions"_ustr, aOptions),
+             comphelper::makePropertyValue(u"InteractionHandler"_ustr, uno::Reference<task::XInteractionHandler2>(pInteraction)),
+             comphelper::makePropertyValue(u"MacroExecutionMode"_ustr, nMacroExecMode),
++            comphelper::makePropertyValue(u"UpdateDocMode"_ustr, sal_Int16(document::UpdateDocMode::NO_UPDATE)),
+             comphelper::makePropertyValue(u"AsTemplate"_ustr, false),
+             comphelper::makePropertyValue(u"Silent"_ustr, !aBatch.isEmpty())
+         };
+ 
+-        /* TODO
+-        sal_Int16 nUpdateDoc = document::UpdateDocMode::ACCORDING_TO_CONFIG;
+-        aFilterOptions[3].Name = "UpdateDocMode";
+-        aFilterOptions[3].Value <<= nUpdateDoc;
+-        */
+-
+         OutputDevice::StartTrackingFontMappingUse();
+ 
+         if (const char* pExemptVerifyHost = ::getenv("LOK_EXEMPT_VERIFY_HOST"))

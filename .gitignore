@@ -1,0 +1,15 @@
+node_modules/
+.build/
+.cache/
+.release/
+dist/
+packages/*/assets/
+packages/*/bin/
+packages/*/program/
+packages/*/sources/
+packages/*/licenses/
+engine/reference/
+engine/browser-reference/
+INTEGRATION.md
+*.log
+.DS_Store

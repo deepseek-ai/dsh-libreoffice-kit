@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+
+# Development links are not release evidence; packed tests isolate the installed
+# dependency closure and never link an unbuilt native package.
+linkWorkspacePackages: true
+preferWorkspacePackages: true

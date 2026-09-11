@@ -1,0 +1,53 @@
+{
+  "name": "@deepseek-ai/libreoffice-kit",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MPL-2.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",
+    "directory": "packages/entry"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "description": "Convert on-disk OOXML documents to PDF with a prebuilt native LibreOfficeKit or required Node WASM fallback",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "!src/*.tsbuildinfo",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/verify-entry.mjs ."
+  },
+  "dependencies": {
+    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*",
+    "fflate": "0.8.2",
+    "fontkit": "2.0.4",
+    "saxes": "6.0.0"
+  },
+  "optionalDependencies": {
+    "@deepseek-ai/libreoffice-kit-darwin-arm64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-darwin-x64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-linux-arm64-glibc": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-linux-arm64-musl": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-linux-x64-glibc": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-linux-x64-musl": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-win32-arm64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-win32-x64": "workspace:*",
+    "webgpu": "0.6.0"
+  }
+}

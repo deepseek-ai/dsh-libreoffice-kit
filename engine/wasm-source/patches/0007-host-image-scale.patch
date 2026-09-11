@@ -1,0 +1,96 @@
+--- a/vcl/source/bitmap/bitmap.cxx
++++ b/vcl/source/bitmap/bitmap.cxx
+@@ -44,6 +44,9 @@
+ #include <basegfx/matrix/b2dhommatrixtools.hxx>
+ #include <basegfx/color/bcolormodifier.hxx>
+ #include <bitmap/BitmapScaleSuperFilter.hxx>
++#if defined __EMSCRIPTEN__
++#include <emscripten.h>
++#endif
+ #include <bitmap/BitmapScaleConvolutionFilter.hxx>
+ #include <bitmap/BitmapFastScaleFilter.hxx>
+ #include <bitmap/BitmapInterpolateScaleFilter.hxx>
+@@ -1397,6 +1400,70 @@
+     return true;
+ }
+ 
++#if defined __EMSCRIPTEN__
++namespace {
++bool scaleOnHost(Bitmap& bitmap, double scaleX, double scaleY)
++{
++    if (bitmap.getPixelFormat() != vcl::PixelFormat::N24_BPP || scaleX <= 0 || scaleY <= 0
++        || scaleX > 1 || scaleY > 1)
++        return false;
++    const auto size = bitmap.GetSizePixel();
++    const sal_Int32 width = size.Width(), height = size.Height();
++    const sal_Int32 targetWidth = basegfx::fround(width * scaleX);
++    const sal_Int32 targetHeight = basegfx::fround(height * scaleY);
++    if (targetWidth < 1 || targetHeight < 1)
++        return false;
++    // Source, upload copy, textures, intermediate pass, output and readback all share this budget.
++    const double bytes = 4.0 * (4.0 * width * height + 3.0 * targetWidth * targetHeight
++                                + targetWidth * height);
++    if (!MAIN_THREAD_EM_ASM_INT({
++        return typeof Module['dshScaleImage'] === 'function' && $0 <= Module['dshMaxGpuBytes'];
++    }, bytes))
++        return false;
++    std::vector<sal_uInt8> source(static_cast<size_t>(width) * height * 4);
++    std::vector<sal_uInt8> output(static_cast<size_t>(targetWidth) * targetHeight * 4);
++    {
++        BitmapScopedReadAccess read(bitmap);
++        if (!read)
++            return false;
++        for (sal_Int32 y = 0; y < height; ++y)
++            for (sal_Int32 x = 0; x < width; ++x)
++            {
++                const auto color = read->GetColor(y, x);
++                const size_t offset = (static_cast<size_t>(y) * width + x) * 4;
++                source[offset] = color.GetRed();
++                source[offset + 1] = color.GetGreen();
++                source[offset + 2] = color.GetBlue();
++                source[offset + 3] = 255;
++            }
++    }
++    const bool success = MAIN_THREAD_EM_ASM_INT({
++        try {
++            return Module['dshScaleImage'](HEAPU8.buffer, $0, $1, $2, $3, $4, $5) ? 1 : 0;
++        } catch (error) { return 0; }
++    }, source.data(), output.data(), width, height, targetWidth, targetHeight);
++    if (!success)
++        return false;
++    Bitmap scaled(Size(targetWidth, targetHeight), vcl::PixelFormat::N24_BPP);
++    {
++        BitmapScopedWriteAccess write(scaled);
++        if (!write)
++            return false;
++        for (sal_Int32 y = 0; y < targetHeight; ++y)
++            for (sal_Int32 x = 0; x < targetWidth; ++x)
++            {
++                const size_t offset = (static_cast<size_t>(y) * targetWidth + x) * 4;
++                write->SetPixel(y, x, BitmapColor(output[offset], output[offset + 1], output[offset + 2]));
++            }
++    }
++    scaled.SetPrefMapMode(bitmap.GetPrefMapMode());
++    scaled.SetPrefSize(bitmap.GetPrefSize());
++    bitmap = std::move(scaled);
++    return true;
++}
++}
++#endif
++
+ bool Bitmap::Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag )
+ {
+     if(basegfx::fTools::equalZero(rScaleX) || basegfx::fTools::equalZero(rScaleY))
+@@ -1410,6 +1477,12 @@
+         // no scale
+         return true;
+     }
++
++#if defined __EMSCRIPTEN__
++    if ((nScaleFlag == BmpScaleFlag::BestQuality || nScaleFlag == BmpScaleFlag::Lanczos)
++        && scaleOnHost(*this, rScaleX, rScaleY))
++        return true;
++#endif
+ 
+     const auto eStartPixelFormat = getPixelFormat();
+ 

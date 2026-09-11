@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "platform": "linux-x64-musl",
+  "status": "unbuilt",
+  "engine": {
+    "kind": "native",
+    "executable": "bin/libreoffice-kit",
+    "programDirectory": "program"
+  },
+  "files": {},
+  "source": null,
+  "licenses": []
+}
