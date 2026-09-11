@@ -27,9 +27,15 @@ foreach ($tool in @('bash.exe', 'cygpath.exe')) {
 }
 & (Join-Path $CygwinDirectory 'bin/bash.exe') -c 'PATH=/usr/bin:/bin; for tool in autoconf perl python3 nasm; do command -v "$tool" || exit 1; done'
 if ($LASTEXITCODE -ne 0) { throw 'Cygwin is missing a required configure tool.' }
+$python = (Get-Command python.exe -ErrorAction Stop).Source
+& $python -c 'import sys; assert sys.platform == "win32" and sys.version_info >= (3, 7)'
+if ($LASTEXITCODE -ne 0) { throw 'Core requires a native Windows Python interpreter for build tools.' }
+$pythonForBuild = & (Join-Path $CygwinDirectory 'bin/cygpath.exe') -m -s $python
+if ($LASTEXITCODE -ne 0 -or -not $pythonForBuild) { throw 'Cannot resolve the native Windows Python path.' }
 
 "LIBREOFFICE_KIT_CYGWIN=$CygwinDirectory" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 "LIBREOFFICE_KIT_MAKE=$(Join-Path $toolsDirectory 'make.exe')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 "LIBREOFFICE_KIT_VISUAL_STUDIO=$year" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 "PKG_CONFIG=$(Join-Path $toolsDirectory 'pkgconf.exe')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+"PYTHON_FOR_BUILD=$pythonForBuild" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 Write-Output "Windows Core tools ready: Visual Studio $year; Cygwin $CygwinDirectory; pinned native GNU Make and pkgconf."

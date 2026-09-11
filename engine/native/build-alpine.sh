@@ -2,7 +2,7 @@
 # Run inside the matching-architecture Node Alpine image mounted at /work.
 set -eu
 apk add --no-cache build-base bash coreutils findutils diffutils grep sed git autoconf automake libtool pkgconf perl python3 py3-lxml \
-  gperf bison flex zip unzip gettext-dev linux-headers curl-dev openssl-dev nss-dev \
+  gperf bison flex zip unzip gettext-dev linux-headers curl curl-dev openssl-dev nss-dev \
   libxml2-dev libxslt-dev fontconfig-dev freetype-dev harfbuzz-dev graphite2-dev cairo-dev \
   libjpeg-turbo-dev libpng-dev zlib-dev cups-dev tar patch which ninja nasm font-dejavu
 export container=docker
