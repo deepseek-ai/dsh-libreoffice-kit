@@ -52,3 +52,10 @@ export function npmEnvironment(work) {
 export function npm(args, cwd, work) {
   return run(process.execPath, [npmCli(), ...args], { cwd, env: npmEnvironment(work) });
 }
+
+/** Omit account names and numeric owners from GNU tar or system bsdtar archives. */
+export function archiveOwnerOptions(platform = process.platform) {
+  return platform === 'linux'
+    ? ['--owner=0', '--group=0', '--numeric-owner']
+    : [...(platform === 'darwin' ? ['--no-xattrs'] : []), '--uid=0', '--gid=0', '--uname=', '--gname='];
+}

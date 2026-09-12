@@ -23,6 +23,8 @@ def deterministic_package(path):
    data=old.read(name)
    if name=='docProps/core.xml':
     properties=ElementTree.fromstring(data)
+    modifier=properties.find('{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}lastModifiedBy')
+    if modifier is not None: modifier.text=None
     for key in ('created','modified'):
      field=properties.find('{http://purl.org/dc/terms/}'+key)
      if field is not None: field.text='2000-01-01T00:00:00Z'
