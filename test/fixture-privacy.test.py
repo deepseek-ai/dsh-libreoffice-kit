@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 class FixturePrivacy(unittest.TestCase):
  def test_clears_modifier_preserving_document_content(self):
   source=Path(__file__).parents[1]/'benchmarks/fixtures.py'
-  tree=ast.parse(source.read_text())
+  tree=ast.parse(source.read_text(encoding='utf-8'))
   function=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='deterministic_package')
   namespace={name:globals()[name] for name in ('BytesIO','ZipFile','ZipInfo','ZIP_DEFLATED','ElementTree')}
   exec(compile(ast.Module(body=[function],type_ignores=[]),str(source),'exec'),namespace)
