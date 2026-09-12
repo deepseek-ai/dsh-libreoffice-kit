@@ -12,11 +12,11 @@
     "programDirectory": "/instdir/program"
   },
   "files": {
-    "assets/manifest.json": "808b3cbd0b8825d0a85b81241f800869e1ab148370b8c26c56c2477d0deddde2",
+    "assets/manifest.json": "9527305dabef579edf57e16ddcba9b5a948c7f6d8d734a5b30e98186b3af7fe0",
     "assets/soffice.cjs": "82a4091ed93f67e0242c0a6c7fb15cce8812610c783717d99819074f15fc88a7",
     "assets/soffice.data": "b5148964f2836374f1de56617fe8d6cc7ba0c69645e492c764d76f647cdc5515",
     "assets/soffice.data.js.metadata": "6d8573e16330cb733dbccf9ad9574bb13d6c044469de174fd1dc3deefdd0d811",
-    "assets/soffice.wasm": "a7ca87ca95b10c5668954d60771571cb1d75fbd9630999ba3ae3eaa9db40eaad",
+    "assets/soffice.wasm": "9b41c9c4a3a9798153afd7c986bc58632f375b6e137f31df2180eac2a8b5e528",
     "sources/autogen.input": "8298f649164a74ecdaa368a04ff6b358443f0b889ce28bcf03171b872f12f50a",
     "sources/build-autogen.input": "32325961028ec6f8f451aff9d3609b875ea9409a06e924e5ecba29691d6c0947",
     "sources/build.mjs": "2425fc19dc4028702652c13eed1133a964737d173770bc5d2761a007568b4289",
