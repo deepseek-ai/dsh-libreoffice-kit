@@ -7,7 +7,7 @@ function desktopResource(filename) {
     return relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
   }
   return /^\/instdir\/share\/config\/images(?:_[a-z0-9_]+)?\.zip$/.test(filename)
-    || filename.startsWith('/android/default-document/')
+    || /^\/(?:core\/)?android\/default-document\//.test(filename)
     || /^\/instdir\/program\/intro(?:-highres)?\.png$/.test(filename)
     || filename.startsWith('/instdir/program/shell/');
 }

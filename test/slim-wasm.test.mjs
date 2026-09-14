@@ -16,6 +16,7 @@ function fixture(paths) {
 test('WASM repacking removes desktop files and preserves every retained byte and attribute', () => {
   const desktop = [
     '/android/default-document/example.odt', '/android/default-document/example_test.ods',
+    '/core/android/default-document/example.odt', '/core/android/default-document/example_test.ods',
     '/instdir/share/config/soffice.cfg/modules/swriter/ui/notebookbar.ui',
     '/instdir/share/config/soffice.cfg/modules/scalc/ui/notebookbar_compact.ui',
     '/instdir/share/config/soffice.cfg/modules/swriter/toolbar/standardbar.xml',
@@ -32,7 +33,7 @@ test('WASM repacking removes desktop files and preserves every retained byte and
     '/instdir/share/fonts/font.ttf', '/instdir/share/liblangtag/language.xml',
     '/instdir/LICENSE', '/instdir/NOTICE',
   ];
-  const { data, metadata } = fixture(desktop.flatMap((file, index) => [file, retained[index]]));
+  const { data, metadata } = fixture(desktop.flatMap((file, index) => [file, ...retained.slice(index, index + 1)]));
   const original = structuredClone(metadata);
   const result = slimWasmData(data, metadata);
   assert.deepEqual(metadata, original);
