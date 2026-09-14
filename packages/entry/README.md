@@ -67,5 +67,5 @@ This package is licensed under [MPL-2.0](LICENSE). The engine packages include `
 - Only DOCX, XLSX, and PPTX input is supported. Conversion does not discover system LibreOffice or download engines and fonts.
 - Font import and output limits do not bound all native memory or temporary disk use. Native platform engines may resolve fonts differently from WASM.
 - Installations from npm use platform-specific optional packages. Applications that bundle engines must retain the complete selected package, including its resources and notices.
-- Windows x64 requires the Microsoft Visual C++ v14 x64 Redistributable; it is not bundled.
+- Windows requires the Microsoft Visual C++ v14 Redistributable matching the Node.js architecture (x64 or ARM64); it is not bundled. Use ARM64 Node.js for the Windows ARM64 engine.
 - Version `0.0.1` ships macOS and Windows native engines for ARM64 and x64 and a shared Node WASM engine. Other native platforms are development recipes.

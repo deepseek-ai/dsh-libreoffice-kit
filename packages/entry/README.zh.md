@@ -67,5 +67,5 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 - 只支持 DOCX、XLSX 和 PPTX 输入。转换不发现系统 LibreOffice，也不下载引擎和字体。
 - 字体导入和输出限制不能约束全部原生内存或临时磁盘使用。原生平台引擎的字体解析可能与 WASM 不同。
 - npm 安装使用按平台选择的可选包。自行打包引擎的应用需要保留所选包的完整内容，包括资源和许可声明。
-- Windows x64 需要系统安装 Microsoft Visual C++ v14 x64 Redistributable；包中不捆绑该运行库。
+- Windows 需要系统安装与 Node.js 架构一致的 Microsoft Visual C++ v14 Redistributable（x64 或 ARM64）；包中不捆绑该运行库。Windows ARM64 引擎需要使用 ARM64 Node.js。
 - `0.0.1` 提供 macOS 和 Windows 的 ARM64、x64 原生引擎和共享 Node WASM 引擎；其他原生平台仅保留开发构建配方。
