@@ -1,0 +1,11 @@
+--- a/external/pdfium/Library_pdfium.mk
++++ b/external/pdfium/Library_pdfium.mk
+@@ -713,7 +713,7 @@
+ ))
+ endif
+ 
+-ifneq (,$(filter LINUX FREEBSD OPENBSD,$(OS)))
++ifneq (,$(filter LINUX FREEBSD OPENBSD EMSCRIPTEN,$(OS)))
+ # fxge
+ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
+     UnpackedTarball/pdfium/core/fxge/linux/fx_linux_impl \
