@@ -3,6 +3,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { materializeEngineArchive, packEngineArchive } from './engine-archive.mjs';
 import { auditBytes, auditNpmArchive, visitTar } from './publication-privacy.mjs';
 import { packDependencies } from './pack-dependencies.mjs';
@@ -12,9 +14,12 @@ import { verifyPreparedEngine } from './prepare-artifacts.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
 import { isMain, kitDirectory, kitManifest, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
 
-/** Newly promoted targets must carry build recipes already saved in this checkout. */
+/** Newly promoted targets must match one source snapshot saved in this checkout or its ancestry. */
 export function verifyPromotedRecipe(tar, repo = root) {
   const files = [];
+  const recipes = new Map();
+  const differences = [];
+  const blobHash = bytes => createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
   const packed = readFileSync(tar);
   visitTar(packed[0] === 0x1f && packed[1] === 0x8b ? gunzipSync(packed) : packed, ({ name, data, type }) => {
     if (type !== '0' || !/^package\/sources\/(engine|scripts)\//.test(name)) return;
@@ -27,12 +32,28 @@ export function verifyPromotedRecipe(tar, repo = root) {
       assert(Buffer.from(text).equals(bytes), 'Invalid UTF-8 source recipe');
       return text.replaceAll('\r\n', '\n');
     };
-    assert(current && (current.equals(data) || (file.endsWith('.mjs') && normalizeJs(current) === normalizeJs(data))),
-      `Promoted engine source differs from checkout: ${file}`);
+    if (!current || !(current.equals(data) || (file.endsWith('.mjs') && normalizeJs(current) === normalizeJs(data)))) differences.push(file);
+    recipes.set(file, new Set([blobHash(data), ...(file.endsWith('.mjs') ? [blobHash(Buffer.from(normalizeJs(data)))] : [])]));
     files.push(file);
   });
   assert(files.includes('engine/native/worker.cxx') && files.includes('engine/native/build-helper.mjs')
     && files.some(file => file.startsWith('engine/native/patches/')), 'Promoted engine lacks its native source recipe');
+  if (differences.length) {
+    // Later platform support may extend shared build scripts. Accept the old complete
+    // recipe only if every archived source file coexisted in one ancestor of HEAD.
+    const git = args => spawnSync('git', args, { cwd: repo, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 30_000 });
+    const history = git(['log', '--format=%H', 'HEAD', '--', ...files]);
+    const saved = history.status === 0 && history.stdout.trim().split('\n').filter(Boolean).some(commit => {
+      const tree = git(['ls-tree', '-rz', commit, '--', ...files]);
+      if (tree.status !== 0) return false;
+      const blobs = new Map(tree.stdout.split('\0').filter(Boolean).flatMap(entry => {
+        const match = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/.exec(entry);
+        return match ? [[match[3], match[2]]] : [];
+      }));
+      return files.every(file => recipes.get(file).has(blobs.get(file)));
+    });
+    assert(saved, `Promoted engine source differs from checkout and saved history: ${differences[0]}`);
+  }
   return files;
 }
 
@@ -63,7 +84,8 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
   verifyDownload('release.json');
   auditBytes(readFileSync(join(input, 'release.json')), 'release.json');
   const records = [...previous.packages];
-  for (const [platform, file] of [['win32-x64', 'windows-verification.json'], ['win32-arm64', 'windows-arm64-verification.json']]) {
+  for (const [platform, file] of [['win32-x64', 'windows-verification.json'], ['win32-arm64', 'windows-arm64-verification.json'],
+    ['darwin-x64', 'macos-x64-verification.json']]) {
     if (!platforms.includes(platform) || preparedPlatforms.includes(platform) || records.some(record => record.platform === platform)) continue;
     verifyDownload(file);
     auditBytes(readFileSync(join(input, file)), file);
