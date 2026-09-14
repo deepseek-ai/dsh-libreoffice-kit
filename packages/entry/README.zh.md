@@ -59,7 +59,7 @@ try {
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-本仓库在同一内部 Release 中发布 Node API 和引擎。`ENGINE_VERSION` 固定独立的 `@deepseek-ai/dsh-libreoffice-kit-*` 引擎版本。必需 WASM 和可选原生依赖使用 `workspace:*`；打包钩子写入固定的内部 GitHub Release URL。应用构建时鉴权下载并打包已准备的引擎；匿名 npm 安装无法获取这些依赖。[引擎工作区](../../README.zh.md)负责配方、校验和发布。
+本仓库在同一内部 Release 中发布 Node API 和引擎。`ENGINE_VERSION` 固定独立的 `@deepseek-ai/libreoffice-kit-*` 引擎版本。必需 WASM 和可选原生依赖使用 `workspace:*`；打包钩子写入固定的内部 GitHub Release URL。应用构建时鉴权下载并打包已准备的引擎；匿名 npm 安装无法获取这些依赖。[引擎工作区](../../README.zh.md)负责配方、校验和发布。
 
 默认值和所有选项记录在 [TypeScript API](src/index.ts) 中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。转换器复用其第一次字体元数据快照；更改已安装字体后需重新创建转换器。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
 

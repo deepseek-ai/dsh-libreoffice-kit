@@ -2,7 +2,7 @@
 
 Source package manifests name the source repository. During GitHub Actions packing, `GITHUB_REPOSITORY` and the HTTPS origin `GITHUB_SERVER_URL` identify the repository that builds the release. The packer changes only disposable staging manifests; source manifests and executable payload modes remain unchanged. Local packing without workflow identity retains the source metadata. Invalid or missing workflow identity fails before any tarball is written.
 
-The engine family shares version `0.1.2` and distributes `@deepseek-ai/dsh-libreoffice-kit-*` tarballs through the internal `deepseek-harness/libreoffice-kit` Releases. The Node API [`@deepseek-ai/dsh-libreoffice-kit`](../packages/entry/README.md) has API version `0.1.5-rc.2` and pins engines through `ENGINE_VERSION`. Its required WASM and optional macOS ARM64 dependencies use `workspace:*`; pnpm packing records fixed internal Release URLs. Application builders prepare authenticated downloads through the [release workflow](building.md) and bundle the workspace or local tarballs. Anonymous npm installation cannot fetch these dependencies. Runtime conversion performs no download or compilation and needs no GitHub credential. All packages require Node.js >=22.19.
+The engine family shares version `0.0.1` and distributes `@deepseek-ai/libreoffice-kit-*` tarballs through the internal `deepseek-harness/libreoffice-kit` Releases. The Node API [`@deepseek-ai/dsh-libreoffice-kit`](../packages/entry/README.md) has API version `0.1.5-rc.2` and pins engines through `ENGINE_VERSION`. Its required WASM and optional macOS ARM64 dependencies use `workspace:*`; pnpm packing records fixed internal Release URLs. Application builders prepare authenticated downloads through the [release workflow](building.md) and bundle the workspace or local tarballs. Anonymous npm installation cannot fetch these dependencies. Runtime conversion performs no download or compilation and needs no GitHub credential. All packages require Node.js >=22.19.
 
 The internal preview declares shared WASM and `darwin-arm64`. Application preparation selects macOS ARM64 for matching consumers and WASM for every consumer. The complete release candidate contains both engines. The other native build recipes remain development tooling; adding a native release target requires an adapter optional dependency and matching-host qualification.
 
@@ -12,7 +12,7 @@ There is exactly one WASM package per version, without npm `os`, `cpu`, or `libc
 
 ## Loader manifest, schema version 1
 
-Every engine package exports `./prebuilds.json` and `./package.json`. Resolve `@deepseek-ai/dsh-libreoffice-kit-<platform>/prebuilds.json` relative to the adapter package. Its containing directory is the engine package root. All manifest file paths use `/` and are relative to that directory, never the current working directory or a source checkout. The Node API exports built ESM `./lib/index.js`, ships a separate ESM `./lib/worker.js`, and emits declarations under `./lib/types/`.
+Every engine package exports `./prebuilds.json` and `./package.json`. Resolve `@deepseek-ai/libreoffice-kit-<platform>/prebuilds.json` relative to the adapter package. Its containing directory is the engine package root. All manifest file paths use `/` and are relative to that directory, never the current working directory or a source checkout. The Node API exports built ESM `./lib/index.js`, ships a separate ESM `./lib/worker.js`, and emits declarations under `./lib/types/`.
 
 The native build recipe identifiers are `darwin-arm64`, `darwin-x64`, `linux-x64-glibc`, `linux-arm64-glibc`, `win32-x64`, and `win32-arm64`. Linux packages declare matching npm `libc` metadata. Non-glibc Linux hosts must choose WASM, not guess a native ABI. A missing matching optional package or a known host glibc below the package's recorded minimum chooses the required shared WASM package. An installed package with an invalid manifest, missing files, a wrong architecture, or an unusable engine is an error and must not silently fall back.
 
@@ -21,7 +21,7 @@ Native manifest fields:
 ```json
 {
   "schemaVersion": 1,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "platform": "darwin-arm64",
   "status": "unbuilt",
   "engine": {

@@ -42,8 +42,8 @@ async function engineFixture(): Promise<EngineFixture> {
     engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: '2.38' } })
   const writeNative = async (values: Record<string, unknown> = manifest()) => { await writeFile(join(native, 'prebuilds.json'), JSON.stringify(values)) }
   await writeNative()
-  await writeFile(join(native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-libreoffice-kit-linux-arm64-glibc', version: familyVersion }))
-  await writeFile(join(wasm, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-libreoffice-kit-wasm', version: familyVersion }))
+  await writeFile(join(native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: familyVersion }))
+  await writeFile(join(wasm, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-wasm', version: familyVersion }))
   for (const file of ['loader', 'wasm', 'data', 'metadata']) await writeFile(join(wasm, file), 'fixture')
   await writeFile(join(wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: familyVersion, platform: 'wasm', status: 'built', engine: {
     kind: 'wasm', loader: 'loader', wasm: 'wasm', data: 'data', metadata: 'metadata', programDirectory: '/instdir/program',
@@ -66,8 +66,8 @@ describe('engine discovery', () => {
   })
 
   it('finds an installed engine package on the real resolution path', () => {
-    expect(installedPackageExists('@deepseek-ai/dsh-libreoffice-kit-wasm')).toBe(true)
-    expect(installedPackageExists('@deepseek-ai/dsh-libreoffice-kit-absent')).toBe(false)
+    expect(installedPackageExists('@deepseek-ai/libreoffice-kit-wasm')).toBe(true)
+    expect(installedPackageExists('@deepseek-ai/libreoffice-kit-absent')).toBe(false)
     // A builtin name has no resolution paths, which never selects a native installation.
     expect(installedPackageExists('node:fs')).toBe(false)
   })
@@ -81,7 +81,7 @@ describe('engine discovery', () => {
       }
       await expect(resolveEngine(absent, () => false, { platform: 'linux', arch: 'x64' })).resolves.toMatchObject({ backend: 'wasm' })
       // Keep the default package resolver test independent of locally staged payloads.
-      const manifest = createRequire(import.meta.url).resolve('@deepseek-ai/dsh-libreoffice-kit-wasm/package.json')
+      const manifest = createRequire(import.meta.url).resolve('@deepseek-ai/libreoffice-kit-wasm/package.json')
       metadataProbe.unbuiltPath = join(dirname(manifest), 'prebuilds.json')
       await expect(resolveEngine(undefined, undefined, { platform: 'freebsd', arch: 'x64' })).rejects.toThrow(/incompatible or incomplete/)
     } finally {
@@ -275,9 +275,9 @@ describe('glibc floors', () => {
         await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toThrow(/invalid glibcMinimum/)
       }
       await fixture.writeNative()
-      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-libreoffice-kit-linux-x64-glibc', version: familyVersion }))
+      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-x64-glibc', version: familyVersion }))
       await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toThrow(/incompatible or incomplete/)
-      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-libreoffice-kit-linux-arm64-glibc', version: familyVersion }))
+      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: familyVersion }))
       await rm(join(fixture.native, 'helper'))
       await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toMatchObject({ code: 'ENOENT' })
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
@@ -288,7 +288,7 @@ describe('glibc floors', () => {
     try {
       await fixture.writeNative({ schemaVersion: 1, version: '0.1.0', platform: 'linux-arm64-glibc', status: 'built',
         engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: '2.38' } })
-      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-libreoffice-kit-linux-arm64-glibc', version: '0.1.0' }))
+      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: '0.1.0' }))
       await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toThrow(/incompatible or incomplete/)
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })

@@ -58,7 +58,7 @@ export function verifyPackedInstall(directory, { wasmOnly = false, expectedBacke
     }, null, 2)}\n`);
     npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', '--omit=optional'], consumer, work);
     for (const record of selected) verifyEnginePackage(join(consumer, 'node_modules', ...record.name.split('/')));
-    const macOS = !wasmOnly && process.platform === 'darwin' ? auditMacOS(join(consumer, 'node_modules', '@deepseek-ai', `dsh-libreoffice-kit-${platform}`)) : undefined;
+    const macOS = !wasmOnly && process.platform === 'darwin' ? auditMacOS(join(consumer, 'node_modules', '@deepseek-ai', `libreoffice-kit-${platform}`)) : undefined;
     verifyKitPackage(join(consumer, 'node_modules', ...adapter.manifest.name.split('/')), true);
     cpSync(join(root, 'scripts/smoke-installed.mjs'), join(consumer, 'smoke.mjs'));
     cpSync(join(root, 'test/runtime-linked-fixture.mjs'), join(consumer, 'runtime-linked-fixture.mjs'));

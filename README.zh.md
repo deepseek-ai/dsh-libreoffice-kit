@@ -20,7 +20,7 @@ DeepSeek Harness 维护 Cordis 文档提供方、授权和 Web 预览；本仓�
 
 ## Support
 
-内部预览声明 macOS ARM64 和共享的 `@deepseek-ai/dsh-libreoffice-kit-wasm` 引擎。其他原生包保留为开发配方。本工作区共用根 pnpm 锁文件。GitHub Actions 构建并验证已声明的引擎，发布脚本将完整 tarball 托管在 internal 仓库 `deepseek-harness/libreoffice-kit` 的 `libreoffice-kit-v<version>` 下。应用构建时鉴权下载并打包已准备的引擎。[打包指南](docs/packaging.md)定义归档校验和安装限制；[发布指南](docs/building.md)说明构建时凭据、资格验证和发布。
+内部预览声明 macOS ARM64 和共享的 `@deepseek-ai/libreoffice-kit-wasm` 引擎。其他原生包保留为开发配方。本工作区共用根 pnpm 锁文件。GitHub Actions 构建并验证已声明的引擎，发布脚本将完整 tarball 托管在 internal 仓库 `deepseek-harness/libreoffice-kit` 的 `libreoffice-kit-v<version>` 下。应用构建时鉴权下载并打包已准备的引擎。[打包指南](docs/packaging.md)定义归档校验和安装限制；[发布指南](docs/building.md)说明构建时凭据、资格验证和发布。
 
 ## Development
 

@@ -20,7 +20,7 @@ An installed matching OS/CPU/libc package selects the native helper. An absent p
 
 ## Support
 
-The internal preview declares macOS ARM64 and shared `@deepseek-ai/dsh-libreoffice-kit-wasm` engines. Other native packages remain development recipes. The repository owns its pnpm lockfile. GitHub Actions builds and verifies the declared engines, and the publisher hosts complete tarballs in the internal `deepseek-harness/libreoffice-kit` repository under `libreoffice-kit-v<version>`. Application builds authenticate downloads and bundle the prepared engines. The [packaging guide](docs/packaging.md) defines archive validation and installation limits; the [release guide](docs/building.md) covers build-time credentials, qualification, and publication.
+The internal preview declares macOS ARM64 and shared `@deepseek-ai/libreoffice-kit-wasm` engines. Other native packages remain development recipes. The repository owns its pnpm lockfile. GitHub Actions builds and verifies the declared engines, and the publisher hosts complete tarballs in the internal `deepseek-harness/libreoffice-kit` repository under `libreoffice-kit-v<version>`. Application builds authenticate downloads and bundle the prepared engines. The [packaging guide](docs/packaging.md) defines archive validation and installation limits; the [release guide](docs/building.md) covers build-time credentials, qualification, and publication.
 
 ## Development
 

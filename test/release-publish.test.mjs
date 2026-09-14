@@ -69,7 +69,7 @@ test('publication rejects partial, duplicate and undeclared development targets'
 test('publication requires the matching tag and source commit', t => {
   const { directory, env, evidence, save } = fixture(t);
   assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: 'refs/heads/main' }), /matching release tag/);
-  assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: `refs/tags/${releaseTag('0.0.1')}` }), /matching release tag/);
+  assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: `refs/tags/${releaseTag('0.0.0')}` }), /matching release tag/);
   assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: 'refs/tags/v0.1.0' }), /matching release tag/);
   evidence.sourceCommit = '2'.repeat(40);
   save('verification.json', evidence);
@@ -91,7 +91,7 @@ test('publication requires the canonical engine order and matching package versi
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /package order/);
   release.packages.reverse();
-  release.packages[0].version = '0.0.1';
+  release.packages[0].version = '0.0.0';
   release.packages[0].file = tarballName(release.packages[0]);
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
@@ -106,7 +106,7 @@ test('publication rejects noncanonical filenames, platform identities and family
     assert.throws(() => validatePublication(directory, env), /canonical engine asset/);
   }
   release.packages[0] = first;
-  release.version = '0.0.1';
+  release.version = '0.0.0';
   save('release.json', release);
   assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: `refs/tags/${releaseTag(release.version)}` }), /engine workspace/);
 });

@@ -10,10 +10,10 @@ const require = createRequire(import.meta.url)
  * Engine-family version every installed engine package must carry. The engine
  * family releases under its own version, independently of this adapter.
  */
-export const ENGINE_VERSION = '0.1.2'
+export const ENGINE_VERSION = '0.0.1'
 
 /** npm scope and name prefix shared by the engine packages this adapter installs. */
-const ENGINE_PREFIX = '@deepseek-ai/dsh-libreoffice-kit'
+const ENGINE_PREFIX = '@deepseek-ai/libreoffice-kit'
 
 /** Host diagnostic fields used to identify the runtime glibc version. */
 export interface EngineHostReport {

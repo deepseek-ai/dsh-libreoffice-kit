@@ -41,7 +41,7 @@ importers:
 
   packages/entry:
     dependencies:
-      '@deepseek-ai/dsh-libreoffice-kit-wasm':
+      '@deepseek-ai/libreoffice-kit-wasm':
         specifier: workspace:*
         version: link:../wasm
       fflate:
@@ -54,7 +54,7 @@ importers:
         specifier: 6.0.0
         version: 6.0.0
     optionalDependencies:
-      '@deepseek-ai/dsh-libreoffice-kit-darwin-arm64':
+      '@deepseek-ai/libreoffice-kit-darwin-arm64':
         specifier: workspace:*
         version: link:../darwin-arm64
 

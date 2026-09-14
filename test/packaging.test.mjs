@@ -87,7 +87,7 @@ test('adapter engine declarations reject unknown native packages and mismatched 
   invalidSource.optionalDependencies = { [`${enginePrefix}-darwin-arm64`]: engineFamilyVersion() };
   assert.throws(() => verifyKitMetadata(invalidSource), /engine family version/);
   const invalidPacked = packedAdapterManifest(source);
-  invalidPacked.optionalDependencies[`${enginePrefix}-darwin-arm64`] = '0.0.1';
+  invalidPacked.optionalDependencies[`${enginePrefix}-darwin-arm64`] = '0.0.0';
   assert.throws(() => verifyKitMetadata(invalidPacked, true, ['darwin-arm64']), /engine family version/);
   const optionalWasm = packedAdapterManifest(source);
   optionalWasm.optionalDependencies[wasmName] = engineFamilyVersion();

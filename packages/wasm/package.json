@@ -1,6 +1,6 @@
 {
-  "name": "@deepseek-ai/dsh-libreoffice-kit-wasm",
-  "version": "0.1.2",
+  "name": "@deepseek-ai/libreoffice-kit-wasm",
+  "version": "0.0.1",
   "type": "module",
   "license": "MPL-2.0",
   "engines": {
