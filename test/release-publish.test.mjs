@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
@@ -14,11 +14,12 @@ import {
   writeReleaseNotes,
 } from '../scripts/release-publish.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
-import { npmFixture } from './archive-fixture.mjs';
+import { appleDoubleFixture, npmFixture } from './archive-fixture.mjs';
 import { prepareNpmRelease } from '../scripts/prepare-npm-release.mjs';
 import { auditNpmArchive } from '../scripts/publication-privacy.mjs';
 import { packEngineArchive, engineArchiveName } from '../scripts/engine-archive.mjs';
 import { githubMatrix } from '../scripts/github-matrix.mjs';
+import { run } from '../scripts/pack-utils.mjs';
 
 test('release host verification selects adapter-declared engines, not every unfinished native recipe', () => {
   const platforms = githubMatrix(['--released-only']).include.map(row => row.platform);
@@ -287,4 +288,63 @@ test('npm preparation preserves qualified installation bytes and writes engine-f
     if (engine) assert.equal(createHash('sha256').update(gunzipSync(readFileSync(join(destination, record.file)))).digest('hex'), engine.install.sha256);
   }
   assert.throws(() => prepareNpmRelease(directory, destination, env), /EEXIST/);
+});
+
+/** Rebuild synthetic test receipts around legacy transfer metadata, not actual engine evidence. */
+function legacyCandidate(candidate, files = {}) {
+  const { directory, release, evidence, save } = candidate;
+  const ownership = process.platform === 'linux' ? ['--owner=501', '--group=20'] : ['--uid=501', '--gid=20'];
+  for (const record of release.packages) {
+    const inner = gunzipSync(npmFixture({ name: record.name, version: record.version }, files));
+    writeFileSync(join(directory, 'package.tar'), inner);
+    writeFileSync(join(directory, '._package.tar'), appleDoubleFixture());
+    run('tar', ['--format=ustar', '--no-xattrs', '--no-acls', ...ownership, '-cJf', join(directory, record.file), '-C', directory, '._package.tar', 'package.tar'],
+      { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+    record.bytes = statSync(join(directory, record.file)).size;
+    record.sha256 = sha256(join(directory, record.file));
+    record.install.bytes = inner.length;
+    record.install.sha256 = createHash('sha256').update(inner).digest('hex');
+  }
+  save('release.json', release);
+  evidence.releaseManifestSha256 = sha256(join(directory, 'release.json'));
+  save('verification.json', evidence);
+}
+
+test('npm accepts a clean inner package in a legacy transfer while GitHub still rejects that envelope', t => {
+  const candidate = fixture(t);
+  legacyCandidate(candidate);
+  const { directory, env, release, evidence, save } = candidate;
+  evidence.localBuildDirectory = '/Users/private-builder/source';
+  save('verification.json', evidence);
+  assert.throws(() => validatePublication(directory, env), /only package.tar|ownership/);
+  const destination = join(directory, 'npm');
+  const publication = prepareNpmRelease(directory, destination, env);
+  for (const record of release.packages) {
+    const packed = publication.packages.find(p => p.name === record.name);
+    const inner = gunzipSync(readFileSync(join(destination, packed.file)));
+    assert.equal(createHash('sha256').update(inner).digest('hex'), record.install.sha256);
+    assert.equal(auditNpmArchive(join(destination, packed.file)).manifest.name, record.name);
+  }
+});
+
+test('npm legacy transfer handling still rejects private inner contents and reports every package', t => {
+  const candidate = fixture(t);
+  legacyCandidate(candidate, { 'package/worker': '/Users/private-builder/source' });
+  const { directory, env, release, evidence, save } = candidate;
+  const adapter = join(directory, tarballName(kitManifest()));
+  writeFileSync(adapter, npmFixture(kitManifest(), { 'package/README.md': 'https://github.com/deepseek-harness/deepseek-harness/' }));
+  for (const platform of evidence.platforms) {
+    platform.wasm.adapter.sha256 = sha256(adapter);
+    if (platform.native) platform.native.adapter.sha256 = sha256(adapter);
+  }
+  save('verification.json', evidence);
+  const destination = join(directory, 'npm');
+  assert.throws(() => prepareNpmRelease(directory, destination, env), error => {
+    for (const record of [...release.packages, kitManifest()]) assert.ok(error.message.includes(`${record.name}:`));
+    assert.match(error.message, /personal home path/);
+    assert.match(error.message, /internal application link/);
+    assert.ok(!error.message.includes('/Users/private-builder'));
+    return true;
+  });
+  assert.equal(existsSync(destination), false);
 });

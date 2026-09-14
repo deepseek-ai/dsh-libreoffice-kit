@@ -28,6 +28,18 @@ export function npmFixture(manifest, files = {}, metadata) {
   return gzipSync(tarFixture({ 'package/package.json': JSON.stringify(manifest), ...files }, metadata));
 }
 
+/** AppleDouble v2 with one empty Finder Info entry, without host metadata. */
+export function appleDoubleFixture() {
+  const bytes = Buffer.alloc(70);
+  bytes.writeUInt32BE(0x00051607, 0);
+  bytes.writeUInt32BE(0x00020000, 4);
+  bytes.writeUInt16BE(1, 24);
+  bytes.writeUInt32BE(9, 26);
+  bytes.writeUInt32BE(38, 30);
+  bytes.writeUInt32BE(32, 34);
+  return bytes;
+}
+
 export function npmDirectoryFixture(directory) {
   const files = {};
   function visit(prefix = '') {

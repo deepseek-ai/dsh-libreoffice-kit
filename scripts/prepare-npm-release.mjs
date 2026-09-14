@@ -10,14 +10,14 @@ import { isMain, kitManifest, tarballName } from './platform-matrix.mjs';
 import { sha256 } from './verify-artifacts.mjs';
 
 export function prepareNpmRelease(directory, destination, env = process.env) {
-  const release = validatePublication(directory, env);
+  const release = validatePublication(directory, env, { target: 'npm' });
   // Never mix new tarballs with stale or already reviewed publication output.
   mkdirSync(destination);
   const work = mkdtempSync(join(tmpdir(), 'kit-npm-release-'));
   try {
     const packages = [];
     for (const record of release.packages) {
-      const tar = materializeEngineArchive(directory, record, work);
+      const tar = materializeEngineArchive(directory, record, work, { requireAnonymousEnvelope: false });
       const file = tarballName(record);
       writeFileSync(join(destination, file), gzipSync(readFileSync(tar), { level: 9 }), { flag: 'wx' });
       packages.push({ name: record.name, version: record.version, file });

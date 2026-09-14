@@ -55,15 +55,23 @@ export function packEngineArchive(gzip, destination, manifest) {
  * @param directory - Directory holding the downloaded envelope.
  * @param record - Canonical package identity and both archive hashes.
  * @param destination - Private directory receiving the npm tar.
+ * @param options - npm preparation discards legacy transfer metadata; GitHub publication requires anonymous envelopes.
  * @returns The verified npm tar path.
  */
-export function materializeEngineArchive(directory, record, destination) {
+export function materializeEngineArchive(directory, record, destination, { requireAnonymousEnvelope = true } = {}) {
   verifyEngineArchiveRecord(record);
   const archive = join(directory, record.file);
   assert(statSync(archive).size === record.bytes && sha256(archive) === record.sha256, 'Engine transfer integrity mismatch');
-  assert(run('tar', ['-tf', archive]).trim() === 'package.tar', 'Engine transfer must contain only package.tar');
+  const members = run('tar', ['-tf', archive]).trim().split(/\r?\n/);
+  // libarchive hides AppleDouble entries on macOS, while GNU tar lists them.
+  // They are discarded when streaming package.tar, never copied into npm output.
+  const allowed = requireAnonymousEnvelope ? ['package.tar'] : ['package.tar', '._package.tar'];
+  assert(members.includes('package.tar') && new Set(members).size === members.length && members.every(name => allowed.includes(name)),
+    'Engine transfer must contain only package.tar (and legacy AppleDouble metadata for npm preparation)');
   const owner = run('tar', ['-tvf', archive]).trim();
-  assert(/^-\S+\s+(?:0\/0\s+|\d+\s+0\s+0\s+)/.test(owner), 'Engine transfer ownership must be anonymous');
+  assert(owner.split(/\r?\n/).every(line => line.startsWith('-')), 'Engine transfer members must be regular files');
+  if (requireAnonymousEnvelope)
+    assert(/^-\S+\s+(?:0\/0\s+|\d+\s+0\s+0\s+)/.test(owner), 'Engine transfer ownership must be anonymous');
   mkdirSync(destination, { recursive: true });
   const target = join(destination, record.install.file);
   const descriptor = openSync(target, 'wx', 0o600);

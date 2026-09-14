@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { npmFixture, npmDirectoryFixture } from './archive-fixture.mjs';
+import { appleDoubleFixture, npmFixture, npmDirectoryFixture } from './archive-fixture.mjs';
 import { packEngineArchive, materializeEngineArchive, verifyEngineArchiveRecord } from '../scripts/engine-archive.mjs';
 import { npm, run } from '../scripts/pack-utils.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
@@ -69,4 +69,29 @@ test('XZ envelopes have anonymous ownership and deterministic bytes across pack 
   const file = join(first.work, 'private.tgz');
   writeFileSync(file, npmFixture({ name: first.record.name, version: first.record.version }, {}, { uid: 501, uname: 'private-builder' }));
   assert.throws(() => packEngineArchive(file, first.work, first.record), /ownership/);
+});
+
+test('npm preparation discards legacy outer ownership and AppleDouble but preserves exact inner bytes', t => {
+  const { work, record } = fixture(t);
+  const source = materializeEngineArchive(work, record, join(work, 'original'));
+  writeFileSync(join(work, 'package.tar'), readFileSync(source));
+  writeFileSync(join(work, '._package.tar'), appleDoubleFixture());
+  const ownership = process.platform === 'linux' ? ['--owner=501', '--group=20'] : ['--uid=501', '--gid=20'];
+  run('tar', ['--format=ustar', '--no-xattrs', '--no-acls', ...ownership, '-cJf', join(work, record.file), '-C', work, '._package.tar', 'package.tar'],
+    { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  record.bytes = statSync(join(work, record.file)).size;
+  record.sha256 = sha256(join(work, record.file));
+  assert.throws(() => materializeEngineArchive(work, record, join(work, 'strict')), /only package.tar|ownership/);
+  const tar = materializeEngineArchive(work, record, join(work, 'npm'), { requireAnonymousEnvelope: false });
+  assert.equal(sha256(tar), record.install.sha256);
+  assert.equal(existsSync(join(work, 'npm', '._package.tar')), false);
+  const broken = { ...record, install: { ...record.install, sha256: '0'.repeat(64) } };
+  assert.throws(() => materializeEngineArchive(work, broken, join(work, 'bad-hash'), { requireAnonymousEnvelope: false }), /install tar integrity/);
+  assert.equal(existsSync(join(work, 'bad-hash', record.install.file)), false);
+
+  writeFileSync(join(work, 'extra'), 'unexpected');
+  run('tar', ['-cJf', join(work, record.file), '-C', work, 'package.tar', 'extra']);
+  record.bytes = statSync(join(work, record.file)).size;
+  record.sha256 = sha256(join(work, record.file));
+  assert.throws(() => materializeEngineArchive(work, record, join(work, 'extra'), { requireAnonymousEnvelope: false }), /only package.tar/);
 });

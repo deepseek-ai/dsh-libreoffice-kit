@@ -13,9 +13,11 @@ import { verifyEngineArchiveRecord } from './engine-archive.mjs';
  * Check the candidate against its verification receipts before any upload.
  * @param directory - Release candidate directory.
  * @param env - Workflow environment naming the release tag and source commit.
+ * @param options - Destination determines whether the transfer envelope itself is published.
  * @returns the verified release manifest.
  */
-export function validatePublication(directory, env = process.env) {
+export function validatePublication(directory, env = process.env, { target = 'github' } = {}) {
+  assert(['github', 'npm'].includes(target), 'Unsupported publication target');
   const release = readJson(join(directory, 'release.json'));
   assert(release.schemaVersion === 1, 'Unsupported release manifest');
   assert(release.version === readJson(join(root, 'package.json')).version, 'Release version differs from the engine workspace');
@@ -40,7 +42,7 @@ export function validatePublication(directory, env = process.env) {
     assert(record.wasm?.adapter?.sha256 === adapterSha256 && (platform === 'wasm' || record.native?.adapter?.sha256 === adapterSha256),
       `Verification belongs to different adapter bytes: ${platform}`);
   }
-  auditReleaseCandidate(directory, release);
+  auditReleaseCandidate(directory, release, undefined, { target });
   return release;
 }
 
