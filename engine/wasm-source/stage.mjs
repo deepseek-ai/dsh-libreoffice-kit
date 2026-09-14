@@ -26,8 +26,11 @@ const run = (command, args, options = {}) => {
   return result.stdout;
 };
 const paths = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, resolve(value)]));
+const autogen = readFileSync(join(paths.build, 'autogen.input'), 'utf8');
+const tarballs = autogen.match(/^--with-external-tar=(.+)$/m)?.[1];
+if (!tarballs) throw new Error('The WASM build configuration does not record its external tarball directory.');
 run(process.execPath, [join(owner, 'build.mjs'), '--stage', 'package', '--source', paths.source,
-  '--emsdk', paths.emsdk, '--build', paths.build, '--output', paths.bundle]);
+  '--emsdk', paths.emsdk, '--build', paths.build, '--tarballs', tarballs, '--output', paths.bundle]);
 const published = join(root, 'packages/wasm');
 const destination = mkdtempSync(join(dirname(published), '.wasm-stage-'));
 try {
@@ -51,8 +54,6 @@ try {
   writeFileSync(join(destination, 'sources/core-source.json'), `${JSON.stringify(readCoreSource(), null, 2)}\n`);
   const diff = run('git', ['diff', '--binary', 'HEAD', '--'], { cwd: paths.source, stdio: ['ignore', 'pipe', 'pipe'] });
   writeFileSync(join(destination, 'sources/source-changes.patch'), diff);
-  const autogen = readFileSync(join(paths.build, 'autogen.input'), 'utf8');
-  const tarballs = autogen.match(/^--with-external-tar=(.+)$/m)?.[1];
   writeFileSync(join(destination, 'sources/build-autogen.input'), publicBuildValue(autogen, { workspace: root, ...paths, tarballs }));
   const files = {};
   const visit = prefix => {
