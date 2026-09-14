@@ -104,21 +104,21 @@ test('staging removes developer SDK tools while retaining runtime resources', t 
   assert.ok(existsSync(join(directory, 'program/LibreOfficeDev.app/Contents/Frameworks/libuno.dylib')));
 });
 
-test('staging drops PDF import, desktop integrations, help search and network modules', t => {
+test('staging retains embedded PDF rendering while dropping desktop import and network modules', t => {
   const { directory, put } = fixture(t);
   const contents = 'program/LibreOfficeDev.app/Contents';
   const libraries = `${contents}/Frameworks`;
   const discarded = ['MacOS/xpdfimport', 'Resources/xpdfimport/poppler_data/cMap/data', 'Library/Spotlight/OOo.mdimporter/binary', 'PlugIns/QuickLook.appex/binary',
-    ...['libclucene.dylib', 'libucpchelp1.dylib', 'libhelplinkerlo.dylib', 'libcurl.4.dylib', 'libucpdav1.dylib', 'libucpcmis1lo.dylib', 'libLanguageToollo.dylib', 'libpdfimportlo.dylib', 'libpdfiumlo.dylib', 'libldapbe2lo.dylib'].map(name => `Frameworks/${name}`)];
+    ...['libclucene.dylib', 'libucpchelp1.dylib', 'libhelplinkerlo.dylib', 'libcurl.4.dylib', 'libucpdav1.dylib', 'libucpcmis1lo.dylib', 'libLanguageToollo.dylib', 'libpdfimportlo.dylib', 'libldapbe2lo.dylib'].map(name => `Frameworks/${name}`)];
   for (const file of discarded) put(`${contents}/${file}`);
-  const kept = ['libpdffilterlo.dylib', 'libswlo.dylib', 'libsclo.dylib', 'libsdlo.dylib', 'libucb1.dylib', 'libucpfile1.dylib', 'libsblo.dylib', 'libxmlscriptlo.dylib'];
+  const kept = ['libpdfiumlo.dylib', 'libpdffilterlo.dylib', 'libswlo.dylib', 'libsclo.dylib', 'libsdlo.dylib', 'libucb1.dylib', 'libucpfile1.dylib', 'libsblo.dylib', 'libxmlscriptlo.dylib'];
   for (const name of kept) put(`${libraries}/${name}`);
   pruneNativePayload(directory, 'darwin-arm64', libraries);
   for (const file of discarded) assert.ok(!existsSync(join(directory, contents, file)), file);
   for (const name of kept) assert.ok(existsSync(join(directory, libraries, name)), name);
 });
 
-for (const library of ['libucpdav1.dylib', 'libpdfiumlo.dylib', 'libldapbe2lo.dylib']) test(`staging refuses to prune registered ${library}`, t => {
+for (const library of ['libucpdav1.dylib', 'libldapbe2lo.dylib']) test(`staging refuses to prune registered ${library}`, t => {
   const { directory, put } = fixture(t);
   const contents = 'program/LibreOfficeDev.app/Contents';
   put(`${contents}/Frameworks/${library}`);

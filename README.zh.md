@@ -86,7 +86,7 @@ Node API 与引擎共享 kit 版本。安装使用预先构建的包；安装钩
 
 具体规则由[原生构建配置](engine/native/configure.mjs)、[原生资源裁剪](scripts/slim-native.mjs)、[WASM 构建配置](engine/wasm-source/autogen.input)和 [WASM 资源裁剪](engine/wasm-source/slim.mjs)维护。
 
-Writer、Calc、Impress、OOXML 过滤器、PDF 导出、共享排版与绘图库、图表、ICU 和语言资源仍然保留。原生构建的 `en-US` 选择的是界面资源，并不限制文档只能包含英文。必要的运行时配置和部分 UI 资源也会保留，因为文档服务仍依赖它们。每个引擎包还保留匹配的源码配方、补丁、哈希和许可声明。这些依赖也解释了为什么精简后的文档引擎仍有一定体积。
+Writer、Calc、Impress、OOXML 过滤器、PDF 导出、用于内嵌 PDF/EMF 图形的 PDFium、共享排版与绘图库、图表、ICU 和语言资源仍然保留。原生构建的 `en-US` 选择的是界面资源，并不限制文档只能包含英文。必要的运行时配置和部分 UI 资源也会保留，因为文档服务仍依赖它们。每个引擎包还保留匹配的源码配方、补丁、哈希和许可声明。这些依赖也解释了为什么精简后的文档引擎仍有一定体积。
 
 ### 已记录的体积与保真度验证
 

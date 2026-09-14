@@ -9,7 +9,7 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
     '--disable-debug', '--disable-dbgutil', '--disable-symbols', '--disable-werror',
     '--disable-pch', '--without-java', '--enable-python=no', '--without-doxygen',
     '--without-help', '--without-myspell-dicts', '--without-fonts',
-    '--disable-pdfimport', '--disable-xmlhelp', '--disable-curl', '--without-webdav',
+    '--disable-pdfimport', '--enable-pdfium', '--disable-xmlhelp', '--disable-curl', '--without-webdav',
     '--disable-libcmis', '--disable-breakpad', '--disable-ldap',
     '--disable-opencl', '--disable-opengl', '--disable-odk', '--disable-online-update',
     '--disable-extension-integration', '--disable-dbus', '--disable-cups',

@@ -245,6 +245,8 @@ test('native recipes preserve upstream platform differences', () => {
 test('native conversion builds omit desktop content and interactive document services', () => {
   for (const { prebuild } of packageMatrix().filter(row => row.prebuild.platform !== 'wasm')) {
     const flags = configureFlags(prebuild.platform, '/build/tarballs', 8);
+    assert.ok(flags.includes('--enable-pdfium'), `${prebuild.platform} must render embedded PDF graphics`);
+    assert.ok(flags.includes('--disable-pdfimport'), `${prebuild.platform} omits standalone PDF import`);
     for (const component of ['extensions', 'database-connectivity', 'scripting', 'sdremote', 'sdremote-bluetooth', 'ldap'])
       assert.ok(flags.includes(`--disable-${component}`), `${prebuild.platform} must omit ${component}`);
     for (const content of ['galleries', 'templates', 'theme'])

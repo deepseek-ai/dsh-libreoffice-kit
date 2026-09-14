@@ -1,0 +1,14 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -13213,8 +13213,9 @@
+     AC_MSG_ERROR([Cannot import PDF without either Pdfium or Poppler; please enable either of them.])
+ fi
+ 
+-if test "$ENABLE_PDFIMPORT" != "TRUE" -a \( "$ENABLE_POPPLER" = "TRUE" -o "$ENABLE_PDFIUM" = "TRUE" \); then
+-    AC_MSG_ERROR([Cannot enable Pdfium or Poppler when PDF importing is disabled; please enable PDF import first.])
++# PDFium also renders PDF graphics embedded in OOXML/EMF without the desktop PDF import filters.
++if test "$ENABLE_PDFIMPORT" != "TRUE" -a "$ENABLE_POPPLER" = "TRUE"; then
++    AC_MSG_ERROR([Cannot enable Poppler when PDF importing is disabled; please enable PDF import first.])
+ fi
+ 
+ if test "$ENABLE_PDFIMPORT" = "TRUE" -a "$ENABLE_POPPLER" = "TRUE"; then

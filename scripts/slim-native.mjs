@@ -66,7 +66,7 @@ export function pruneNativePayload(directory, platform, programDirectory) {
     for (const name of readdirSync(join(directory, resources)).sort())
       if (/\.icns$|^intro(?:-highres)?\.png$/.test(name)) remove(`${resources}/${name}`);
   }
-  const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|pdfiumlo|ldapbe2lo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
+  const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|ldapbe2lo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
   const services = join(directory, programResources, 'services/services.rdb');
   for (const name of readdirSync(join(directory, programDirectory)).sort()) {
     if (!excludedLibraries.test(name)) continue;

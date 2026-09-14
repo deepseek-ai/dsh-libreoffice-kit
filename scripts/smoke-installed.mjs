@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { zipSync, strToU8 } from 'fflate';
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
+import { embeddedPdfDocumentParts } from './runtime-embedded-pdf-fixture.mjs';
 
 const parts = {
   '[Content_Types].xml': '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
@@ -24,12 +25,14 @@ const server = createServer((_request, response) => {
 });
 try {
   assert.equal(converter.backend, process.argv[2]);
+  console.log(`Installed ${converter.backend}: DOCX conversion`);
   const result = await converter.render({ inputPath, outputPath });
   const pdf = await readFile(outputPath);
   assert.equal(pdf.subarray(0, 5).toString('ascii'), '%PDF-');
   assert.match(pdf.subarray(-2048).toString('latin1'), /%%EOF/);
   const formats = { docx: { backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts } };
   for (const [extension, fixture] of [['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
+    console.log(`Installed ${converter.backend}: ${extension.toUpperCase()} conversion`);
     const formatOutput = resolve(`roundtrip.${extension}.pdf`);
     const converted = await converter.render({ inputPath: resolve('fixtures', fixture), outputPath: formatOutput });
     const bytes = await readFile(formatOutput);
@@ -39,19 +42,29 @@ try {
     assert.ok(bytes.length > 100, `${extension} PDF is empty`);
     formats[extension] = { backend: converted.backend, pdfBytes: bytes.length, missingFonts: converted.missingFonts };
   }
+  const embeddedInput = resolve('embedded-pdf.docx');
+  console.log(`Installed ${converter.backend}: embedded PDF-in-EMF conversion`);
+  const embeddedOutput = resolve('embedded-pdf.pdf');
+  await writeFile(embeddedInput, zipSync(Object.fromEntries(Object.entries(embeddedPdfDocumentParts())
+    .map(([name, value]) => [name, typeof value === 'string' ? strToU8(value) : value]))));
+  await converter.render({ inputPath: embeddedInput, outputPath: embeddedOutput });
+  const embeddedPdf = await readFile(embeddedOutput);
+  assert.match(embeddedPdf.toString('latin1'), /\/Subtype\s*\/Image\b/, 'Embedded PDF-in-EMF graphic disappeared from the exported document');
+  const embeddedGraphics = { pdfInEmf: true, pdfBytes: embeddedPdf.length };
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const url = `http://127.0.0.1:${server.address().port}/linked-image.png`;
   await (await fetch(url)).arrayBuffer();
   assert.equal(requests, 1, 'External resource sentinel did not observe its positive control');
   requests = 0;
   const externalParts = linkedDocumentParts(`http://127.0.0.1:${server.address().port}`);
+  console.log(`Installed ${converter.backend}: blocked external resource conversion`);
   const externalInput = resolve('external.docx');
   const externalOutput = resolve('external.pdf');
   await writeFile(externalInput, zipSync(Object.fromEntries(Object.entries(externalParts).map(([name, value]) => [name, strToU8(value)]))));
   await converter.render({ inputPath: externalInput, outputPath: externalOutput });
   assert.equal((await readFile(externalOutput)).subarray(0, 5).toString('ascii'), '%PDF-');
   assert.equal(requests, 0, 'Document conversion fetched an external HTTP image');
-  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats })}\n`);
+  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, embeddedGraphics })}\n`);
 } finally {
   await converter.dispose();
   if (server.listening) {

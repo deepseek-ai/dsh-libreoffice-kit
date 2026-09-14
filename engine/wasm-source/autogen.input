@@ -17,6 +17,7 @@
 --disable-opencl
 --disable-opengl
 --disable-skia
+--enable-pdfium
 --without-doxygen
 --without-help
 --without-myspell-dicts

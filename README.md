@@ -86,7 +86,7 @@ The `0.0.1` recipes reduce build components, installed resources, and transfer s
 
 The authoritative recipes are [native configuration](engine/native/configure.mjs), [native payload pruning](scripts/slim-native.mjs), [WASM configuration](engine/wasm-source/autogen.input), and [WASM resource pruning](engine/wasm-source/slim.mjs).
 
-Writer, Calc, Impress, OOXML filters, PDF export, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
+Writer, Calc, Impress, OOXML filters, PDF export, PDFium for embedded PDF/EMF graphics, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
 
 ### Recorded size and fidelity checks
 

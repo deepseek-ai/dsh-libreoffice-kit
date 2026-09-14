@@ -51,7 +51,7 @@ function fixture(t, platforms = releaseTargets([])) {
   const adapter = { sha256: sha256(join(directory, adapterFile)) };
   const evidence = { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, platforms: platforms.map(platform => ({
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: true, passed: true,
-    wasm: { adapter }, ...(platform === 'wasm' ? {} : { native: { adapter } }),
+    wasm: { adapter, embeddedGraphics: { pdfInEmf: true } }, ...(platform === 'wasm' ? {} : { native: { adapter, embeddedGraphics: { pdfInEmf: true } } }),
   })) };
   save('verification.json', evidence);
   return { directory, release, evidence, env, save };
@@ -66,6 +66,13 @@ test('publication rejects adapter bytes changed after the conversion receipts', 
   const { directory, env } = fixture(t);
   writeFileSync(join(directory, tarballName(kitManifest())), 'different adapter archive');
   assert.throws(() => validatePublication(directory, env), /different adapter bytes/);
+});
+
+test('publication requires embedded graphics evidence from every installed engine', t => {
+  const { directory, env, evidence, save } = fixture(t);
+  delete evidence.platforms[0].native.embeddedGraphics;
+  save('verification.json', evidence);
+  assert.throws(() => validatePublication(directory, env), /Missing embedded PDF graphic/);
 });
 
 test('publication rejects partial, duplicate and undeclared development targets', t => {

@@ -41,6 +41,8 @@ export function validatePublication(directory, env = process.env, { target = 'gi
       `Missing native/WASM installed conversion evidence: ${platform}`);
     assert(record.wasm?.adapter?.sha256 === adapterSha256 && (platform === 'wasm' || record.native?.adapter?.sha256 === adapterSha256),
       `Verification belongs to different adapter bytes: ${platform}`);
+    assert(record.wasm?.embeddedGraphics?.pdfInEmf === true && (platform === 'wasm' || record.native?.embeddedGraphics?.pdfInEmf === true),
+      `Missing embedded PDF graphic conversion evidence: ${platform}`);
   }
   auditReleaseCandidate(directory, release, undefined, { target });
   return release;
