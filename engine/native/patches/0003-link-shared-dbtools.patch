@@ -1,0 +1,73 @@
+Core builds dbtools even when database connectivity and its drivers are disabled.
+Writer and form controls still use its parser, column formatting and data-source
+helpers. Keep their shared utility dependency independent of driver selection.
+
+diff --git a/forms/Library_frm.mk b/forms/Library_frm.mk
+index 7b850fce1..d0726de5b 100644
+--- a/forms/Library_frm.mk
++++ b/forms/Library_frm.mk
+@@ -28,7 +28,7 @@ $(eval $(call gb_Library_use_libraries,frm,\
+     comphelper \
+     cppu \
+     cppuhelper \
+-    $(call gb_Helper_optional,DBCONNECTIVITY,dbtools) \
++    dbtools \
+     editeng \
+     i18nlangtag \
+     sal \
+diff --git a/svx/Library_svx.mk b/svx/Library_svx.mk
+index 592488a1f..96d453a86 100644
+--- a/svx/Library_svx.mk
++++ b/svx/Library_svx.mk
+@@ -53,8 +53,7 @@ $(eval $(call gb_Library_use_libraries,svx,\
+     cppu \
+     $(call gb_Helper_optional,BREAKPAD, \
+ 		crashreport) \
+-    $(call gb_Helper_optional,DBCONNECTIVITY, \
+-        dbtools) \
++    dbtools \
+     docmodel \
+     drawinglayercore \
+     drawinglayer \
+diff --git a/svx/Library_svxcore.mk b/svx/Library_svxcore.mk
+index 22d5e9b56..2221cec02 100644
+--- a/svx/Library_svxcore.mk
++++ b/svx/Library_svxcore.mk
+@@ -60,8 +60,7 @@ $(eval $(call gb_Library_use_libraries,svxcore,\
+     comphelper \
+     cppuhelper \
+     cppu \
+-    $(call gb_Helper_optional,DBCONNECTIVITY, \
+-        dbtools) \
++    dbtools \
+     docmodel \
+     drawinglayercore \
+     drawinglayer \
+diff --git a/sw/Library_sw.mk b/sw/Library_sw.mk
+index eb53c7c75..9efe3c535 100644
+--- a/sw/Library_sw.mk
++++ b/sw/Library_sw.mk
+@@ -60,8 +60,7 @@ $(eval $(call gb_Library_use_libraries,sw,\
+     comphelper \
+     cppu \
+     cppuhelper \
+-    $(call gb_Helper_optional,DBCONNECTIVITY, \
+-        dbtools) \
++    dbtools \
+     docmodel \
+     drawinglayercore \
+     drawinglayer \
+diff --git a/sw/Library_swui.mk b/sw/Library_swui.mk
+index ce5ba5b1b..83710dec4 100644
+--- a/sw/Library_swui.mk
++++ b/sw/Library_swui.mk
+@@ -57,8 +57,7 @@ $(eval $(call gb_Library_use_libraries,swui,\
+     comphelper \
+     cppu \
+     cppuhelper \
+-    $(call gb_Helper_optional,DBCONNECTIVITY, \
+-        dbtools) \
++    dbtools \
+     editeng \
+     i18nlangtag \
+     i18nutil \

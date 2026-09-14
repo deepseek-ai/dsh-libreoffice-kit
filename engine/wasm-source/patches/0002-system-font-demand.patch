@@ -1,0 +1,240 @@
+diff --git a/vcl/inc/font/PhysicalFontCollection.hxx b/vcl/inc/font/PhysicalFontCollection.hxx
+index b5509b8f6..6a202fd5c 100644
+--- a/vcl/inc/font/PhysicalFontCollection.hxx
++++ b/vcl/inc/font/PhysicalFontCollection.hxx
+@@ -29,6 +29,9 @@
+ 
+ #include <array>
+ #include <string_view>
++#if defined __EMSCRIPTEN__
++#include <unordered_set>
++#endif
+ 
+ #define MAX_GLYPHFALLBACK 16
+ 
+@@ -81,6 +84,10 @@ public:
+     SAL_DLLPRIVATE std::unique_ptr<vcl::font::PhysicalFontFaceCollection> GetFontFaceCollection() const;
+ 
+ private:
++#if defined __EMSCRIPTEN__
++    mutable std::unordered_set<OUString> maDemandFontFiles;
++    bool EnsureSystemFonts(const vcl::font::FontSelectPattern&, const OUString& rMissingCodes) const;
++#endif
+     mutable bool            mbMatchData;    // true if matching attributes are initialized
+ 
+     typedef std::unordered_map<OUString, std::unique_ptr<vcl::font::PhysicalFontFamily>> PhysicalFontFamilies;
+diff --git a/vcl/inc/unx/freetypetextrender.hxx b/vcl/inc/unx/freetypetextrender.hxx
+index e3bba325c..4b0a1d624 100644
+--- a/vcl/inc/unx/freetypetextrender.hxx
++++ b/vcl/inc/unx/freetypetextrender.hxx
+@@ -49,6 +49,9 @@ public:
+     virtual bool                AddTempDevFont( vcl::font::PhysicalFontCollection*, const OUString& rFileURL, const OUString& rFontName ) override;
+     virtual bool                RemoveTempDevFont( const OUString& rFileURL, const OUString& rFontName ) override;
+ 
++    static bool RegisterFontFile(vcl::font::PhysicalFontCollection*, const OUString& rFileURL,
++                                 const OUString& rFontName);
++
+     virtual std::unique_ptr<GenericSalLayout>
+                                 GetTextLayout(int nFallbackLevel) override;
+ };
+diff --git a/vcl/source/font/PhysicalFontCollection.cxx b/vcl/source/font/PhysicalFontCollection.cxx
+index 5ce7a60cb..4c782a626 100644
+--- a/vcl/source/font/PhysicalFontCollection.cxx
++++ b/vcl/source/font/PhysicalFontCollection.cxx
+@@ -31,6 +31,14 @@
+ #include <font/PhysicalFontCollection.hxx>
+ #include <font/fontsubstitution.hxx>
+ 
++#if defined __EMSCRIPTEN__
++#include <cstdlib>
++#include <stdexcept>
++#include <emscripten.h>
++#include <osl/file.hxx>
++#include <unx/freetypetextrender.hxx>
++#endif
++
+ static ImplFontAttrs lcl_IsCJKFont( std::u16string_view rFontName )
+ {
+     // Test, if Fontname includes CJK characters --> In this case we
+@@ -68,6 +76,94 @@ static ImplFontAttrs lcl_IsCJKFont( std::u16string_view rFontName )
+ namespace vcl::font
+ {
+ 
++#if defined __EMSCRIPTEN__
++bool PhysicalFontCollection::EnsureSystemFonts(const FontSelectPattern& rPattern,
++                                                const OUString& rMissingCodes) const
++{
++    const OUString aLanguage = LanguageTag(rPattern.meLanguage).getBcp47();
++    char aError[4096] = {};
++    int nFatal = 0;
++    // The resolver runs on the runtime's JS thread, including when layout runs in a pthread.
++    // It may read host files and write MEMFS, but must not reenter LibreOffice.
++    auto* pPaths = static_cast<char*>(MAIN_THREAD_EM_ASM_PTR({
++        try {
++            const resolver = Module['dshResolveSystemFonts'];
++            if (typeof resolver !== 'function')
++                throw new Error('LibreOffice system font resolver is not configured');
++            const paths = resolver({
++                family: UTF16ToString($0),
++                style: UTF16ToString($1),
++                weight: $2,
++                italic: $3,
++                width: $4,
++                pitch: $5,
++                language: UTF16ToString($6),
++                codePoints: Array.from(UTF16ToString($7), char => char.codePointAt(0))
++            });
++            if (!Array.isArray(paths) || paths.some(path =>
++                typeof path !== 'string' || !path.startsWith('/') || [0, 10, 13].some(code =>
++                    path.includes(String.fromCharCode(code)))))
++                throw new TypeError('LibreOffice system font resolver must return MEMFS paths synchronously');
++            if (paths.length === 0)
++                return 0;
++            const bytes = new TextEncoder().encode(paths.join(String.fromCharCode(10)) + String.fromCharCode(0));
++            const pointer = Module['_malloc'](bytes.length);
++            if (!pointer)
++                throw new Error('LibreOffice system font response allocation failed');
++            HEAPU8.set(bytes, pointer);
++            return pointer;
++        } catch (error) {
++            if (error instanceof WebAssembly.RuntimeError) {
++                if (typeof Module['onAbort'] === 'function')
++                    Module['onAbort'](error);
++                HEAP32[$10 >> 2] = 1;
++                return 0;
++            }
++            stringToUTF8('LibreOffice system font callback failed: ' + String(error), $8, $9);
++            return 0;
++        }
++    }, rPattern.GetFamilyName().getStr(), rPattern.GetStyleName().getStr(),
++       static_cast<int>(rPattern.GetWeight()), static_cast<int>(rPattern.GetItalic()),
++       static_cast<int>(rPattern.GetWidthType()), static_cast<int>(rPattern.GetPitch()),
++       aLanguage.getStr(), rMissingCodes.getStr(), aError, sizeof(aError), &nFatal));
++    // WASM traps bypass C++ unwinding; an aborted engine cannot safely allocate an exception.
++    if (nFatal)
++        __builtin_trap();
++    // EM_ASM imports are nothrow; construct the C++ exception only after returning from JS.
++    if (aError[0] != '\0')
++        throw std::runtime_error(aError);
++    std::unique_ptr<char, decltype(&std::free)> aOwnedPaths(pPaths, std::free);
++    if (!pPaths)
++        return false;
++
++    bool bAdded = false;
++    const OUString aPaths = OUString::fromUtf8(pPaths);
++    sal_Int32 nPosition = 0;
++    do
++    {
++        const OUString aPath = aPaths.getToken(0, '\n', nPosition);
++        if (maDemandFontFiles.find(aPath) != maDemandFontFiles.end())
++            continue;
++        OUString aFileURL;
++        if (osl::FileBase::getFileURLFromSystemPath(aPath, aFileURL) != osl::FileBase::E_None
++            || !FreeTypeTextRenderImpl::RegisterFontFile(
++                const_cast<PhysicalFontCollection*>(this), aFileURL, OUString()))
++            throw std::runtime_error("LibreOffice could not register a supplied system font");
++        maDemandFontFiles.insert(aPath);
++        bAdded = true;
++    } while (nPosition >= 0);
++
++    if (bAdded)
++    {
++        // Active layout objects keep their font faces; only derived matching data becomes stale.
++        mbMatchData = false;
++        mpFallbackList.reset();
++        mnFallbackCount = -1;
++    }
++    return bAdded;
++}
++#endif
++
+ PhysicalFontCollection::PhysicalFontCollection()
+     : mbMatchData( false )
+     , mpPreMatchHook( nullptr )
+@@ -92,6 +188,9 @@ void PhysicalFontCollection::SetFallbackHook(GlyphFallbackFontSubstitution* pHoo
+ 
+ void PhysicalFontCollection::Clear()
+ {
++#if defined __EMSCRIPTEN__
++    maDemandFontFiles.clear();
++#endif
+     // remove fallback lists
+     mpFallbackList.reset();
+     mnFallbackCount = -1;
+@@ -185,6 +284,21 @@ PhysicalFontFamily* PhysicalFontCollection::GetGlyphFallbackFont(FontSelectPatte
+                                                                  OUString& rMissingCodes,
+                                                                  int nFallbackLevel) const
+ {
++#if defined __EMSCRIPTEN__
++    if (EnsureSystemFonts(rFontSelData, rMissingCodes))
++    {
++        for (sal_Int32 nIndex = 0; nIndex < rMissingCodes.getLength();)
++        {
++            const sal_UCS4 nCode = rMissingCodes.iterateCodePoints(&nIndex);
++            OUString aFamily;
++            bool bEmbolden;
++            ItalicMatrix aMatrix;
++            if (pFontInstance->GetFallbackForUnicode(nCode, rFontSelData.GetWeight(),
++                                                    &aFamily, &bEmbolden, &aMatrix))
++                pFontInstance->IgnoreFallbackForUnicode(nCode, rFontSelData.GetWeight(), aFamily);
++        }
++    }
++#endif
+     PhysicalFontFamily* pFallbackData = nullptr;
+ 
+     // find a matching font candidate for platform specific glyph fallback
+@@ -1008,6 +1122,9 @@ static bool FindMetricCompatibleFont_impl(FontSelectPattern& rFontSelData)
+ 
+ PhysicalFontFamily* PhysicalFontCollection::FindFontFamily(FontSelectPattern& rFSD) const
+ {
++#if defined __EMSCRIPTEN__
++    EnsureSystemFonts(rFSD, OUString());
++#endif
+     // give up if no fonts are available
+     if( !Count() )
+         return nullptr;
+diff --git a/vcl/source/outdev/font.cxx b/vcl/source/outdev/font.cxx
+index 8a71a2ef0..bdc2dbacf 100644
+--- a/vcl/source/outdev/font.cxx
++++ b/vcl/source/outdev/font.cxx
+@@ -50,6 +50,7 @@
+ #include <font/PhysicalFontFaceCollection.hxx>
+ #include <font/PhysicalFontCollection.hxx>
+ #include <font/FeatureCollector.hxx>
++#include <font/FontSelectPattern.hxx>
+ #include <impglyphitem.hxx>
+ #include <sallayout.hxx>
+ #include <salgdi.hxx>
+@@ -650,6 +651,15 @@ void OutputDevice::ImplInitFontList() const
+     SAL_INFO( "vcl.gdi", "OutputDevice::ImplInitFontList()" );
+     mpGraphics->GetDevFontList(mxFontCollection.get());
+ 
++#ifdef __EMSCRIPTEN__
++    if (!mxFontCollection->Count())
++    {
++        vcl::font::FontSelectPattern aPattern(maFont, maFont.GetFamilyName(), maFont.GetFontSize(),
++                                            static_cast<float>(maFont.GetFontSize().Height()));
++        mxFontCollection->FindFontFamily(aPattern);
++    }
++#endif
++
+     // There is absolutely no way there should be no fonts available on the device
+     if( !mxFontCollection->Count() )
+     {
+diff --git a/vcl/unx/generic/gdi/freetypetextrender.cxx b/vcl/unx/generic/gdi/freetypetextrender.cxx
+index 2af043a48..4786ce5cc 100644
+--- a/vcl/unx/generic/gdi/freetypetextrender.cxx
++++ b/vcl/unx/generic/gdi/freetypetextrender.cxx
+@@ -95,6 +95,12 @@ FreeTypeTextRenderImpl::SetTextColor( Color nColor )
+ 
+ bool FreeTypeTextRenderImpl::AddTempDevFont(vcl::font::PhysicalFontCollection* pFontCollection,
+                                             const OUString& rFileURL, const OUString& rFontName)
++{
++    return RegisterFontFile(pFontCollection, rFileURL, rFontName);
++}
++
++bool FreeTypeTextRenderImpl::RegisterFontFile(vcl::font::PhysicalFontCollection* pFontCollection,
++                                             const OUString& rFileURL, const OUString& rFontName)
+ {
+     // inform PSP font manager
+     psp::PrintFontManager& rMgr = psp::PrintFontManager::get();

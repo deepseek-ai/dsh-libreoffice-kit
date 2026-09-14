@@ -1,0 +1,38 @@
+{
+  "name": "@deepseek-ai/dsh-libreoffice-kit-win32-x64",
+  "version": "0.1.1",
+  "type": "module",
+  "license": "MPL-2.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",
+    "directory": "packages/win32-x64"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Prebuilt LibreOfficeKit engine for win32-x64",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "exports": {
+    "./prebuilds.json": "./prebuilds.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "prebuilds.json",
+    "bin/",
+    "program/",
+    "sources/",
+    "licenses/"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/verify-artifacts.mjs ."
+  }
+}

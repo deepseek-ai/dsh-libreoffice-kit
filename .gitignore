@@ -1,0 +1,27 @@
+# Payload directories and build output ride npm tarballs via each package's
+# `files` list, never git. These rules stay at this level on purpose: a
+# package-nested ignore file would also steer `pnpm pack` and has silently
+# dropped payload from tarballs before.
+.build/
+.build-python/
+.cache/
+.release/
+dist/
+packages/*/assets/
+packages/*/bin/
+packages/*/program/
+packages/*/sources/
+packages/*/licenses/
+
+# Downloaded LibreOffice source checkouts and reference material.
+engine/reference/
+engine/browser-reference/
+
+# `npm pack` runs inside staged directories; never let it record a lockfile.
+package-lock.json
+*.log
+
+node_modules/
+packages/entry/lib/
+*.tsbuildinfo
+coverage/

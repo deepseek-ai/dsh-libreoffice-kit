@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.1",
+  "platform": "darwin-x64",
+  "status": "unbuilt",
+  "engine": {
+    "kind": "native",
+    "executable": "bin/libreoffice-kit",
+    "programDirectory": "program"
+  },
+  "files": {},
+  "source": null,
+  "licenses": []
+}

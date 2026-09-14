@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.1",
+  "platform": "wasm",
+  "status": "unbuilt",
+  "engine": {
+    "kind": "wasm",
+    "loader": "assets/soffice.cjs",
+    "wasm": "assets/soffice.wasm",
+    "data": "assets/soffice.data",
+    "metadata": "assets/soffice.data.js.metadata",
+    "programDirectory": "/instdir/program"
+  },
+  "files": {},
+  "source": null,
+  "licenses": []
+}

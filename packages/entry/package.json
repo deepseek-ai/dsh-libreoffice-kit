@@ -1,0 +1,42 @@
+{
+  "name": "@deepseek-ai/dsh-libreoffice-kit",
+  "description": "Convert on-disk OOXML documents to PDF with prebuilt macOS ARM64 or Node WASM LibreOffice",
+  "version": "0.1.5-rc.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",
+    "directory": "packages/entry"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/worker.js",
+    "NOTICE",
+    "lib/types/**/*.d.ts"
+  ],
+  "dependencies": {
+    "@deepseek-ai/dsh-libreoffice-kit-wasm": "workspace:*",
+    "fflate": "0.8.2",
+    "fontkit": "2.0.4",
+    "saxes": "6.0.0"
+  },
+  "optionalDependencies": {
+    "@deepseek-ai/dsh-libreoffice-kit-darwin-arm64": "workspace:*"
+  }
+}
