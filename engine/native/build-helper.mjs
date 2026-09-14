@@ -14,7 +14,8 @@ export function buildHelper({ platform, core, executable, cwd, env = process.env
   const args = windows
     ? ['/nologo', '/std:c++17', '/EHsc', '/MD', '/DNOMINMAX', `/I${join(core, 'include')}`, join(repo, 'engine/native/worker.cxx'), `/Fe:${executable}`, 'gdi32.lib']
     : ['-std=c++17', '-O2', `-I${join(core, 'include')}`, join(repo, 'engine/native/worker.cxx'), '-o', executable,
-      ...(platform.startsWith('darwin-') ? ['-mmacosx-version-min=11.0', '-framework', 'CoreFoundation', '-framework', 'CoreText'] : ['-ldl'])];
+      ...(platform.startsWith('darwin-') ? ['-arch', platform === 'darwin-x64' ? 'x86_64' : 'arm64',
+        '-mmacosx-version-min=11.0', '-framework', 'CoreFoundation', '-framework', 'CoreText'] : ['-ldl'])];
   const paths = { workspace: repo, source: core, build: cwd };
   args.unshift(...buildPathFlags(platform, paths));
   const result = spawnSync(command, args, { cwd, env, stdio: 'inherit' });

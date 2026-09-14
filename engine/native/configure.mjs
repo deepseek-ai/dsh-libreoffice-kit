@@ -3,7 +3,7 @@ import { readCoreSource } from '../core-source.mjs';
 import { buildVendor } from '../build-identity.mjs';
 export const source = readCoreSource();
 
-export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022') {
+export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022', crossCompile = false) {
   const flags = [
     `--with-vendor=${buildVendor}`,
     '--disable-debug', '--disable-dbgutil', '--disable-symbols', '--disable-werror',
@@ -26,6 +26,11 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
     '--without-gssapi', '--without-system-cairo', '--without-system-fontconfig', '--without-system-freetype', '--without-system-harfbuzz', '--without-system-graphite');
   // Core's configure rejects --disable-gui on macOS and Windows; LOK initializes headless itself.
   if (platform.startsWith('darwin-')) flags.push('--enable-bogus-pkg-config');
+  if (crossCompile && platform.startsWith('darwin-')) {
+    if (platform !== 'darwin-x64') throw new Error('macOS cross-compilation supports only ARM64 to x64');
+    flags.push('--build=aarch64-apple-darwin', '--host=x86_64-apple-darwin',
+      '--with-build-platform-configure-options=--enable-bogus-pkg-config --enable-python=no --without-lxml --without-doxygen --disable-odk --disable-werror --disable-debug --disable-symbols --enable-skia');
+  }
   if (platform.startsWith('win32-')) {
     if (!['2022', '2026'].includes(visualStudio)) throw new Error('LIBREOFFICE_KIT_VISUAL_STUDIO must be 2022 or 2026');
     flags.push(`--host=${platform.endsWith('arm64') ? 'aarch64' : 'x86_64'}-pc-cygwin`,
@@ -44,7 +49,8 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
 export function verifyConfigureInput(platform, flags) {
   if (!Array.isArray(flags) || !flags.every(flag => typeof flag === 'string')) throw new Error('Core configure receipt must contain argument strings');
   const visualStudio = flags.find(flag => flag.startsWith('--with-visual-studio='))?.split('=')[1];
-  const expected = configureFlags(platform, '', '', visualStudio);
+  const crossCompile = platform === 'darwin-x64' && flags.includes('--build=aarch64-apple-darwin');
+  const expected = configureFlags(platform, '', '', visualStudio, crossCompile);
   const components = values => values.filter(flag => !/^--with-(external-tar|parallelism)=/.test(flag));
   if (JSON.stringify(components(flags)) !== JSON.stringify(components(expected)))
     throw new Error('Core configure input differs from the current recipe; rebuild Core without --resume');

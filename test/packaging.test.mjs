@@ -264,4 +264,11 @@ test('configure receipts reject stale or overridden components while allowing bu
   }
   assert.throws(() => verifyConfigureInput('darwin-arm64', null), /argument strings/);
   assert.throws(() => configureFlags('win32-x64', '/cache', 8, '2019'), /2022 or 2026/);
+  const cross = configureFlags('darwin-x64', '/cache', 15, undefined, true);
+  assert.ok(cross.includes('--build=aarch64-apple-darwin'));
+  assert.ok(cross.includes('--host=x86_64-apple-darwin'));
+  assert.doesNotThrow(() => verifyConfigureInput('darwin-x64', cross));
+  assert.throws(() => verifyConfigureInput('darwin-x64', cross.filter(flag => !flag.startsWith('--host='))), /rebuild Core/);
+  assert.throws(() => verifyConfigureInput('darwin-arm64', cross), /rebuild Core/);
+  assert.throws(() => configureFlags('darwin-arm64', '/cache', 15, undefined, true), /only ARM64 to x64/);
 });

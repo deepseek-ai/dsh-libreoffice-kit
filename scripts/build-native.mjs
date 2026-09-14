@@ -44,7 +44,7 @@ function shellPath(file) {
   if (result.status !== 0) throw new Error('Cygwin cygpath is required for the Windows Core build');
   return result.stdout.trim();
 }
-const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO);
+const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO, crossCompile);
 if (args.includes('--resume')) verifyConfigureInput(platform, readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n'));
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
@@ -59,7 +59,7 @@ if (process.platform === 'win32') {
   // Keep MSVC's linker ahead of Cygwin's unrelated link.exe utility.
   buildEnvironment[pathKey] = [dirname(make), dirname(compiler.stdout.trim().split(/\r?\n/)[0]), join(cygwin, 'bin'), buildEnvironment[pathKey]].join(';');
 }
-const identity = buildIdentity(platform, identityPaths, buildEnvironment);
+const identity = { ...buildIdentity(platform, identityPaths, buildEnvironment), ...(crossCompile ? { crossCompile: true } : {}) };
 const identityFile = join(build, 'dsh-build-identity.json');
 if (args.includes('--resume') || existsSync(join(build, 'config_host.mk'))) {
   if (!existsSync(identityFile) || JSON.stringify(JSON.parse(readFileSync(identityFile, 'utf8'))) !== JSON.stringify(identity))
