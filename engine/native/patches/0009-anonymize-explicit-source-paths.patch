@@ -1,0 +1,39 @@
+diff --git a/sal/Library_sal.mk b/sal/Library_sal.mk
+--- a/sal/Library_sal.mk
++++ b/sal/Library_sal.mk
+@@ -32,7 +32,7 @@
+ 	-DSAL_DLLIMPLEMENTATION \
+ 	-DRTL_OS="\"$(RTL_OS)\"" \
+ 	-DRTL_ARCH="\"$(RTL_ARCH)\"" \
+-	-DSRCDIR="\"$(SRCDIR)\"" \
++	-DSRCDIR="\"/build/libreoffice-kit/source\"" \
+     $(call gb_CondLibSalTextenc,-DCOND_LIB_SAL_TEXTENC) \
+ ))
+ 
+diff --git a/vcl/source/image/ImplImageTree.cxx b/vcl/source/image/ImplImageTree.cxx
+--- a/vcl/source/image/ImplImageTree.cxx
++++ b/vcl/source/image/ImplImageTree.cxx
+@@ -499,9 +499,9 @@
+     if (isVclDemo())
+     {
+         if (maCurrentStyle == "default")
+-            sThemeUrl = "file://" SRC_ROOT "/icon-themes/colibre-svg";
++            sThemeUrl = "file:///build/libreoffice-kit/source/icon-themes/colibre-svg";
+         else
+-            sThemeUrl = "file://" SRC_ROOT "/icon-themes/" + maCurrentStyle;
++            sThemeUrl = "file:///build/libreoffice-kit/source/icon-themes/" + maCurrentStyle;
+     }
+     else if (maCurrentStyle != "default")
+     {
+diff --git a/external/libcdr/ExternalProject_libcdr.mk b/external/libcdr/ExternalProject_libcdr.mk
+--- a/external/libcdr/ExternalProject_libcdr.mk
++++ b/external/libcdr/ExternalProject_libcdr.mk
+@@ -38,7 +38,7 @@
+ 			--disable-weffc \
+ 			$(if $(gb_FULLDEPS),,--disable-dependency-tracking) \
+ 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+-			CXXFLAGS="$(gb_CXXFLAGS) $(call gb_ExternalProject_get_build_flags,libcdr)" \
++			CXXFLAGS="$(CXXFLAGS) $(gb_CXXFLAGS) $(call gb_ExternalProject_get_build_flags,libcdr)" \
+ 			CPPFLAGS="$(CPPFLAGS) $(BOOST_CPPFLAGS)" \
+ 			LDFLAGS="$(call gb_ExternalProject_get_link_flags,libcdr)" \
+ 			$(gb_CONFIGURE_PLATFORMS) \
