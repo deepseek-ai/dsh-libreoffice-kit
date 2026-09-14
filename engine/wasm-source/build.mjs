@@ -8,11 +8,12 @@ import { availableParallelism } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { readWasmSource } from './source.mjs';
 
 const owner = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(owner, '../..');
 const cache = path.join(repository, '.build/wasm');
-const pinned = JSON.parse(readFileSync(path.join(owner, 'source.json'), 'utf8'));
+const pinned = readWasmSource();
 const stages = ['prepare', 'verify', 'configure', 'compile', 'build', 'package'];
 const { values } = parseArgs({
   options: {
@@ -145,7 +146,7 @@ function configure() {
 
 function buildInputs() {
   return {
-    source: JSON.parse(readFileSync(path.join(owner, 'source.json'), 'utf8')),
+    source: readWasmSource(),
     recipe: hashFile(path.join(owner, 'autogen.input')),
     configuration: hashFile(path.join(build, 'autogen.input')),
     hostConfiguration: hashFile(path.join(build, 'config_host.mk')),

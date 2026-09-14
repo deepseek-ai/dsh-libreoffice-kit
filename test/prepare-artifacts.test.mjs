@@ -51,7 +51,9 @@ function fixture(t, platform = 'darwin-arm64') {
   const repo = join(work, 'repo');
   const directory = join(work, 'package');
   mkdirSync(directory);
-  cpSync(join(root, 'engine'), join(repo, 'engine'), { recursive: true, filter: file => !file.includes('/reference/') });
+  cpSync(join(root, 'engine'), join(repo, 'engine'), { recursive: true,
+    filter: file => file !== join(root, 'engine/core') && !file.includes('/reference/') });
+  writeFileSync(join(repo, 'core-source.json'), JSON.stringify(source));
   mkdirSync(join(repo, 'scripts'));
   for (const file of ['stage-native.mjs', 'slim-native.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
   writeFileSync(join(repo, 'package.json'), JSON.stringify(readJson(join(root, 'package.json'))));
@@ -87,14 +89,14 @@ function fixture(t, platform = 'darwin-arm64') {
   prebuild.licenses = [{ component: 'LibreOffice', spdx: 'MPL-2.0', path: 'licenses/MPL.txt' }];
   const wasm = platform === 'wasm';
   const files = wasm
-    ? ['source.json', 'autogen.input', 'lok.cxx', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)]
-    : ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
-  for (const file of files) put(`sources/${file}`, readFileSync(join(root, wasm ? 'engine/wasm-source' : '', file)));
+    ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
+    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
+  for (const file of files) put(`sources/${file}`, readFileSync(join(root, file)));
+  put('sources/core-source.json', JSON.stringify(source));
   if (!wasm) {
     put('sources/core.json', JSON.stringify({ configure: configureFlags(platform, '/tarballs', 8) }));
   }
-  const pinned = wasm ? readJson(join(root, 'engine/wasm-source/source.json')).libreoffice : source;
-  prebuild.source = { ...pinned, revision: pinned.commit ?? pinned.revision, version: '26.8.0.3', files: files.map(file => `sources/${file}`) };
+  prebuild.source = { ...source, version: '26.8.0.3', files: ['sources/core-source.json', ...files.map(file => `sources/${file}`)] };
   writeFileSync(join(directory, 'prebuilds.json'), JSON.stringify(prebuild));
   const archive = join(work, 'engine.tgz');
   run('tar', ['-czf', archive, '-C', work, 'package']);

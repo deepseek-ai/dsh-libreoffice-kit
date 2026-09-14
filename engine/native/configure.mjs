@@ -1,8 +1,6 @@
 /** Pinned LibreOffice Core build inputs for the private conversion worker. */
-export const source = Object.freeze({
-  repository: 'https://github.com/LibreOffice/core.git',
-  revision: 'bce0998afefdbc355585ca324285661a2170ba77',
-});
+import { readCoreSource } from '../core-source.mjs';
+export const source = readCoreSource();
 
 export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022') {
   const flags = [

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /** Stage only a receipted Node WASM build, including its corresponding source and notices. */
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { sha256, verifyEnginePackage } from '../../scripts/verify-artifacts.mjs';
+import { readCoreSource } from '../core-source.mjs';
+import { readWasmSource } from './source.mjs';
 
 const owner = dirname(fileURLToPath(import.meta.url));
 const root = resolve(owner, '../..');
@@ -35,10 +37,17 @@ try {
   for (const name of readdirSync(paths.bundle)) copyFileSync(join(paths.bundle, name), join(destination, 'assets', name));
   for (const name of ['LICENSE', 'NOTICE']) copyFileSync(join(paths.build, 'instdir', name), join(destination, 'licenses', name));
   copyFileSync(join(root, 'NOTICE'), join(destination, 'licenses/DeepSeek-Harness-MIT.txt'));
-  for (const name of ['source.json', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs']) {
-    copyFileSync(join(owner, name), join(destination, 'sources', name));
+  // Preserve repository-relative imports in the corresponding-source recipe.
+  const sourceFiles = ['engine/core-source.mjs',
+    ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs',
+      ...readdirSync(join(owner, 'patches')).map(name => `patches/${name}`)].map(name => `engine/wasm-source/${name}`),
+    'scripts/checkout-wasm.mjs', 'scripts/core-checkout.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs'];
+  for (const file of sourceFiles) {
+    const target = join(destination, 'sources', file);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(root, file), target);
   }
-  cpSync(join(owner, 'patches'), join(destination, 'sources/patches'), { recursive: true });
+  writeFileSync(join(destination, 'sources/core-source.json'), `${JSON.stringify(readCoreSource(), null, 2)}\n`);
   const diff = run('git', ['diff', '--binary', 'HEAD', '--'], { cwd: paths.source, stdio: ['ignore', 'pipe', 'pipe'] });
   writeFileSync(join(destination, 'sources/source-changes.patch'), diff);
   copyFileSync(join(paths.build, 'autogen.input'), join(destination, 'sources/build-autogen.input'));
@@ -52,7 +61,7 @@ try {
     }
   };
   for (const name of ['assets', 'sources', 'licenses']) visit(name);
-  const pinned = JSON.parse(readFileSync(join(owner, 'source.json'), 'utf8')).libreoffice;
+  const pinned = readWasmSource().libreoffice;
   const prior = JSON.parse(readFileSync(join(published, 'prebuilds.json'), 'utf8'));
   const manifest = { ...prior, status: 'built', files,
     source: { repository: pinned.repository, revision: pinned.commit, version: pinned.version,

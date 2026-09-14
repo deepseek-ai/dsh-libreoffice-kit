@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
-import { source, verifyConfigureInput } from '../engine/native/configure.mjs';
+import { verifyConfigureInput } from '../engine/native/configure.mjs';
+import { readCoreSource } from '../engine/core-source.mjs';
 import { enginePrefix, isMain, kitManifest, kitNativeTargets, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, tarballName, targets } from './platform-matrix.mjs';
 import { assert, regularFile, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { run } from './pack-utils.mjs';
@@ -39,17 +40,19 @@ export function verifyPreparedEngine(platform, directory = join(root, 'packages'
   const prebuild = readJson(join(directory, 'prebuilds.json'));
   const wasm = platform === 'wasm';
   if (!wasm) verifyConfigureInput(platform, readJson(regularFile(directory, 'sources/core.json')).configure);
-  const pinned = wasm ? readJson(join(repo, 'engine/wasm-source/source.json')).libreoffice : source;
-  assert(prebuild.source.repository === pinned.repository && prebuild.source.revision === (pinned.commit ?? pinned.revision), 'Prepared engine upstream revision mismatch');
+  const pinned = readCoreSource(repo);
+  assert(prebuild.source.repository === pinned.repository && prebuild.source.revision === pinned.revision, 'Prepared engine upstream revision mismatch');
+  const receipt = readJson(regularFile(directory, 'sources/core-source.json'));
+  assert(receipt.repository === pinned.repository && receipt.revision === pinned.revision, 'Prepared engine Core source receipt mismatch');
   const files = wasm
-    ? ['source.json', 'autogen.input', 'lok.cxx', ...readdirSync(join(repo, 'engine/wasm-source/patches')).map(file => `patches/${file}`)]
-    : ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles(repo)];
-  const patchPrefix = wasm ? 'patches/' : 'engine/native/patches/';
+    ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', ...readdirSync(join(repo, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
+    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles(repo)];
+  const patchPrefix = wasm ? 'engine/wasm-source/patches/' : 'engine/native/patches/';
   const expectedPatches = files.filter(file => file.startsWith(patchPrefix)).map(file => `sources/${file}`).sort();
   const packagedPatches = prebuild.source.files.filter(file => file.startsWith(`sources/${patchPrefix}`)).sort();
   assert(JSON.stringify(packagedPatches) === JSON.stringify(expectedPatches), 'Prepared engine patch set differs; publish a new kit version');
   for (const file of files) {
-    const local = join(repo, wasm ? 'engine/wasm-source' : '', file);
+    const local = join(repo, file);
     assert(sha256(regularFile(directory, `sources/${file}`)) === sha256(local), `Prepared engine source differs: ${file}; publish a new kit version`);
   }
   return result;

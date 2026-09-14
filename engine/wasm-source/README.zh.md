@@ -4,7 +4,7 @@
 
 本配方为 Node worker 构建固定的 LibreOffice Writer、Calc 和 Impress 引擎。它提供入口包所需的回退资源。运行时字体加载和转换归属见 [Node API](../../packages/entry/README.zh.md)。
 
-[source.json](source.json) 固定 LibreOffice 和 Emscripten 的检出。官方[上游构建说明](https://github.com/LibreOffice/core/blob/bce0998afefdbc355585ca324285661a2170ba77/static/README.wasm.md)定义了编译器前置条件。macOS 构建还需要 GNU make、autoconf、automake、pkg-config、gperf 和 Ninja。源码、SDK、第三方归档和构建输出默认放在仓库根目录的 `.build/wasm/`。
+`engine/core` submodule 固定与原生构建共用的 LibreOffice URL 和 commit。[source.json](source.json) 记录 LibreOffice 版本信息并固定 Emscripten；[source.mjs](source.mjs) 解析完整配方。官方[上游构建说明](https://github.com/LibreOffice/core/blob/bce0998afefdbc355585ca324285661a2170ba77/static/README.wasm.md)定义了编译器前置条件。macOS 构建还需要 GNU make、autoconf、automake、pkg-config、gperf 和 Ninja。`node scripts/checkout-wasm.mjs` 按需初始化保持原样的 submodule；用于应用补丁的源码、SDK、第三方归档和构建输出默认放在仓库根目录的 `.build/wasm/`。
 
 [build.mjs](build.mjs) 提供显式阶段：`prepare` 检查提交并应用补丁；`verify` 校验准备好的配方；`configure` 生成构建配置；`compile` 写出成功构建回执；`package` 检查该回执并复制不可变资源。`build` 会依次执行这些阶段。路径可以通过 `--source`、`--emsdk`、`--build`、`--tarballs` 和 `--output` 提供。
 
