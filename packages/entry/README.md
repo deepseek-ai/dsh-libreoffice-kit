@@ -1,28 +1,10 @@
----
-description: "Convert private DOCX, XLSX, and PPTX files to PDF with precompiled LibreOffice engines."
-kind: "package-library"
----
 # @deepseek-ai/libreoffice-kit
 
 English | [中文](README.zh.md)
 
-## Summary
+Convert local DOCX, XLSX, and PPTX files to PDF in Node.js with prebuilt LibreOffice engines. Use the same API in a server, desktop application, or document-processing job, with configurable fonts, cancellation, and resource limits.
 
-Convert authorized disk DOCX, XLSX, and PPTX documents to PDF in Node.js. Node applications use this library for engine selection, cancellation, resource limits, and font loading. It selects an installed native engine or an installed shared WASM engine without compiling LibreOffice or downloading assets at runtime. Callers own source authorization and successful output files.
-
-## Table of Contents
-
-- [Use this package](#use-this-package)
-- [Understand the implementation](#understand-the-implementation)
-- [Further Exploration](#further-exploration)
-- [Model Experience](#model-experience)
-- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
-- [Dev Note](#dev-note)
-
------
-
-<a id="use-this-package"></a>
-## Use this package
+## Installation and usage
 
 Install with Node.js 22.19.0 or newer:
 
@@ -59,13 +41,7 @@ The caller authorizes input access and owns private input/output directories; pa
 
 `ConversionError.code` distinguishes `invalid-document`, `unsupported-format`, `input-too-large`, `output-too-large`, `invalid-output`, `timeout`, `unavailable`, and `failed`. These codes survive the worker/native transports. Invalid installation assets reject creation as `unavailable`; they never enable fallback. Filesystem errors such as `EEXIST`, invalid configuration errors, and caller cancellation reasons remain unchanged.
 
------
-
-<a id="understand-the-implementation"></a>
-## Understand the implementation
-
-<details>
-<summary>Implementation internals — click to expand</summary>
+## Engines, fonts, and runtime behavior
 
 The Node API and engine packages share the kit release version. `ENGINE_VERSION` pins both WASM and native optional dependencies to the exact engine version. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
 
@@ -81,44 +57,14 @@ Node WASM image downscaling uses LibreOffice's CPU image filter. Text layout, fo
 
 For reproducible comparisons, use identical documents, fonts, DPI, and limits in separate installations with and without the optional native package. Report engine startup together with conversion time; every render starts a fresh engine. The WASM assets and platform payloads carry their source, license, and integrity manifests.
 
-No runtime invariant companion is published because each conversion owns its process or Worker and files, with no separately observed service state to reconcile.
+## Source and license
 
-</details>
+This package is licensed under [MPL-2.0](LICENSE). The engine packages include `prebuilds.json` integrity inventories, corresponding source recipes and patches in `sources/`, and third-party redistribution notices in `licenses/`.
 
------
-
-<a id="further-exploration"></a>
-## Further Exploration
-
-The engine packages include `prebuilds.json` integrity inventories, corresponding source recipes in `sources/`, and redistribution notices in `licenses/`.
-
------
-
-<a id="model-experience"></a>
-## Model Experience
-
-None, as disk conversion contributes no model input.
-
-#### KV Cache effect
-
-This library adds no tokens to model requests and changes no reusable model prefix.
-
-## Known Limitations and Deferred Work
-
-<a id="known-limitations-and-deferred-work"></a>
+## Limitations
 
 - Fidelity depends on source formatting, installed fonts, and the selected engine. Missing-font names do not report every missing glyph.
 - Only DOCX, XLSX, and PPTX input is supported. Conversion does not discover system LibreOffice or download engines and fonts.
 - Font import and output limits do not bound all native memory or temporary disk use. Native platform engines may resolve fonts differently from WASM.
-- npm downloads URL optional dependencies before applying platform filters, so installation may download native archives it does not retain. Conversion itself stays offline.
-- Native Windows build recipes do not imply qualified releases; the adapter manifest declares the released native targets.
-
-<a id="dev-note"></a>
-### Dev Note
-
-<details>
-<summary>Working context for maintainers — click to expand</summary>
-
-None.
-
-</details>
+- Installations from npm use platform-specific optional packages. Applications that bundle engines must retain the complete selected package, including its resources and notices.
+- Version `0.0.1` ships a macOS ARM64 native engine and a shared Node WASM engine. Other native platforms are development recipes.

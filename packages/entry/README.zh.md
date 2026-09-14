@@ -1,28 +1,10 @@
----
-description: "使用预编译 LibreOffice 引擎，将私有 DOCX、XLSX 和 PPTX 文件转换为 PDF。"
-kind: "package-library"
----
 # @deepseek-ai/libreoffice-kit
 
 [English](README.md) | 中文
 
-## 概述
+使用预编译 LibreOffice 引擎，在 Node.js 中将本地 DOCX、XLSX 和 PPTX 文件转换为 PDF。通过同一套 API，为服务端、桌面应用和文档处理任务提供可配置字体、取消和资源限制。
 
-在 Node.js 中将已授权的磁盘 DOCX、XLSX 和 PPTX 文档转换为 PDF。Node 应用使用本库进行引擎选择、取消、资源限制和字体加载。它选择已安装的原生引擎或已安装的共享 WASM 引擎，不编译 LibreOffice，也不在运行时下载资源。调用方负责源文件授权，并拥有成功生成的输出文件。
-
-## 目录
-
-- [使用本包](#use-this-package)
-- [理解实现](#understand-the-implementation)
-- [进一步探索](#further-exploration)
-- [模型体验](#model-experience)
-- [已知限制和延后工作](#known-limitations-and-deferred-work)
-- [开发备注](#dev-note)
-
------
-
-<a id="use-this-package"></a>
-## 使用本包
+## 安装与使用
 
 使用 Node.js 22.19.0 或更新版本安装：
 
@@ -59,13 +41,7 @@ try {
 
 `ConversionError.code` 区分 `invalid-document`、`unsupported-format`、`input-too-large`、`output-too-large`、`invalid-output`、`timeout`、`unavailable` 和 `failed`。这些 code 会原样穿过 worker 和原生传输层。无效的安装资源会让创建以 `unavailable` 拒绝；它们绝不会启用回退。`EEXIST` 等文件系统错误、无效配置错误和调用方取消原因保持原样。
 
------
-
-<a id="understand-the-implementation"></a>
-## 理解实现
-
-<details>
-<summary>实现细节 — 点击展开</summary>
+## 引擎、字体与运行行为
 
 Node API 与引擎包使用相同的 kit 发布版本。`ENGINE_VERSION` 将 WASM 和原生可选依赖固定到精确的引擎版本。npm 安装预编译引擎；安装和转换阶段均不会编译 LibreOffice 或额外下载引擎资源。每个引擎包的 `sources/` 和 `licenses/` 保留匹配的源码配方、补丁、构建信息和第三方许可声明。
 
@@ -81,44 +57,14 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 
 为获得可复现的比较结果，请在两个相互独立的安装（一个带可选原生包、一个不带）中使用相同的文档、字体、DPI 和限制。报告时应把引擎启动时间和转换时间一起给出；每次渲染都会启动一个全新的引擎。WASM 资源和平台载荷都带有各自的源码、许可证和完整性清单。
 
-不发布 runtime invariant companion，因为每次转换拥有自己的进程或 Worker 及文件，没有需要核对的独立服务状态。
+## 源码与许可
 
-</details>
+本包使用 [MPL-2.0](LICENSE) 许可。引擎包包含 `prebuilds.json` 完整性清单、`sources/` 对应源码配方和补丁，以及 `licenses/` 第三方再分发声明。
 
------
-
-<a id="further-exploration"></a>
-## 进一步探索
-
-引擎包包含 `prebuilds.json` 完整性清单、`sources/` 对应源码配方及 `licenses/` 再分发声明。
-
------
-
-<a id="model-experience"></a>
-## 模型体验
-
-无，因为磁盘转换不提供模型输入。
-
-#### KV Cache 影响
-
-本库不向模型请求增加 token，也不改变可复用的模型前缀。
-
-## 已知限制和延后工作
-
-<a id="known-limitations-and-deferred-work"></a>
+## 使用限制
 
 - 保真度取决于源格式、已安装字体和所选引擎。缺失字体名称不能报告所有缺字。
 - 只支持 DOCX、XLSX 和 PPTX 输入。转换不发现系统 LibreOffice，也不下载引擎和字体。
 - 字体导入和输出限制不能约束全部原生内存或临时磁盘使用。原生平台引擎的字体解析可能与 WASM 不同。
-- npm 在应用平台过滤之前下载 URL 可选依赖，因此安装时可能下载不会保留的原生归档。转换本身保持离线。
-- 原生 Windows 构建配方不代表经过验收的发布；适配器清单声明已发布的原生目标。
-
-<a id="dev-note"></a>
-### 开发备注
-
-<details>
-<summary>维护者工作上下文 — 点击展开</summary>
-
-无。
-
-</details>
+- npm 安装使用按平台选择的可选包。自行打包引擎的应用需要保留所选包的完整内容，包括资源和许可声明。
+- `0.0.1` 提供 macOS ARM64 原生引擎和共享 Node WASM 引擎；其他原生平台仅保留开发构建配方。

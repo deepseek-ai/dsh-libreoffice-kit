@@ -25,3 +25,4 @@ node_modules/
 packages/entry/lib/
 *.tsbuildinfo
 coverage/
+.DS_Store

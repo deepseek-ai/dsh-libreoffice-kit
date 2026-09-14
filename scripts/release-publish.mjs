@@ -92,9 +92,9 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Precompiled LibreOffice conversion engines for internal DeepSeek Harness application builds.',
+    'Standalone OOXML-to-PDF conversion for Node.js, with prebuilt macOS ARM64 and shared WASM engines.',
     '',
-    `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). Downloads require repository access; applications bundle the prepared engines.`,
+    `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',
     '| Platform | Package | Bytes | SHA-256 |',
     '| --- | --- | ---: | --- |',
