@@ -12,7 +12,7 @@
 npm install @deepseek-ai/libreoffice-kit@0.0.1
 ```
 
-本包将共享 WASM 引擎和 macOS ARM64 引擎均声明为可选依赖。`createConverter` 选择已安装的 OS/架构/libc 引擎；匹配原生包缺失，或已知宿主 glibc 低于其记录的最低要求时，选择 WASM。无效的已安装资源和转换失败都会拒绝请求。
+本包将共享 WASM、macOS ARM64 和 Windows x64 引擎均声明为可选依赖。`createConverter` 选择已安装的 OS/架构/libc 引擎；匹配原生包缺失，或已知宿主 glibc 低于其记录的最低要求时，选择 WASM。无效的已安装资源和转换失败都会拒绝请求。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -67,4 +67,5 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 - 只支持 DOCX、XLSX 和 PPTX 输入。转换不发现系统 LibreOffice，也不下载引擎和字体。
 - 字体导入和输出限制不能约束全部原生内存或临时磁盘使用。原生平台引擎的字体解析可能与 WASM 不同。
 - npm 安装使用按平台选择的可选包。自行打包引擎的应用需要保留所选包的完整内容，包括资源和许可声明。
-- `0.0.1` 提供 macOS ARM64 原生引擎和共享 Node WASM 引擎；其他原生平台仅保留开发构建配方。
+- Windows x64 需要系统安装 Microsoft Visual C++ v14 x64 Redistributable；包中不捆绑该运行库。
+- `0.0.1` 提供 macOS ARM64、Windows x64 原生引擎和共享 Node WASM 引擎；其他原生平台仅保留开发构建配方。

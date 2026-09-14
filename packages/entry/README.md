@@ -12,7 +12,7 @@ Install with Node.js 22.19.0 or newer:
 npm install @deepseek-ai/libreoffice-kit@0.0.1
 ```
 
-The package optionally installs the shared WASM engine and the macOS ARM64 engine. `createConverter` selects an installed OS/architecture/libc engine; an absent matching native package or a known host glibc below the installed engine’s minimum selects WASM. Invalid installed engines and conversion failures reject the request.
+The package optionally installs the shared WASM engine, the macOS ARM64 engine, and the Windows x64 engine. `createConverter` selects an installed OS/architecture/libc engine; an absent matching native package or a known host glibc below the installed engine’s minimum selects WASM. Invalid installed engines and conversion failures reject the request.
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -67,4 +67,5 @@ This package is licensed under [MPL-2.0](LICENSE). The engine packages include `
 - Only DOCX, XLSX, and PPTX input is supported. Conversion does not discover system LibreOffice or download engines and fonts.
 - Font import and output limits do not bound all native memory or temporary disk use. Native platform engines may resolve fonts differently from WASM.
 - Installations from npm use platform-specific optional packages. Applications that bundle engines must retain the complete selected package, including its resources and notices.
-- Version `0.0.1` ships a macOS ARM64 native engine and a shared Node WASM engine. Other native platforms are development recipes.
+- Windows x64 requires the Microsoft Visual C++ v14 x64 Redistributable; it is not bundled.
+- Version `0.0.1` ships macOS ARM64 and Windows x64 native engines and a shared Node WASM engine. Other native platforms are development recipes.

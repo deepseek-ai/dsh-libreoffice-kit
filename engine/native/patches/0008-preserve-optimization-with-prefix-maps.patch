@@ -6,7 +6,7 @@ diff --git a/solenv/gbuild/LinkTarget.mk b/solenv/gbuild/LinkTarget.mk
  # generic cflags/cxxflags to use (optimization flags, debug flags)
  # user supplied CFLAGS/CXXFLAGS override default debug/optimization flags
 +# Prefix maps change build metadata, not optimization or debug policy.
-+gb_LinkTarget__get_userflags=$(if $(strip $(filter-out -ffile-prefix-map=% -fdebug-prefix-map=% /pathmap:%,$(1))),$(1),$(call gb_LinkTarget__get_debugflags,$(2)) $(1))
++gb_LinkTarget__get_userflags=$(if $(strip $(filter-out -ffile-prefix-map=% -fdebug-prefix-map=% /pathmap:% /experimental:deterministic,$(1))),$(1),$(call gb_LinkTarget__get_debugflags,$(2)) $(1))
  # call gb_LinkTarget__get_cflags,linktargetmakefilename
 -gb_LinkTarget__get_cflags=$(if $(CFLAGS),$(CFLAGS),$(call gb_LinkTarget__get_debugflags,$(1)))
 -gb_LinkTarget__get_objcflags=$(if $(OBJCFLAGS),$(OBJCFLAGS),$(call gb_LinkTarget__get_debugflags,$(1)))

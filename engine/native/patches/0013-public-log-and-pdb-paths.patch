@@ -1,0 +1,56 @@
+diff --git a/external/argon2/ExternalProject_argon2.mk b/external/argon2/ExternalProject_argon2.mk
+--- a/external/argon2/ExternalProject_argon2.mk
++++ b/external/argon2/ExternalProject_argon2.mk
+@@ -21,12 +21,12 @@
+ $(call gb_ExternalProject_get_state_target,argon2,build):
+ 	$(call gb_Trace_StartRange,argon2,EXTERNAL)
+ 	$(call gb_ExternalProject_run,build,\
+-		MSBuild.exe vs2015/Argon2OptDll/Argon2OptDll.vcxproj \
++		LINK='/PDBALTPATH:%_PDB%' MSBuild.exe vs2015/Argon2OptDll/Argon2OptDll.vcxproj \
+ 			/p:SolutionDir="$(gb_UnpackedTarball_workdir)/argon2/" \
+ 			$(gb_MSBUILD_CONFIG_AND_PLATFORM) \
+ 			/p:PlatformToolset=$(VCTOOLSET) /p:VisualStudioVersion=$(VCVER) /ToolsVersion:Current \
+ 			$(if $(filter 10,$(WINDOWS_SDK_VERSION)),/p:WindowsTargetPlatformVersion=$(UCRTVERSION)) \
+-		&& MSBuild.exe vs2015/Argon2OptTestCI/Argon2OptTestCI.vcxproj \
++		&& LINK='/PDBALTPATH:%_PDB%' MSBuild.exe vs2015/Argon2OptTestCI/Argon2OptTestCI.vcxproj \
+ 			/p:SolutionDir="$(gb_UnpackedTarball_workdir)/argon2/" \
+ 			$(gb_MSBUILD_CONFIG_AND_PLATFORM) \
+ 			/p:PlatformToolset=$(VCTOOLSET) /p:VisualStudioVersion=$(VCVER) /ToolsVersion:Current \
+diff --git a/external/lcms2/ExternalProject_lcms2.mk b/external/lcms2/ExternalProject_lcms2.mk
+--- a/external/lcms2/ExternalProject_lcms2.mk
++++ b/external/lcms2/ExternalProject_lcms2.mk
+@@ -17,7 +17,7 @@
+ $(call gb_ExternalProject_get_state_target,lcms2,build):
+ 	$(call gb_Trace_StartRange,lcms2,EXTERNAL)
+ 	$(call gb_ExternalProject_run,build,\
+-		MSBuild.exe lcms2_DLL.vcxproj \
++		LINK='/PDBALTPATH:%_PDB%' MSBuild.exe lcms2_DLL.vcxproj \
+ 			$(gb_MSBUILD_CONFIG_AND_PLATFORM) /p:TargetName=lcms2 \
+ 			/p:PlatformToolset=$(VCTOOLSET) /p:VisualStudioVersion=$(VCVER) /ToolsVersion:Current \
+ 			$(if $(filter 10,$(WINDOWS_SDK_VERSION)),/p:WindowsTargetPlatformVersion=$(UCRTVERSION)) \
+diff --git a/external/lpsolve/ExternalProject_lpsolve.mk b/external/lpsolve/ExternalProject_lpsolve.mk
+index 2bd5cdacb..441f59b3d 100644
+--- a/external/lpsolve/ExternalProject_lpsolve.mk
++++ b/external/lpsolve/ExternalProject_lpsolve.mk
+@@ -17,7 +17,7 @@ ifeq ($(OS),WNT)
+ $(call gb_ExternalProject_get_state_target,lpsolve,build):
+ 	$(call gb_Trace_StartRange,lpsolve,EXTERNAL)
+ 	$(call gb_ExternalProject_run,build,\
+-		LIB="$(ILIB)" RUNTIME_FLAG="$(if $(MSVC_USE_DEBUG_RUNTIME),/MDd,/MD)" \
++		LINK='/PDBALTPATH:%_PDB%' LIB="$(ILIB)" RUNTIME_FLAG="$(if $(MSVC_USE_DEBUG_RUNTIME),/MDd,/MD)" \
+ 		cmd /c cvc6.bat \
+ 	,lpsolve55)
+ 	$(call gb_Trace_EndRange,lpsolve,EXTERNAL)
+diff --git a/external/openssl/ExternalProject_openssl.mk b/external/openssl/ExternalProject_openssl.mk
+index a31945fab..d2f034321 100644
+--- a/external/openssl/ExternalProject_openssl.mk
++++ b/external/openssl/ExternalProject_openssl.mk
+@@ -69,7 +69,7 @@ $(call gb_ExternalProject_get_state_target,openssl,build):
+ 	$(call gb_Trace_StartRange,openssl,EXTERNAL)
+ 	$(call gb_ExternalProject_run,build,\
+ 		CONFIGURE_INSIST=1 $(PERL) Configure $(OPENSSL_PLATFORM) no-tests no-multilib \
+-		&& $(if $(JOM),$(JOM) $(wordlist 1,2,$(PARALLELISM_OPTION)),nmake) -f makefile \
++		&& LINK='/PDBALTPATH:%_PDB%' $(if $(JOM),$(JOM) $(wordlist 1,2,$(PARALLELISM_OPTION)),nmake) -f makefile \
+ 			$(if $(call gb_Module__symbols_enabled,openssl),DEBUG_FLAGS_VALUE="$(gb_DEBUGINFO_FLAGS)") \
+ 	)
+ 	$(call gb_Trace_EndRange,openssl,EXTERNAL)

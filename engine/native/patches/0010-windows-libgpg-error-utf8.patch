@@ -1,0 +1,11 @@
+diff --git a/external/libgpg-error/ExternalProject_libgpg-error.mk b/external/libgpg-error/ExternalProject_libgpg-error.mk
+--- a/external/libgpg-error/ExternalProject_libgpg-error.mk
++++ b/external/libgpg-error/ExternalProject_libgpg-error.mk
+@@ -27,6 +27,7 @@ $(call gb_ExternalProject_get_state_target,libgpg-error,build): $(call gb_Executable_
+ 			--disable-languages \
+ 			--disable-doc \
+ 			--disable-tests \
++			CFLAGS="$(CFLAGS) -utf-8" \
+ 			$(gb_WIN_GPG_platform_switches) \
+ 	    && $(MAKE) \
+ 	)

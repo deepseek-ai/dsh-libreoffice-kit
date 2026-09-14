@@ -1,0 +1,29 @@
+diff --git a/external/openssl/public-buildinfo-paths.patch.0 b/external/openssl/public-buildinfo-paths.patch.0
+new file mode 100644
+--- /dev/null
++++ b/external/openssl/public-buildinfo-paths.patch.0
+@@ -0,0 +1,13 @@
++--- util/mkbuildinf.pl
+++++ util/mkbuildinf.pl
++@@ -11,6 +11,10 @@
++ 
++ my $platform = pop @ARGV;
++ my $cflags = join(' ', @ARGV);
+++my %path_maps = $cflags =~ m{(?:/pathmap:|-f(?:file|debug)-prefix-map=)([^\s=]+)=([^\s]+)}g;
+++foreach my $from (sort { length($b) <=> length($a) } keys %path_maps) {
+++    $cflags =~ s/\Q$from\E/$path_maps{$from}/g;
+++}
++ $cflags =~ s(\\)(\\\\)g;
++ $cflags = "compiler: $cflags";
++ 
+diff --git a/external/openssl/UnpackedTarball_openssl.mk b/external/openssl/UnpackedTarball_openssl.mk
+--- a/external/openssl/UnpackedTarball_openssl.mk
++++ b/external/openssl/UnpackedTarball_openssl.mk
+@@ -18,6 +18,7 @@
+ 
+ $(eval $(call gb_UnpackedTarball_add_patches,openssl,\
+ 	external/openssl/openssl-no-multilib.patch.0 \
++	external/openssl/public-buildinfo-paths.patch.0 \
+ 	external/openssl/configurable-z-option.patch.0 \
+ 	external/openssl/openssl-no-ipc-cmd.patch.0 \
+ 	external/openssl/system-cannot-find-path-for-move.patch.0 \

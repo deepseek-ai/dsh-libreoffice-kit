@@ -1,0 +1,19 @@
+diff --git a/include/svx/fillbitmaplink.hxx b/include/svx/fillbitmaplink.hxx
+--- a/include/svx/fillbitmaplink.hxx
++++ b/include/svx/fillbitmaplink.hxx
+@@ -13,6 +13,7 @@
+ #include <svx/svxdllapi.h>
+ #include <com/sun/star/uno/Reference.hxx>
+ #include <cppuhelper/weakref.hxx>
++#include <sfx2/lnkbase.hxx>
+ #include <tools/ref.hxx>
+ #include <map>
+ #include <string_view>
+@@ -35,7 +36,6 @@ class XPropertySet;
+ namespace sfx2
+ {
+ class LinkManager;
+-class SvBaseLink;
+ }
+ 
+ // Returns the origin URL if rItem carries a deferred graphic

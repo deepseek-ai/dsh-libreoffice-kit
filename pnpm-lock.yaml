@@ -57,6 +57,9 @@ importers:
       '@deepseek-ai/libreoffice-kit-wasm':
         specifier: workspace:*
         version: link:../wasm
+      '@deepseek-ai/libreoffice-kit-win32-x64':
+        specifier: workspace:*
+        version: link:../win32-x64
 
   packages/linux-arm64-glibc: {}
 

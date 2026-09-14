@@ -50,7 +50,7 @@ try {
 - **允许配置替换顺序。** 默认 `fontFallbacks` 覆盖常见西文和简体中文字体，例如 Calibri 缺失时选择 Carlito、Cambria 缺失时选择 Caladea。调用方传入的分组会替换默认值。这些规则只选择可用字体，不会安装字体；具体见[默认分组](packages/entry/src/options.ts)。
 - **提供缺失字体诊断和资源预算。** `missingFonts` 报告可读文档 XML 中声明但不可用的字体族；`maxFontFiles`、`maxFontFileBytes` 和 `maxLoadedFontBytes` 限制索引及显式导入。转换器复用首次字体元数据快照，字体变化后需要重新创建。
 
-引擎不捆绑或下载字体集合。部署方根据文档需求和再分发权限提供字体；最小化容器需要安装字体或指定字体目录。WASM 仅使用导入的字体，没有可用字体时以 `unavailable` 拒绝转换。macOS 原生引擎还可使用操作系统管理的字体。
+引擎不捆绑或下载字体集合。部署方根据文档需求和再分发权限提供字体；最小化容器需要安装字体或指定字体目录。WASM 仅使用导入的字体，没有可用字体时以 `unavailable` 拒绝转换。macOS 和 Windows 原生引擎还可使用操作系统管理的字体。
 
 这些能力让字体选择更可控，但不保证与 Microsoft Office 或另一引擎的输出完全一致。原生 LibreOffice 会先解析已安装的原始字体和度量兼容字体，再参考配置的替换项，并自行选择字面。字体度量差异仍可能改变换行和分页；`missingFonts` 也不是完整的缺字报告。比较引擎效果时，需要使用相同的文档字节、字体和导出选项。
 
@@ -61,6 +61,7 @@ try {
 | 引擎 | 用途 |
 | --- | --- |
 | `@deepseek-ai/libreoffice-kit-darwin-arm64` | Apple Silicon macOS 的原生 helper。 |
+| `@deepseek-ai/libreoffice-kit-win32-x64` | Windows x64 原生 helper；需要 Microsoft Visual C++ v14 x64 Redistributable。 |
 | `@deepseek-ai/libreoffice-kit-wasm` | 未选中兼容原生包时使用的共享 Node WASM 引擎。 |
 
 其他原生目录保留为开发构建配方，不代表额外的已发布目标。共享 WASM 包没有 npm OS/CPU/libc 限制，但这项声明本身不代表每个宿主都已验证。两个引擎的排版和 PDF 序列化均由 CPU 完成。

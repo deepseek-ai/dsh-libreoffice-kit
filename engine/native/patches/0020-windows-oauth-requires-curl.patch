@@ -1,0 +1,31 @@
+--- a/uui/Library_uui.mk
++++ b/uui/Library_uui.mk
+@@ -52,7 +52,7 @@
+ 	uui/source/iahndl-filter \
+ 	uui/source/iahndl-ioexceptions \
+ 	uui/source/iahndl-locking \
+-	$(if $(filter MSC,$(COM)),uui/source/iahndl-oauth2-win) \
++	$(if $(and $(ENABLE_CURL),$(filter MSC,$(COM))),uui/source/iahndl-oauth2-win) \
+ 	uui/source/iahndl-ssl \
+ 	uui/source/interactionhandler \
+ 	uui/source/lockfailed \
+--- a/config_host/config_oauth2.h.in
++++ b/config_host/config_oauth2.h.in
+@@ -12,6 +12,8 @@
+ 
+ #ifndef CONFIG_OAUTH2_H
+ #define CONFIG_OAUTH2_H
++
++#include <config_features.h>
+ 
+ /* 49152..65535 is ephemeral port number range recommended by IANA */
+ #define OAUTH2_REDIRECT_URI_PREFIX "http://localhost:49153/LibreOffice/oauth2/"
+@@ -45,7 +47,7 @@
+ #define ONEDRIVE_REDIRECT_URI "http://localhost/LibreOffice"
+ #define ONEDRIVE_SCOPE "Files.ReadWrite offline_access"
+ 
+-#if defined _WIN32
++#if defined _WIN32 && HAVE_FEATURE_CURL
+ #define OAUTH2REQUEST_SUPPORTED
+ #endif
+ 

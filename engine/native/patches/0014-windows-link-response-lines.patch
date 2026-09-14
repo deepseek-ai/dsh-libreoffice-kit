@@ -1,0 +1,23 @@
+diff --git a/solenv/gbuild/platform/com_MSC_class.mk b/solenv/gbuild/platform/com_MSC_class.mk
+--- a/solenv/gbuild/platform/com_MSC_class.mk
++++ b/solenv/gbuild/platform/com_MSC_class.mk
+@@ -239,8 +239,8 @@
+ 		-LIBPATH:$(WORKDIR)/LinkTarget/ExtensionLibrary, \
+ 		-LIBPATH:$(gb_Library_DLLDIR))
+ 
+-# avoid fatal error LNK1170 for Library_merged
+-define gb_LinkTarget_MergedResponseFile
++# link.exe limits every response-file line to 131070 characters.
++define gb_LinkTarget_ResponseFile
+ cat $${RESPONSEFILE} | sed 's/ /\n/g' | grep -v '^$$' > $${RESPONSEFILE}.1 && \
+ mv $${RESPONSEFILE}.1 $${RESPONSEFILE} &&
+ endef
+@@ -266,7 +266,7 @@
+ 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
+ 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),$(shell cat $(extraobjectlist))) \
+ 		$(PCHOBJS) $(NATIVERES)) && \
+-		$(if $(filter $(call gb_Library__get_workdir_linktargetname,merged),$(2)),$(call gb_LinkTarget_MergedResponseFile)) \
++		$(call gb_LinkTarget_ResponseFile) \
+ 	unset INCLUDE && \
+ 	$(gb_LINK) \
+ 		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \

@@ -50,7 +50,7 @@ Supply absolute paths in caller-owned private directories; the output must not a
 - **Make substitutions configurable.** Default `fontFallbacks` cover common Latin and Simplified Chinese families, including Carlito for missing Calibri and Caladea for missing Cambria. Caller-supplied groups replace the defaults. These preferences only select available fonts; they do not install them. See the [default groups](packages/entry/src/options.ts).
 - **Expose missing families and font budgets.** `missingFonts` reports unavailable families declared in readable document XML. `maxFontFiles`, `maxFontFileBytes`, and `maxLoadedFontBytes` bound indexing and explicit imports. A converter reuses its first font metadata snapshot; recreate it after changing fonts.
 
-No font collection is bundled or downloaded. Deployments supply fonts appropriate to their documents and redistribution rights; minimal containers need fonts installed or a configured font directory. WASM uses only imported fonts and rejects conversion with `unavailable` if none are usable. Native macOS can also use OS-managed fonts.
+No font collection is bundled or downloaded. Deployments supply fonts appropriate to their documents and redistribution rights; minimal containers need fonts installed or a configured font directory. WASM uses only imported fonts and rejects conversion with `unavailable` if none are usable. Native macOS and Windows can also use OS-managed fonts.
 
 This improves control over font choice, but does not guarantee identical output to Microsoft Office or between engines. Native LibreOffice resolves installed originals and metric-compatible families before configured substitutions, and handles face selection itself. Font metrics can change line breaks and pagination; `missingFonts` is not a complete missing-glyph report. Comparing engines requires identical document bytes, fonts, and export options.
 
@@ -61,6 +61,7 @@ The [Node package manifest](packages/entry/package.json) declares the engines fo
 | Engine | Role |
 | --- | --- |
 | `@deepseek-ai/libreoffice-kit-darwin-arm64` | Native helper for macOS on Apple Silicon. |
+| `@deepseek-ai/libreoffice-kit-win32-x64` | Native helper for Windows x64; requires the Microsoft Visual C++ v14 x64 Redistributable. |
 | `@deepseek-ai/libreoffice-kit-wasm` | Shared Node WASM engine when no compatible native package is selected. |
 
 Other native directories are development recipes, not additional released targets. The shared WASM package has no npm OS/CPU/libc restriction; that declaration alone does not certify every host. Both engines perform layout and PDF serialization on the CPU.

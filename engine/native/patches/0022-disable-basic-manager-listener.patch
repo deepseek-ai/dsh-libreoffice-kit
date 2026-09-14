@@ -1,0 +1,93 @@
+--- a/sfx2/source/appl/appdata.cxx
++++ b/sfx2/source/appl/appdata.cxx
+@@ -43,6 +43,7 @@
+ 
+ static BasicDLL* pBasic = nullptr;
+ 
++#if HAVE_FEATURE_SCRIPTING
+ class SfxBasicManagerCreationListener : public ::basic::BasicManagerCreationListener
+ {
+ private:
+@@ -69,13 +70,17 @@
+         m_rAppData.OnApplicationBasicManagerCreated( _rBasicManager );
+ }
+ 
++#endif
++
+ SfxAppData_Impl::SfxAppData_Impl()
+     : pPool(nullptr)
+     , pProgress(nullptr)
+     , nDocModalMode(0)
+     , nRescheduleLocks(0)
+     , pBasicManager( new SfxBasicManagerHolder )
++#if HAVE_FEATURE_SCRIPTING
+     , pBasMgrListener( new SfxBasicManagerCreationListener( *this ) )
++#endif
+     , pViewFrame( nullptr )
+     , bDowning( true )
+     , bInQuit( false )
+--- a/sfx2/source/inc/appdata.hxx
++++ b/sfx2/source/inc/appdata.hxx
+@@ -98,8 +98,10 @@
+                                 maObjShells;
+     std::unique_ptr<SfxBasicManagerHolder>
+                                 pBasicManager;
++#if HAVE_FEATURE_SCRIPTING
+     std::unique_ptr<SfxBasicManagerCreationListener>
+                                 pBasMgrListener;
++#endif
+     SfxViewFrame*               pViewFrame;
+     std::optional<SfxSlotPool>  pSlotPool;
+     std::optional<SfxDispatcher>
+--- a/dbaccess/source/core/inc/databasecontext.hxx
++++ b/dbaccess/source/core/inc/databasecontext.hxx
+@@ -47,7 +47,9 @@
+                                        >   DatabaseAccessContext_Base;
+ 
+ class ODatabaseContext  :public DatabaseAccessContext_Base
++#if HAVE_FEATURE_SCRIPTING
+                         ,public ::basic::BasicManagerCreationListener
++#endif
+ {
+ private:
+     /** loads the given object from the given URL
+@@ -149,11 +151,13 @@
+     void removeFromTerminateListener(const ODatabaseModelImpl& _rDataSourceModel);
+ 
+ private:
++#if HAVE_FEATURE_SCRIPTING
+     // BasicManagerCreationListener
+     virtual void onBasicManagerCreated(
+         const css::uno::Reference< css::frame::XModel >& _rxForDocument,
+         BasicManager& _rBasicManager
+     ) override;
++#endif
+ };
+ 
+ }   // namespace dbaccess
+--- a/dbaccess/source/core/dataaccess/databasecontext.cxx
++++ b/dbaccess/source/core/dataaccess/databasecontext.cxx
+@@ -696,12 +696,9 @@
+     m_aDatabaseObjects.erase( oldPos );
+ }
+ 
++#if HAVE_FEATURE_SCRIPTING
+ void ODatabaseContext::onBasicManagerCreated( const Reference< XModel >& _rxForDocument, BasicManager& _rBasicManager )
+ {
+-#if !HAVE_FEATURE_SCRIPTING
+-    (void) _rxForDocument;
+-    (void) _rBasicManager;
+-#else
+     // if it's a database document ...
+     Reference< XOfficeDatabaseDocument > xDatabaseDocument( _rxForDocument, UNO_QUERY );
+     // ... or a sub document of a database document ...
+@@ -715,8 +712,8 @@
+     // ... whose BasicManager has just been created, then add the global DatabaseDocument variable to its scope.
+     if ( xDatabaseDocument.is() )
+         _rBasicManager.SetGlobalUNOConstant( u"ThisDatabaseDocument"_ustr, Any( xDatabaseDocument ) );
++}
+ #endif
+-}
+ 
+ }   // namespace dbaccess
+ 

@@ -18,7 +18,7 @@ test('build mappings cover external directories and receipts retain no private p
   assert.notEqual(identity.configuration, buildIdentity('darwin-arm64', paths, { ...env, OBJCXXFLAGS: '-g' }).configuration);
   assert.deepEqual(publicBuildValue({ args: ['/Users/private-builder/kit/core/x.cxx'] }, paths), { args: ['/build/libreoffice-kit/source/x.cxx'] });
   assert.throws(() => buildPathFlags('wasm', { build: '/bad path' }), /metacharacters/);
-  assert.match(buildPathFlags('win32-x64', { source: 'C:\\work\\core' })[0], /^\/pathmap:/);
+  assert.deepEqual(buildPathFlags('win32-x64', { source: 'C:\\work\\core' }), ['/experimental:deterministic', '/pathmap:C:/work/core=/build/libreoffice-kit/source']);
 });
 
 test('the host compiler maps __FILE__ using the most specific source prefix', { skip: process.platform === 'win32' }, t => {
@@ -49,16 +49,17 @@ test('Core prefix-map patches preserve optimization, debug policy and user overr
   const wasm = readFileSync(new URL('../engine/wasm-source/patches/0011-preserve-optimization-with-prefix-maps.patch', import.meta.url), 'utf8');
   assert.equal(native, wasm);
   const definitions = native.split('\n').filter(line => line.startsWith('+gb_LinkTarget')).map(line => line.slice(1)).join('\n');
-  const map = '-ffile-prefix-map=/private/build=/build/public';
   for (const policy of ['-O2', '-O3', '-O0 -g']) {
     for (const override of ['', '-Os ']) {
-      const makefile = [`gb_LinkTarget__get_debugflags=${policy}`, definitions,
-        ...['CFLAGS', 'CXXFLAGS', 'OBJCFLAGS', 'OBJCXXFLAGS'].map(key => `${key}=${override}${map}`),
-        ...['c', 'cxx', 'objc', 'objcxx'].map(lang => `$(info $(call gb_LinkTarget__get_${lang}flags,probe))`),
-        'all:;@:', ''].join('\n');
-      const result = spawnSync(process.platform === 'darwin' ? 'gmake' : 'make', ['--no-print-directory', '-f', '-'], { input: makefile, encoding: 'utf8' });
-      assert.equal(result.status, 0, result.stderr);
-      assert.deepEqual(result.stdout.trim().split('\n'), Array(4).fill(`${override || `${policy} `}${map}`));
+      for (const map of ['-ffile-prefix-map=/private/build=/build/public', '/experimental:deterministic /pathmap:C:/private/build=/build/public']) {
+        const makefile = [`gb_LinkTarget__get_debugflags=${policy}`, definitions,
+          ...['CFLAGS', 'CXXFLAGS', 'OBJCFLAGS', 'OBJCXXFLAGS'].map(key => `${key}=${override}${map}`),
+          ...['c', 'cxx', 'objc', 'objcxx'].map(lang => `$(info $(call gb_LinkTarget__get_${lang}flags,probe))`),
+          'all:;@:', ''].join('\n');
+        const result = spawnSync(process.platform === 'darwin' ? 'gmake' : 'make', ['--no-print-directory', '-f', '-'], { input: makefile, encoding: 'utf8' });
+        assert.equal(result.status, 0, result.stderr);
+        assert.deepEqual(result.stdout.trim().split('\n'), Array(4).fill(`${override || `${policy} `}${map}`));
+      }
     }
   }
 });

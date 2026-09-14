@@ -33,7 +33,7 @@ export function pruneNativePayload(directory, platform, programDirectory) {
     removed.push(path);
   };
   for (const name of readdirSync(join(directory, 'program')).sort())
-    if (/^LibreOffice(?:Dev)?[0-9.]+_SDK$/.test(name)) remove(`program/${name}`);
+    if (name === 'sdk' || /^LibreOffice(?:Dev)?[0-9.]+_SDK$/.test(name)) remove(`program/${name}`);
   const darwin = platform.startsWith('darwin-');
   const resources = `${dirname(programDirectory).replaceAll('\\', '/')}/${darwin ? 'Resources' : 'share'}`;
   const programResources = darwin ? resources : programDirectory;
@@ -56,7 +56,7 @@ export function pruneNativePayload(directory, platform, programDirectory) {
         if (name.endsWith('.appex')) remove(`${plugins}/${name}`);
   }
   const launchers = darwin ? `${dirname(programDirectory).replaceAll('\\', '/')}/MacOS` : programDirectory;
-  for (const name of ['soffice', 'soffice.bin', 'unopkg', 'unopkg.bin', 'gengal', 'gengal.bin', 'senddoc', 'unoinfo', 'xpdfimport'])
+  for (const name of ['soffice', 'soffice.bin', 'soffice.exe', 'unopkg', 'unopkg.bin', 'unopkg.exe', 'gengal', 'gengal.bin', 'gengal.exe', 'senddoc', 'unoinfo', 'unoinfo.exe', 'xpdfimport', 'xpdfimport.exe'])
     remove(`${launchers}/${name}`);
   for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport']) remove(`${resources}/${name}`);
   for (const name of ['basic', 'Scripts']) remove(`${resources}/${name}`);

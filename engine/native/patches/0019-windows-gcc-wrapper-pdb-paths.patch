@@ -1,0 +1,13 @@
+diff --git a/solenv/gcc-wrappers/wrapper.cxx b/solenv/gcc-wrappers/wrapper.cxx
+index c84fd4990..2d9b5390c 100644
+--- a/solenv/gcc-wrappers/wrapper.cxx
++++ b/solenv/gcc-wrappers/wrapper.cxx
+@@ -233,7 +233,7 @@ std::string processccargs(const std::vector<std::string>& rawargs, std::string &
+         // apparently these must be at the end
+         // otherwise configure tests may fail
+         // note: always use -debug so a PDB file is created
+-        args.append(" -link -debug ");
++        args.append(" -link -debug -PDBALTPATH:%_PDB% ");
+         args.append(linkargs);
+     }
+ 

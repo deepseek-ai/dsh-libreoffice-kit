@@ -145,8 +145,13 @@ void registerFont(const std::string& font, LibreOfficeKit* office)
 
 void convert(const Request& request)
 {
+#ifdef _WIN32
+    if (!SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
+        || !AddDllDirectory(fs::u8path(request.program).c_str()))
+        throw ConversionError("unavailable", "Failed to configure Windows library search directories");
+#endif
     fs::create_directories(fs::u8path(request.profile));
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
     environment("SAL_LOK_OPTIONS", "unipoll");
 #else
     environment("SAL_LOK_OPTIONS", "");

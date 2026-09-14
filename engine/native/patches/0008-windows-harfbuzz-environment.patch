@@ -1,0 +1,11 @@
+--- a/external/harfbuzz/ExternalProject_harfbuzz.mk
++++ b/external/harfbuzz/ExternalProject_harfbuzz.mk
+@@ -52,6 +52,8 @@
+ 	$(call gb_Trace_StartRange,harfbuzz,EXTERNAL)
+ 	$(file >$(gb_UnpackedTarball_workdir)/harfbuzz/cross-file.txt,$(gb_harfbuzz_cross_compile))
+ 	$(call gb_ExternalProject_run,build,\
++		$(if $(filter WNT,$(OS)),\
++			export INCLUDE="$(gb_ExternalProject_INCLUDE)" LIB="$(ILIB)" &&) \
+ 		PKG_CONFIG_PATH="${PKG_CONFIG_PATH}$(LIBO_PATH_SEPARATOR)$(gb_UnpackedTarball_workdir)/graphite$(if $(SYSTEM_ICU),,$(LIBO_PATH_SEPARATOR)$(gb_UnpackedTarball_workdir)/icu)" \
+ 		PYTHONWARNINGS= \
+ 		$(MESON) setup --wrap-mode nofallback builddir \

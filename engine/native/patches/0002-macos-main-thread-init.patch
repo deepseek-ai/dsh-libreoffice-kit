@@ -6,7 +6,7 @@ diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
  
  #include <editeng/flstitem.hxx>
 -#ifdef IOS
-+#if defined IOS || defined MACOSX
++#if defined IOS || defined MACOSX || defined _WIN32
  #include <sfx2/app.hxx>
  #endif
  #include <sfx2/objsh.hxx>
@@ -15,7 +15,7 @@ diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
              desktop::Desktop::GetCommandLineArgs().setHeadless();
  
 -#ifdef IOS
-+#if defined IOS || defined MACOSX
++#if defined IOS || defined MACOSX || defined _WIN32
              if (InitVCL())
              {
                  static bool bFirstTime = true;

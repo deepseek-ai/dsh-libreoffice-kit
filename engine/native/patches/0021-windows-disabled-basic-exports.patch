@@ -1,0 +1,91 @@
+--- a/include/basic/sbmeth.hxx
++++ b/include/basic/sbmeth.hxx
+@@ -21,12 +21,12 @@
+ 
+ #include <basic/sbxmeth.hxx>
+ #include <basic/sbdef.hxx>
+-#include <basic/basicdllapi.h>
++#include <basic/scriptingdllapi.h>
+ 
+ class ErrCode;
+ class SbModule;
+ 
+-class BASIC_DLLPUBLIC SbMethod : public SbxMethod
++class BASIC_SCRIPTING_DLLPUBLIC SbMethod : public SbxMethod
+ {
+     friend class SbiRuntime;
+     friend class SbiFactory;
+--- a/include/basic/sbmod.hxx
++++ b/include/basic/sbmod.hxx
+@@ -27,7 +27,7 @@
+ #include <rtl/ustring.hxx>
+ #include <vector>
+ #include <deque>
+-#include <basic/basicdllapi.h>
++#include <basic/scriptingdllapi.h>
+ #include <com/sun/star/uno/Reference.hxx>
+ 
+ #include <com/sun/star/script/ModuleType.hpp>
+@@ -46,7 +46,7 @@
+ struct ClassModuleRunInitItem;
+ struct SbClassData;
+ 
+-class BASIC_DLLPUBLIC SbModule : public SbxObject
++class BASIC_SCRIPTING_DLLPUBLIC SbModule : public SbxObject
+ {
+     friend class    SbiCodeGen;
+     friend class    SbMethod;
+@@ -142,7 +142,7 @@
+ typedef std::vector<SbModuleRef> SbModules;
+ 
+ // Object class for instances of class modules
+-class UNLESS_MERGELIBS(BASIC_DLLPUBLIC) SbClassModuleObject final : public SbModule
++class UNLESS_MERGELIBS(BASIC_SCRIPTING_DLLPUBLIC) SbClassModuleObject final : public SbModule
+ {
+     SbModule&   mrClassModule;
+     bool        mbInitializeEventDone;
+--- a/include/basic/sbstar.hxx
++++ b/include/basic/sbstar.hxx
+@@ -26,7 +26,7 @@
+ #include <tools/link.hxx>
+ 
+ #include <basic/sbdef.hxx>
+-#include <basic/basicdllapi.h>
++#include <basic/scriptingdllapi.h>
+ 
+ namespace com::sun::star::frame { class XModel; }
+ namespace com::sun::star::script { struct ModuleInfo; }
+@@ -35,7 +35,7 @@
+ class ErrCodeMsg;
+ class SbMethod;
+ 
+-class BASIC_DLLPUBLIC StarBASIC final : public SbxObject
++class BASIC_SCRIPTING_DLLPUBLIC StarBASIC final : public SbxObject
+ {
+     friend class SbiScanner;
+     friend class SbiExpression; // Access to RTL
+diff --git a/include/basic/scriptingdllapi.h b/include/basic/scriptingdllapi.h
+new file mode 100644
+--- /dev/null
++++ b/include/basic/scriptingdllapi.h
+@@ -0,0 +1,20 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++#pragma once
++
++#include <basic/basicdllapi.h>
++#include <config_features.h>
++
++#if HAVE_FEATURE_SCRIPTING
++#define BASIC_SCRIPTING_DLLPUBLIC BASIC_DLLPUBLIC
++#else
++#define BASIC_SCRIPTING_DLLPUBLIC
++#endif
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

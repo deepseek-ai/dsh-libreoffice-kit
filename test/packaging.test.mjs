@@ -46,13 +46,13 @@ test('adapter packages retain the license and notices', (t) => {
   assert.equal(verifyKitPackage(directory).name, kitManifest().name);
 });
 
-test('the internal preview declares macOS ARM64 and WASM while other recipes remain available for development', () => {
+test('the release declares macOS ARM64, Windows x64 and WASM while other recipes remain available for development', () => {
   const matrix = packageMatrix();
   assert.equal(matrix.length, 7);
   for (const row of matrix) verifyEngineMetadata(row.manifest, row.prebuild);
   const manifest = kitManifest();
   verifyKitMetadata(manifest);
-  assert.deepEqual(kitNativeTargets(manifest), ['darwin-arm64']);
+  assert.deepEqual(kitNativeTargets(manifest), ['darwin-arm64', 'win32-x64']);
   const missingWasm = structuredClone(manifest);
   delete missingWasm.optionalDependencies[wasmName];
   assert.throws(() => verifyKitMetadata(missingWasm), /Optional dependency matrix/);
@@ -74,7 +74,7 @@ test('the installed adapter preserves the canonical optional list and pins prepa
   delete missing.optionalDependencies[`${enginePrefix}-darwin-arm64`];
   assert.throws(() => verifyKitMetadata(missing, true), /Optional dependency matrix/);
   const extra = structuredClone(manifest);
-  extra.optionalDependencies[`${enginePrefix}-win32-x64`] = engineFamilyVersion();
+  extra.optionalDependencies[`${enginePrefix}-win32-arm64`] = engineFamilyVersion();
   assert.throws(() => verifyKitMetadata(extra, true), /Optional dependency matrix/);
 });
 
@@ -90,7 +90,7 @@ test('adapter engine declarations reject unknown native packages and mismatched 
   assert.throws(() => verifyKitMetadata(invalidSource), /engine family version/);
   const invalidPacked = packedAdapterManifest(source);
   invalidPacked.optionalDependencies[`${enginePrefix}-darwin-arm64`] = '0.0.0';
-  assert.throws(() => verifyKitMetadata(invalidPacked, true, ['darwin-arm64']), /engine family version/);
+  assert.throws(() => verifyKitMetadata(invalidPacked, true, kitNativeTargets(source)), /engine family version/);
   const requiredWasm = packedAdapterManifest(source);
   requiredWasm.dependencies[wasmName] = engineFamilyVersion();
   assert.throws(() => verifyKitMetadata(requiredWasm, true), /must be optional/);
