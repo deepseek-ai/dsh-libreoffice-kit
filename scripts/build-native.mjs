@@ -1,10 +1,11 @@
 /** Build pinned Core and the owned LOK worker; installation never invokes this script. */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { configureFlags, source, verifyConfigureInput } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { buildHelper } from '../engine/native/build-helper.mjs';
+import { buildEnvironment as identityEnvironment, buildIdentity } from '../engine/build-identity.mjs';
 import { windowsCoreEnvironment } from '../engine/native/core-environment.mjs';
 import { hostTarget, root, targets } from './platform-matrix.mjs';
 
@@ -43,10 +44,10 @@ function shellPath(file) {
 }
 const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO);
 if (args.includes('--resume')) verifyConfigureInput(platform, readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n'));
-if (!args.includes('--resume')) writeFileSync(join(build, 'autogen.input'), `${flags.join('\n')}\n`);
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
-const buildEnvironment = { ...process.env, MAKE: shellPath(make) };
+const identityPaths = { workspace: root, source: core, build, tarballs };
+const buildEnvironment = identityEnvironment({ ...process.env, MAKE: shellPath(make) }, platform, identityPaths);
 if (process.platform === 'win32') {
   // UCRT's builtin offsetof supports the constant expressions required by Skia and PDFium.
   buildEnvironment.ENVCFLAGSCXX = `${buildEnvironment.ENVCFLAGSCXX ?? ''} -D_CRT_USE_BUILTIN_OFFSETOF=1`.trim();
@@ -56,10 +57,20 @@ if (process.platform === 'win32') {
   // Keep MSVC's linker ahead of Cygwin's unrelated link.exe utility.
   buildEnvironment[pathKey] = [dirname(make), dirname(compiler.stdout.trim().split(/\r?\n/)[0]), join(cygwin, 'bin'), buildEnvironment[pathKey]].join(';');
 }
+const identity = buildIdentity(platform, identityPaths, buildEnvironment);
+const identityFile = join(build, 'dsh-build-identity.json');
+if (args.includes('--resume') || existsSync(join(build, 'config_host.mk'))) {
+  if (!existsSync(identityFile) || JSON.stringify(JSON.parse(readFileSync(identityFile, 'utf8'))) !== JSON.stringify(identity))
+    throw new Error('Build identity differs; use a fresh Core build directory');
+}
+if (!args.includes('--resume')) writeFileSync(join(build, 'autogen.input'), `${flags.join('\n')}\n`);
 const coreEnvironment = process.platform === 'win32'
   ? windowsCoreEnvironment(buildEnvironment, ['config_host.mk.in', 'solenv/gbuild/platform/com_MSC_class.mk'].map(file => readFileSync(join(core, file), 'utf8')).join('\n'))
   : buildEnvironment;
-if (!args.includes('--resume')) run(shell, [shellPath(join(core, 'autogen.sh'))], build, coreEnvironment);
+if (!args.includes('--resume')) {
+  run(shell, [shellPath(join(core, 'autogen.sh'))], build, coreEnvironment);
+  writeFileSync(identityFile, `${JSON.stringify(identity, null, 2)}\n`);
+}
 if (args.includes('--configure-only')) process.exit(0);
 run(make, ['build', `PARALLELISM=${parallelism}`], build, coreEnvironment);
 const executable = join(build, `libreoffice-kit${process.platform === 'win32' ? '.exe' : ''}`);

@@ -1,10 +1,11 @@
 /** XZ transfer envelopes retain an exact npm tar for offline installation. */
-import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { tarballName } from './platform-matrix.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
+import { auditNpmArchive } from './publication-privacy.mjs';
 import { run } from './pack-utils.mjs';
 
 /** @returns The canonical XZ transfer filename for an engine package. */
@@ -30,13 +31,20 @@ export function verifyEngineArchiveRecord(record) {
  * @returns Transfer and installation filenames, byte counts and hashes.
  */
 export function packEngineArchive(gzip, destination, manifest) {
+  auditNpmArchive(gzip);
   const work = mkdtempSync(join(tmpdir(), 'kit-xz-pack-'));
   try {
     const tar = join(work, 'package.tar');
     writeFileSync(tar, gunzipSync(readFileSync(gzip)), { flag: 'wx' });
     const file = engineArchiveName(manifest);
     const archive = join(destination, file);
-    run('tar', ['-cJf', archive, '-C', work, 'package.tar'], { timeout: 900_000 });
+    chmodSync(tar, 0o644);
+    utimesSync(tar, 0, 0);
+    const ownership = process.platform === 'linux'
+      ? ['--owner=0', '--group=0', '--numeric-owner']
+      : ['--uid=0', '--gid=0', '--uname=', '--gname='];
+    run('tar', ['--format=ustar', '--no-xattrs', '--no-acls', ...ownership, '-cJf', archive, '-C', work, 'package.tar'],
+      { env: { ...process.env, COPYFILE_DISABLE: '1' }, timeout: 900_000 });
     return { file, bytes: statSync(archive).size, sha256: sha256(archive),
       install: { file: file.replace(/\.xz$/, ''), bytes: statSync(tar).size, sha256: sha256(tar) } };
   } finally { rmSync(work, { recursive: true, force: true }); }
@@ -54,6 +62,8 @@ export function materializeEngineArchive(directory, record, destination) {
   const archive = join(directory, record.file);
   assert(statSync(archive).size === record.bytes && sha256(archive) === record.sha256, 'Engine transfer integrity mismatch');
   assert(run('tar', ['-tf', archive]).trim() === 'package.tar', 'Engine transfer must contain only package.tar');
+  const owner = run('tar', ['-tvf', archive]).trim();
+  assert(/^-\S+\s+(?:0\/0\s+|\d+\s+0\s+0\s+)/.test(owner), 'Engine transfer ownership must be anonymous');
   mkdirSync(destination, { recursive: true });
   const target = join(destination, record.install.file);
   const descriptor = openSync(target, 'wx', 0o600);

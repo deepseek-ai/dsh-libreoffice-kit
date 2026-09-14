@@ -111,7 +111,7 @@ test('packaged native and WASM recipes resolve their exported pin without Git me
   const repo = scratch(t);
   const pin = readCoreSource();
   writeFileSync(join(repo, 'core-source.json'), JSON.stringify(pin));
-  for (const file of ['engine/core-source.mjs', 'engine/native/configure.mjs', 'engine/wasm-source/source.json', 'engine/wasm-source/source.mjs']) {
+  for (const file of ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'engine/wasm-source/source.json', 'engine/wasm-source/source.mjs']) {
     mkdirSync(dirname(join(repo, file)), { recursive: true });
     copyFileSync(join(root, file), join(repo, file));
   }

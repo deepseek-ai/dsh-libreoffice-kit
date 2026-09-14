@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { enginePrefix, kitManifest, readJson, root, releaseRepository, sourceRepository, releaseTag, releaseTargets, tarballName } from '../scripts/platform-matrix.mjs';
@@ -12,7 +14,10 @@ import {
   writeReleaseNotes,
 } from '../scripts/release-publish.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
-import { engineArchiveName } from '../scripts/engine-archive.mjs';
+import { npmFixture } from './archive-fixture.mjs';
+import { prepareNpmRelease } from '../scripts/prepare-npm-release.mjs';
+import { auditNpmArchive } from '../scripts/publication-privacy.mjs';
+import { packEngineArchive, engineArchiveName } from '../scripts/engine-archive.mjs';
 import { githubMatrix } from '../scripts/github-matrix.mjs';
 
 test('release host verification selects adapter-declared engines, not every unfinished native recipe', () => {
@@ -29,15 +34,19 @@ function fixture(t, platforms = releaseTargets([])) {
   const env = { GITHUB_REF: `refs/tags/${releaseTag(version)}`, GITHUB_SHA: '1'.repeat(40) };
   const packages = platforms.map(platform => {
     const file = engineArchiveName({ name: `${enginePrefix}-${platform}`, version });
-    writeFileSync(join(directory, file), `publication test bytes: ${platform}`);
-    return { name: `${enginePrefix}-${platform}`, platform, version, file, bytes: Buffer.byteLength(`publication test bytes: ${platform}`), sha256: sha256(join(directory, file)), install: { file: file.replace(/\.xz$/, ''), bytes: 1, sha256: '0'.repeat(64) } };
+    const manifest = { name: `${enginePrefix}-${platform}`, version };
+    const gzip = join(directory, tarballName(manifest));
+    writeFileSync(gzip, npmFixture(manifest, { 'package/bin/worker': 'fixture engine' }));
+    const record = { ...manifest, platform, ...packEngineArchive(gzip, directory, manifest) };
+    rmSync(gzip);
+    return record;
   });
   const release = { schemaVersion: 1, version, platforms, packages, dependencies: [] };
   const save = (file, value) => writeFileSync(join(directory, file), `${JSON.stringify(value)}\n`);
   save('release.json', release);
   const releaseManifestSha256 = sha256(join(directory, 'release.json'));
   const adapterFile = tarballName(kitManifest());
-  writeFileSync(join(directory, adapterFile), 'qualified Node API bytes');
+  writeFileSync(join(directory, adapterFile), npmFixture(kitManifest(), { 'package/lib/index.js': 'export const fixture = true;' }));
   const adapter = { sha256: sha256(join(directory, adapterFile)) };
   const evidence = { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, platforms: platforms.map(platform => ({
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: true, passed: true,
@@ -250,4 +259,32 @@ test('publication rejects a public destination, wrong repository or read-only cr
     } }), /write access to the internal engine repository/);
     assert.deepEqual(calls, [['api', `repos/${releaseRepository}`]]);
   }
+});
+
+
+test('publication rechecks archive contents even when all candidate hashes agree', t => {
+  const { directory, env, evidence, save } = fixture(t);
+  const file = join(directory, tarballName(kitManifest()));
+  writeFileSync(file, npmFixture(kitManifest(), { 'package/lib/index.js': '/Users/private-builder/source' }));
+  for (const platform of evidence.platforms) {
+    platform.wasm.adapter.sha256 = sha256(file);
+    if (platform.native) platform.native.adapter.sha256 = sha256(file);
+  }
+  save('verification.json', evidence);
+  assert.throws(() => validatePublication(directory, env), /personal home path/);
+});
+
+test('npm preparation preserves qualified installation bytes and writes engine-first public inventory', t => {
+  const { directory, env, release } = fixture(t);
+  const destination = join(directory, 'public-npm');
+  const result = prepareNpmRelease(directory, destination, env);
+  assert.deepEqual(result.packages.map(record => record.name), [...release.packages.map(record => record.name), kitManifest().name]);
+  for (const record of result.packages) {
+    assert.equal(sha256(join(destination, record.file)), record.sha256);
+    assert.equal(auditNpmArchive(join(destination, record.file)).manifest.name, record.name);
+    assert.equal(record.access, 'public');
+    const engine = release.packages.find(item => item.name === record.name);
+    if (engine) assert.equal(createHash('sha256').update(gunzipSync(readFileSync(join(destination, record.file)))).digest('hex'), engine.install.sha256);
+  }
+  assert.throws(() => prepareNpmRelease(directory, destination, env), /EEXIST/);
 });

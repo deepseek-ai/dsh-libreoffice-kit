@@ -5,6 +5,7 @@
 --disable-gen
 --with-wasm-module=writer calc impress
 --with-package-format=emscripten
+--with-vendor=DeepSeek
 --disable-debug
 --disable-dbgutil
 --disable-symbols

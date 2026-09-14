@@ -24,7 +24,13 @@ Convert authorized disk DOCX, XLSX, and PPTX documents to PDF in Node.js. Node a
 <a id="use-this-package"></a>
 ## Use this package
 
-The internal preview bundles macOS ARM64 and shared WASM engines. This is a library dependency. The the host application composes it into Office preview. `createConverter` selects an installed OS/architecture/libc engine; an absent matching native package or a known host glibc below its recorded minimum selects WASM. Invalid installed assets and failed conversions reject.
+Install with Node.js 22.19.0 or newer:
+
+```sh
+npm install @deepseek-ai/libreoffice-kit@0.0.1
+```
+
+The package optionally installs the shared WASM engine and the macOS ARM64 engine. `createConverter` selects an installed OS/architecture/libc engine; an absent matching native package or a known host glibc below the installed engine’s minimum selects WASM. Invalid installed engines and conversion failures reject the request.
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -61,11 +67,11 @@ The caller authorizes input access and owns private input/output directories; pa
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-This repository publishes the Node API and engines in the same internal Release. `ENGINE_VERSION` pins the matching `@deepseek-ai/libreoffice-kit-*` engine version. Both WASM and native optional dependencies use `workspace:*`; packing records exact engine versions. Application builds authenticate downloads, override those versions with verified local installation tarballs, and bundle prepared engines; engines are not published to the npm registry. The [engine workspace](../../README.md) owns recipes, validation, and publication.
+The Node API and engine packages share the kit release version. `ENGINE_VERSION` pins both WASM and native optional dependencies to the exact engine version. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
 
-Defaults and all options are documented in [the TypeScript API](src/index.ts). Font directories use conventional system/user paths for the selected OS. Indexing skips missing or protected sources and propagates other filesystem errors. `fontkit` indexes original font files and selects installed faces and glyph coverage; it does not rewrite fonts. The converter reuses its first font metadata snapshot; recreate the converter after changing installed fonts. Original font bytes and decoded glyph coverage remain conversion-local. `missingFonts` contains absent families declared in readable document XML, excluding unrelated engine defaults. Missing glyphs without a named missing family are not a complete document accessibility report.
+Defaults and all options are documented in the shipped TypeScript declarations in `lib/types/index.d.ts`. Font directories use conventional system/user paths for the selected OS. Indexing skips missing or protected sources and propagates other filesystem errors. `fontkit` indexes original font files and selects installed faces and glyph coverage; it does not rewrite fonts. The converter reuses its first font metadata snapshot; recreate the converter after changing installed fonts. Original font bytes and decoded glyph coverage remain conversion-local. `missingFonts` contains absent families declared in readable document XML, excluding unrelated engine defaults. Missing glyphs without a named missing family are not a complete document accessibility report.
 
-Exact installed families take priority in font matching, including explicitly requested handwriting or decorative fonts. Default `fontFallbacks` prefer common serif, sans-serif, and monospaced text families and corresponding Simplified Chinese faces, with Carlito for Calibri and Calibri Light, and Caladea for Cambria. Catalog matching retains the weight and italic style supplied by WASM font requests when matching faces are installed. The complete indexed catalog remains available for glyphs absent from the preferred families. Caller-provided groups replace the defaults; `[]` removes these preferences without disabling catalog discovery. WASM uses the same ordered aliases for imported fonts. The default groups are defined in [`src/options.ts`](src/options.ts).
+Exact installed families take priority in font matching, including explicitly requested handwriting or decorative fonts. Default `fontFallbacks` prefer common serif, sans-serif, and monospaced text families and corresponding Simplified Chinese faces, with Carlito for Calibri and Calibri Light, and Caladea for Cambria. Catalog matching retains the weight and italic style supplied by WASM font requests when matching faces are installed. The complete indexed catalog remains available for glyphs absent from the preferred families. Caller-provided groups replace the defaults; `[]` removes these preferences without disabling catalog discovery. WASM uses the same ordered aliases for imported fonts. The shipped option types describe `fontFallbacks`.
 
 Native conversion writes missing-family choices into its private LibreOffice profile. LibreOffice resolves installed originals and its metric-compatible fonts before consulting these choices, so custom groups can produce different substitutions across engines. Native weight and italic selection depend on the engine and the fonts it can discover; native font preloading requests regular faces.
 
@@ -84,7 +90,7 @@ No runtime invariant companion is published because each conversion owns its pro
 <a id="further-exploration"></a>
 ## Further Exploration
 
-The [packaging guide](../../docs/packaging.md) defines receipts and redistribution notices; the [release guide](../../docs/building.md) defines source tags and installed qualification.
+The engine packages include `prebuilds.json` integrity inventories, corresponding source recipes in `sources/`, and redistribution notices in `licenses/`.
 
 -----
 

@@ -17,6 +17,8 @@
     "release:verify": "node scripts/verify-release.mjs",
     "release:pack": "node scripts/pack-release.mjs",
     "release:verify-packed-install": "node scripts/verify-packed-install.mjs",
+    "release:audit": "node scripts/release-privacy.mjs",
+    "release:prepare-npm": "node scripts/prepare-npm-release.mjs",
     "release:publish": "node scripts/release-publish.mjs",
     "test:adapter": "vitest run",
     "test:coverage": "vitest run --coverage",

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { isMain, kitDirectory, kitManifest, root, tarballName } from './platform-matrix.mjs';
 import { npmEnvironment, pnpm } from './pack-utils.mjs';
+import { auditNpmArchive } from './publication-privacy.mjs';
 import { assert } from './verify-artifacts.mjs';
 
 /** Runtime entries every adapter build must produce; `files` publishes exactly these bundles. */
@@ -38,6 +39,7 @@ export function packKit(destination, work) {
     { cwd: directory, ...(work === undefined ? {} : { env: { ...process.env, ...npmEnvironment(work) } }) });
   const file = join(target, tarballName(manifest));
   assert(existsSync(file), `The adapter pack produced no ${file}`);
+  auditNpmArchive(file);
   return { manifest, file };
 }
 

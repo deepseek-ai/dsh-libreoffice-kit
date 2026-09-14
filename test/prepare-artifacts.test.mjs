@@ -3,6 +3,7 @@ import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, r
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { npmDirectoryFixture } from './archive-fixture.mjs';
 import { spawnSync } from 'node:child_process';
 import { artifactPlan, fetchPrebuilt, verifyPreparedEngine } from '../scripts/prepare-artifacts.mjs';
 import { packEngineArchive } from '../scripts/engine-archive.mjs';
@@ -74,7 +75,7 @@ function fixture(t, platform = 'darwin-arm64') {
     put(prebuild.engine.wasm, Buffer.from('AGFzbQEAAAABBAFgAAADCQgAAAAAAAAAAAeXAQgSZHNoX2xva19pbml0aWFsaXplAAAVZHNoX2xva19kb2N1bWVudF9sb2FkAAEZZHNoX2xva19kb2N1bWVudF9zYXZlX3BkZgACGGRzaF9sb2tfZG9jdW1lbnRfZGVzdHJveQADD2RzaF9sb2tfZGVzdHJveQAEDWRzaF9sb2tfZXJyb3IABQZtYWxsb2MABgRmcmVlAAcKGQgCAAsCAAsCAAsCAAsCAAsCAAsCAAsCAAs=', 'base64'));
     put(prebuild.engine.loader, 'module.exports = () => {};');
     put(prebuild.engine.data, 'fixture');
-    put(prebuild.engine.metadata, JSON.stringify({ files: [{ filename: '/instdir/program/resource', start: 0, end: 7 }] }));
+    put(prebuild.engine.metadata, JSON.stringify({ remote_package_size: 7, files: [{ filename: '/instdir/program/resource', start: 0, end: 7 }] }));
   } else {
     // A complete Mach-O code segment passes packaging validation without executing native code.
     const binary = Buffer.alloc(104);
@@ -88,9 +89,9 @@ function fixture(t, platform = 'darwin-arm64') {
   put('licenses/MPL.txt', 'MPL-2.0 fixture');
   prebuild.licenses = [{ component: 'LibreOffice', spdx: 'MPL-2.0', path: 'licenses/MPL.txt' }];
   const wasm = platform === 'wasm';
-  const files = wasm
+  const files = ['engine/build-identity.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
-    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
+    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()])];
   for (const file of files) put(`sources/${file}`, readFileSync(join(root, file)));
   put('sources/core-source.json', JSON.stringify(source));
   if (!wasm) {
@@ -99,7 +100,7 @@ function fixture(t, platform = 'darwin-arm64') {
   prebuild.source = { ...source, version: '26.8.0.3', files: ['sources/core-source.json', ...files.map(file => `sources/${file}`)] };
   writeFileSync(join(directory, 'prebuilds.json'), JSON.stringify(prebuild));
   const archive = join(work, 'engine.tgz');
-  run('tar', ['-czf', archive, '-C', work, 'package']);
+  writeFileSync(archive, npmDirectoryFixture(directory));
   const record = { name: manifest.name, version: manifest.version, platform, ...packEngineArchive(archive, work, manifest) };
   const bytes = readFileSync(join(work, record.file));
   const metadata = { repository: releaseRepository, tag: releaseTag(manifest.version), version: manifest.version,

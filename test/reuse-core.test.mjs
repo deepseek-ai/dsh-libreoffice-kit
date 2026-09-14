@@ -18,7 +18,7 @@ function git(core, args) {
 function fixture(t, platform) {
   const directory = mkdtempSync(join(tmpdir(), 'libreoffice-core-reuse-'));
   t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
-  const files = ['engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
+  const files = ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
   for (const file of files) {
     mkdirSync(join(directory, 'sources', file, '..'), { recursive: true });
     copyFileSync(join(root, file), join(directory, 'sources', file));

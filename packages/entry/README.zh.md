@@ -24,7 +24,13 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
-内部预览打包 macOS ARM64 和共享 WASM 引擎。这是库依赖。the host application将其组合进 Office 预览。`createConverter` 选择已安装的 OS/架构/libc 引擎；匹配原生包缺失，或已知宿主 glibc 低于其记录的最低要求时，选择 WASM。无效的已安装资源和转换失败都会拒绝请求。
+使用 Node.js 22.19.0 或更新版本安装：
+
+```sh
+npm install @deepseek-ai/libreoffice-kit@0.0.1
+```
+
+本包将共享 WASM 引擎和 macOS ARM64 引擎均声明为可选依赖。`createConverter` 选择已安装的 OS/架构/libc 引擎；匹配原生包缺失，或已知宿主 glibc 低于其记录的最低要求时，选择 WASM。无效的已安装资源和转换失败都会拒绝请求。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -61,11 +67,11 @@ try {
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-本仓库在同一内部 Release 中发布 Node API 和引擎。`ENGINE_VERSION` 固定与 Node API 一致的 `@deepseek-ai/libreoffice-kit-*` 引擎版本。WASM 和原生可选依赖使用 `workspace:*`；打包时写入精确的引擎版本。应用构建时鉴权下载，通过 overrides 将这些版本指向经过验证的本地安装 tarball，并打包已准备的引擎；引擎不发布到 npm registry。[引擎工作区](../../README.zh.md)负责配方、校验和发布。
+Node API 与引擎包使用相同的 kit 发布版本。`ENGINE_VERSION` 将 WASM 和原生可选依赖固定到精确的引擎版本。npm 安装预编译引擎；安装和转换阶段均不会编译 LibreOffice 或额外下载引擎资源。每个引擎包的 `sources/` 和 `licenses/` 保留匹配的源码配方、补丁、构建信息和第三方许可声明。
 
-默认值和所有选项记录在 [TypeScript API](src/index.ts) 中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。转换器复用其第一次字体元数据快照；更改已安装字体后需重新创建转换器。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
+默认值和所有选项记录在随包发布的 `lib/types/index.d.ts` 类型声明中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。转换器复用其第一次字体元数据快照；更改已安装字体后需重新创建转换器。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
 
-精确匹配的已安装 family 优先，包括调用方显式要求的书法或装饰字体。默认 `fontFallbacks` 优先选择常见的衬线、无衬线、等宽文本字体族以及对应的简体中文字面，为 Calibri 和 Calibri Light 使用 Carlito，为 Cambria 使用 Caladea。当匹配的字面已安装时，目录匹配保留 WASM 字体请求给出的字重和斜体。完整索引目录对首选字体族缺失的字形仍然可用。调用方提供的分组会替换默认值；`[]` 会移除这些偏好但不关闭目录发现。WASM 对导入的字体使用相同的顺序别名。默认分组定义在 [`src/options.ts`](src/options.ts) 中。
+精确匹配的已安装 family 优先，包括调用方显式要求的书法或装饰字体。默认 `fontFallbacks` 优先选择常见的衬线、无衬线、等宽文本字体族以及对应的简体中文字面，为 Calibri 和 Calibri Light 使用 Carlito，为 Cambria 使用 Caladea。当匹配的字面已安装时，目录匹配保留 WASM 字体请求给出的字重和斜体。完整索引目录对首选字体族缺失的字形仍然可用。调用方提供的分组会替换默认值；`[]` 会移除这些偏好但不关闭目录发现。WASM 对导入的字体使用相同的顺序别名。随包发布的选项类型包含 `fontFallbacks` 的定义。
 
 原生转换会把缺失 family 的选择写入其私有 LibreOffice 配置。LibreOffice 会先解析已安装的原始字体及其度量兼容字体，然后才参考这些选择，因此自定义分组在不同引擎上可能产生不同的替换结果。原生的字重和斜体选择取决于引擎及其能发现的字体；原生字体预加载只请求常规字面。
 
@@ -84,7 +90,7 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 <a id="further-exploration"></a>
 ## 进一步探索
 
-[打包指南](../../docs/packaging.md)定义回执和再分发声明；[发布指南](../../docs/building.md)定义源码 tag 和安装后的资格验证。
+引擎包包含 `prebuilds.json` 完整性清单、`sources/` 对应源码配方及 `licenses/` 再分发声明。
 
 -----
 

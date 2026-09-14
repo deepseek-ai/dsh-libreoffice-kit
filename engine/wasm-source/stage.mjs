@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { sha256, verifyEnginePackage } from '../../scripts/verify-artifacts.mjs';
+import { publicBuildValue } from '../build-identity.mjs';
 import { readCoreSource } from '../core-source.mjs';
 import { readWasmSource } from './source.mjs';
 
@@ -38,7 +39,7 @@ try {
   for (const name of ['LICENSE', 'NOTICE']) copyFileSync(join(paths.build, 'instdir', name), join(destination, 'licenses', name));
   copyFileSync(join(root, 'NOTICE'), join(destination, 'licenses/DeepSeek-Harness-MIT.txt'));
   // Preserve repository-relative imports in the corresponding-source recipe.
-  const sourceFiles = ['engine/core-source.mjs',
+  const sourceFiles = ['engine/build-identity.mjs', 'engine/core-source.mjs',
     ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs',
       ...readdirSync(join(owner, 'patches')).map(name => `patches/${name}`)].map(name => `engine/wasm-source/${name}`),
     'scripts/checkout-wasm.mjs', 'scripts/core-checkout.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs'];
@@ -50,7 +51,9 @@ try {
   writeFileSync(join(destination, 'sources/core-source.json'), `${JSON.stringify(readCoreSource(), null, 2)}\n`);
   const diff = run('git', ['diff', '--binary', 'HEAD', '--'], { cwd: paths.source, stdio: ['ignore', 'pipe', 'pipe'] });
   writeFileSync(join(destination, 'sources/source-changes.patch'), diff);
-  copyFileSync(join(paths.build, 'autogen.input'), join(destination, 'sources/build-autogen.input'));
+  const autogen = readFileSync(join(paths.build, 'autogen.input'), 'utf8');
+  const tarballs = autogen.match(/^--with-external-tar=(.+)$/m)?.[1];
+  writeFileSync(join(destination, 'sources/build-autogen.input'), publicBuildValue(autogen, { workspace: root, ...paths, tarballs }));
   const files = {};
   const visit = prefix => {
     for (const entry of readdirSync(join(destination, prefix), { withFileTypes: true })) {

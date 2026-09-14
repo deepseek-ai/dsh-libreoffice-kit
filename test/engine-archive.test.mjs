@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { npmFixture, npmDirectoryFixture } from './archive-fixture.mjs';
 import { packEngineArchive, materializeEngineArchive, verifyEngineArchiveRecord } from '../scripts/engine-archive.mjs';
 import { npm, run } from '../scripts/pack-utils.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
@@ -17,7 +18,7 @@ function fixture(t) {
   writeFileSync(join(packageDir, 'worker'), 'fixture engine\n');
   chmodSync(join(packageDir, 'worker'), 0o755);
   const gzip = join(work, 'fixture.tgz');
-  run('tar', ['-czf', gzip, '-C', work, 'package']);
+  writeFileSync(gzip, npmDirectoryFixture(packageDir));
   const record = { ...manifest, ...packEngineArchive(gzip, work, manifest) };
   return { work, record };
 }
@@ -56,4 +57,16 @@ test('XZ envelopes reject extra members and noncanonical filenames', t => {
   assert.throws(() => verifyEngineArchiveRecord({ ...record, file: '../escape.tar.xz' }), /transfer filename/);
   assert.throws(() => verifyEngineArchiveRecord({ ...record, install: { ...record.install, file: '../escape.tar' } }), /install filename/);
   assert.throws(() => verifyEngineArchiveRecord({ ...record, bytes: 0 }), /archive integrity/);
+});
+
+
+test('XZ envelopes have anonymous ownership and deterministic bytes across pack directories', t => {
+  const first = fixture(t);
+  const second = fixture(t);
+  assert.equal(first.record.sha256, second.record.sha256);
+  assert.equal(run('tar', ['-tf', join(first.work, first.record.file)]).trim(), 'package.tar');
+  assert.match(run('tar', ['-tvf', join(first.work, first.record.file)]), /^-\S+\s+(?:0\/0\s+|\d+\s+0\s+0\s+)/);
+  const file = join(first.work, 'private.tgz');
+  writeFileSync(file, npmFixture({ name: first.record.name, version: first.record.version }, {}, { uid: 501, uname: 'private-builder' }));
+  assert.throws(() => packEngineArchive(file, first.work, first.record), /ownership/);
 });

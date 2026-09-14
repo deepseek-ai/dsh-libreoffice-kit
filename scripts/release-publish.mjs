@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { assert, sha256 } from './verify-artifacts.mjs';
+import { auditReleaseCandidate } from './release-privacy.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
 import { enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
 import { verifyEngineArchiveRecord } from './engine-archive.mjs';
@@ -39,6 +40,7 @@ export function validatePublication(directory, env = process.env) {
     assert(record.wasm?.adapter?.sha256 === adapterSha256 && (platform === 'wasm' || record.native?.adapter?.sha256 === adapterSha256),
       `Verification belongs to different adapter bytes: ${platform}`);
   }
+  auditReleaseCandidate(directory, release);
   return release;
 }
 

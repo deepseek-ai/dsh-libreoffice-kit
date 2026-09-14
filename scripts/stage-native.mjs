@@ -2,6 +2,7 @@
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { publicBuildValue } from '../engine/build-identity.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { glibcMinimum } from '../engine/native/glibc-minimum.mjs';
 import { source, verifyConfigureInput } from '../engine/native/configure.mjs';
@@ -59,7 +60,7 @@ export function stageNative({ platform, core, build, repo = root }) {
     resources: pruneNativePayload(dir, platform, `program/${relativeLibrary}`),
     symbols: stripNativePayload(dir, platform),
   };
-  const sourceFiles = ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
+  const sourceFiles = ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
     'scripts/checkout-core.mjs', 'scripts/core-checkout.mjs',
     'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
     ...corePatchFiles(repo)];
@@ -79,7 +80,9 @@ export function stageNative({ platform, core, build, repo = root }) {
   assert(changes.status === 0, 'Cannot record corresponding Core source changes');
   writeFileSync(join(dir, 'sources/core-changes.patch'), changes.stdout);
   packagedSource.push('sources/core-changes.patch');
-  writeFileSync(join(dir, 'sources/core.json'), `${JSON.stringify({ ...source, version, omittedBuildAliases: omitted, configure: configured }, null, 2)}\n`);
+  writeFileSync(join(dir, 'sources/core.json'), `${JSON.stringify({ ...source, version, omittedBuildAliases: omitted,
+    configure: publicBuildValue(configured, { workspace: repo, source: core, build, tarballs: configured.find(flag => flag.startsWith('--with-external-tar=')).slice('--with-external-tar='.length) }),
+    configureSha256: sha256(join(build, 'autogen.input')), buildIdentity: readJson(join(build, 'dsh-build-identity.json')) }, null, 2)}\n`);
   packagedSource.push('sources/core.json');
   copyFileSync(join(core, 'COPYING.MPL'), join(dir, 'licenses/LibreOffice-MPL-2.0.txt'));
   copyFileSync(join(repo, 'NOTICE'), join(dir, 'licenses/DeepSeek-Harness-MIT.txt'));

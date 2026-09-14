@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { slimWasmData } from './slim.mjs';
+import { buildEnvironment, buildIdentity, publicBuildValue } from '../build-identity.mjs';
 import { readWasmSource } from './source.mjs';
 
 const owner = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +45,10 @@ const tarballs = path.resolve(values.tarballs);
 const output = path.resolve(values.output);
 const receiptPath = path.join(build, 'dsh-wasm-build.json');
 const shimTarget = path.join(source, 'desktop/source/lib/dsh_wasm.cxx');
-const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/KEY|SECRET|TOKEN|PASSWORD/i.test(key)));
+const identityPaths = { workspace: repository, source, build, tarballs, emsdk };
+const env = buildEnvironment(process.env, 'wasm', identityPaths);
+const identity = buildIdentity('wasm', identityPaths, env);
+const identityFile = path.join(build, 'dsh-build-identity.json');
 env.MAKE = env.GNUMAKE || env.MAKE || (process.platform === 'darwin' ? 'gmake' : 'make');
 const artifacts = {
   'soffice.cjs': 'soffice.js',
@@ -140,13 +144,20 @@ function configure() {
   verifyRecipe();
   mkdirSync(build, { recursive: true });
   mkdirSync(tarballs, { recursive: true });
+  if (existsSync(path.join(build, 'config_host.mk')) && (!existsSync(identityFile)
+    || readFileSync(identityFile, 'utf8') !== `${JSON.stringify(identity, null, 2)}\n`))
+    throw new Error('WASM build identity differs; use a fresh build directory');
   const configuration = readFileSync(path.join(owner, 'autogen.input'), 'utf8');
   writeFileSync(path.join(build, 'autogen.input'), `${configuration}--with-external-tar=${tarballs}\n--with-parallelism=${jobs}\n`);
   withEmsdk(path.join(source, 'autogen.sh'), [], { cwd: build });
+  writeFileSync(identityFile, `${JSON.stringify(identity, null, 2)}\n`);
 }
 
 function buildInputs() {
+  if (!existsSync(identityFile) || readFileSync(identityFile, 'utf8') !== `${JSON.stringify(identity, null, 2)}\n`)
+    throw new Error('WASM build identity differs; run the configure and compile stages');
   return {
+    buildIdentity: identity,
     source: readWasmSource(),
     recipe: hashFile(path.join(owner, 'autogen.input')),
     configuration: hashFile(path.join(build, 'autogen.input')),
@@ -195,12 +206,16 @@ function packageArtifacts() {
     throw new Error('LibreOffice filesystem image changed during packaging');
   }
   const slimmed = slimWasmData(originalData, JSON.parse(originalMetadata.toString('utf8')));
+  const originalLoader = readFileSync(path.join(program, artifacts['soffice.cjs']));
+  if (sha256(originalLoader) !== compiledFiles['soffice.cjs']) throw new Error('WASM loader changed during packaging');
   const repacked = {
+    // Emscripten embeds the data image's build path in diagnostic dependency names.
+    'soffice.cjs': Buffer.from(publicBuildValue(originalLoader.toString('utf8'), identityPaths)),
     'soffice.data': slimmed.data,
     'soffice.data.js.metadata': Buffer.from(`${JSON.stringify(slimmed.metadata)}\n`),
   };
   const inputs = { ...compiledInputs, packaging: {
-    recipes: Object.fromEntries(['build.mjs', 'slim.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
+    recipes: Object.fromEntries(['build.mjs', 'slim.mjs', '../build-identity.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
     compiledFiles,
   } };
   const files = { ...compiledFiles, ...Object.fromEntries(Object.entries(repacked).map(([name, bytes]) => [name, sha256(bytes)])) };

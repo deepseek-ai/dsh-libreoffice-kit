@@ -1,9 +1,11 @@
 /** Pinned LibreOffice Core build inputs for the private conversion worker. */
 import { readCoreSource } from '../core-source.mjs';
+import { buildVendor } from '../build-identity.mjs';
 export const source = readCoreSource();
 
 export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022') {
   const flags = [
+    `--with-vendor=${buildVendor}`,
     '--disable-debug', '--disable-dbgutil', '--disable-symbols', '--disable-werror',
     '--disable-pch', '--without-java', '--enable-python=no', '--without-doxygen',
     '--without-help', '--without-myspell-dicts', '--without-fonts',
