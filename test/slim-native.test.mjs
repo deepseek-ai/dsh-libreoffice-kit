@@ -87,3 +87,25 @@ test('staging removes developer SDK tools while retaining runtime resources', t 
   assert.equal(result.removedBytes, 8);
   assert.ok(existsSync(join(directory, 'program/LibreOfficeDev.app/Contents/Frameworks/libuno.dylib')));
 });
+
+test('staging drops PDF import, desktop integrations, help search and network modules', t => {
+  const { directory, put } = fixture(t);
+  const contents = 'program/LibreOfficeDev.app/Contents';
+  const libraries = `${contents}/Frameworks`;
+  const discarded = ['MacOS/xpdfimport', 'Resources/xpdfimport/poppler_data/cMap/data', 'Library/Spotlight/OOo.mdimporter/binary', 'PlugIns/QuickLook.appex/binary',
+    ...['libclucene.dylib', 'libucpchelp1.dylib', 'libhelplinkerlo.dylib', 'libcurl.4.dylib', 'libucpdav1.dylib', 'libucpcmis1lo.dylib', 'libLanguageToollo.dylib', 'libpdfimportlo.dylib'].map(name => `Frameworks/${name}`)];
+  for (const file of discarded) put(`${contents}/${file}`);
+  const kept = ['libpdffilterlo.dylib', 'libswlo.dylib', 'libsclo.dylib', 'libsdlo.dylib', 'libucb1.dylib', 'libucpfile1.dylib'];
+  for (const name of kept) put(`${libraries}/${name}`);
+  pruneNativePayload(directory, 'darwin-arm64', libraries);
+  for (const file of discarded) assert.ok(!existsSync(join(directory, contents, file)), file);
+  for (const name of kept) assert.ok(existsSync(join(directory, libraries, name)), name);
+});
+
+test('staging refuses to prune a component that Core still registers', t => {
+  const { directory, put } = fixture(t);
+  const contents = 'program/LibreOfficeDev.app/Contents';
+  put(`${contents}/Frameworks/libucpdav1.dylib`);
+  put(`${contents}/Resources/services/services.rdb`, '<component uri="vnd.sun.star.expand:$LO_LIB_DIR/libucpdav1.dylib"/>');
+  assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', `${contents}/Frameworks`), /remains registered.*reconfigure/);
+});

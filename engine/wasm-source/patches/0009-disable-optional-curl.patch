@@ -1,0 +1,11 @@
+--- a/uui/Library_uui.mk
++++ b/uui/Library_uui.mk
+@@ -17,7 +17,7 @@
+ $(eval $(call gb_Library_set_componentfile,uui,uui/util/uui,services))
+ 
+ $(eval $(call gb_Library_use_external,uui,boost_headers))
+-$(eval $(call gb_Library_use_external,uui,curl))
++$(if $(ENABLE_CURL),$(eval $(call gb_Library_use_external,uui,curl)))
+ 
+ $(eval $(call gb_Library_use_custom_headers,uui,\
+     officecfg/registry \

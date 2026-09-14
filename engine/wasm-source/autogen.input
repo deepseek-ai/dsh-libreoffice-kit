@@ -21,3 +21,8 @@
 --without-myspell-dicts
 --disable-emscripten-proxy-to-pthread
 --with-build-platform-configure-options=--enable-bogus-pkg-config
+--disable-xmlhelp
+--disable-curl
+--without-webdav
+--disable-libcmis
+--disable-breakpad

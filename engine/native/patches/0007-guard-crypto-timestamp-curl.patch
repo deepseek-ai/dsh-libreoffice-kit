@@ -1,0 +1,55 @@
+--- a/svl/Library_svl.mk
++++ b/svl/Library_svl.mk
+@@ -21,7 +21,7 @@
+ 
+ $(eval $(call gb_Library_use_externals,svl,\
+     boost_headers \
+-    $(if $(filter LINUX MACOSX ANDROID iOS %BSD SOLARIS HAIKU,$(OS)), \
++    $(if $(and $(ENABLE_CURL),$(filter LINUX MACOSX ANDROID iOS %BSD SOLARIS HAIKU,$(OS))), \
+         curl) \
+     fast_float \
+     icu_headers \
+--- a/svl/source/crypto/cryptosign.cxx
++++ b/svl/source/crypto/cryptosign.cxx
+@@ -15,9 +15,10 @@
+ #include <svl/cryptosign.hxx>
+ #include <svl/sigstruct.hxx>
+ #include <config_crypto.h>
++#include <config_features.h>
+ #include <o3tl/numeric.hxx>
+ 
+-#if USE_CRYPTO_NSS
++#if USE_CRYPTO_NSS && HAVE_FEATURE_CURL
+ #include <systools/curlinit.hxx>
+ #endif
+ 
+@@ -48,8 +49,10 @@
+ #include <cms.h>
+ #include <cmst.h>
+ 
++#if HAVE_FEATURE_CURL
+ // We use curl for RFC3161 time stamp requests
+ #include <curl/curl.h>
++#endif
+ 
+ #include <com/sun/star/xml/crypto/DigestID.hpp>
+ #include <com/sun/star/xml/crypto/NSSInitializer.hpp>
+@@ -1055,6 +1058,10 @@
+ 
+     if( !m_aSignTSA.isEmpty() )
+     {
++#if !HAVE_FEATURE_CURL
++        SAL_WARN("svl.crypto", "Timestamp requests require curl support");
++        return false;
++#else
+         TimeStampReq src;
+         OStringBuffer response_buffer;
+         TimeStampResp response;
+@@ -1290,6 +1297,7 @@
+         }
+ 
+         cms_output = *ts_cms_output;
++#endif
+     }
+ 
+     if (cms_output.len*2 > MAX_SIGNATURE_CONTENT_LENGTH)

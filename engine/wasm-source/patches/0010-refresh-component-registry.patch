@@ -1,0 +1,11 @@
+--- a/solenv/gbuild/Rdb.mk
++++ b/solenv/gbuild/Rdb.mk
+@@ -42,7 +42,7 @@
+ # specific even in the corner case of an empty Rdb with no gb_Rdb_add_component calls, so that the
+ # use of $(COMPONENTS) in gb_Rdb__command would not accidentally pick a global COMPONENTS variable:
+ $(call gb_Rdb_get_target,$(1)) : COMPONENTS ?=
+-$(call gb_Rdb_get_target,$(1)) : $(gb_Module_CURRENTMAKEFILE)
++$(call gb_Rdb_get_target,$(1)) : $(gb_Module_CURRENTMAKEFILE) $(BUILDDIR)/config_host.mk
+ $$(eval $$(call gb_Module_register_target,$(2),$(call gb_Rdb_get_clean_target,$(1))))
+ $(call gb_Helper_make_userfriendly_targets,$(1),Rdb,$(2))
+ 

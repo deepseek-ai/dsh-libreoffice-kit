@@ -1,5 +1,5 @@
 /** Remove desktop-only content and nonessential symbols from staged conversion engines. */
-import { closeSync, existsSync, lstatSync, openSync, readdirSync, readSync, rmSync, statSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { readJson } from './platform-matrix.mjs';
 import { run } from './pack-utils.mjs';
@@ -46,13 +46,29 @@ export function pruneNativePayload(directory, platform, programDirectory) {
       remove(alias);
     }
   }
+  if (darwin) {
+    const contents = dirname(programDirectory).replaceAll('\\', '/');
+    remove(`${contents}/Library/Spotlight`);
+    const plugins = `${contents}/PlugIns`;
+    if (existsSync(join(directory, plugins)))
+      for (const name of readdirSync(join(directory, plugins)).sort())
+        if (name.endsWith('.appex')) remove(`${plugins}/${name}`);
+  }
   const launchers = darwin ? `${dirname(programDirectory).replaceAll('\\', '/')}/MacOS` : programDirectory;
-  for (const name of ['soffice', 'soffice.bin', 'unopkg', 'unopkg.bin', 'gengal', 'gengal.bin', 'senddoc', 'unoinfo'])
+  for (const name of ['soffice', 'soffice.bin', 'unopkg', 'unopkg.bin', 'gengal', 'gengal.bin', 'senddoc', 'unoinfo', 'xpdfimport'])
     remove(`${launchers}/${name}`);
-  for (const name of ['gallery', 'template', 'wizards', 'tipoftheday']) remove(`${resources}/${name}`);
+  for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport']) remove(`${resources}/${name}`);
   if (existsSync(join(directory, resources))) {
     for (const name of readdirSync(join(directory, resources)).sort())
       if (/\.icns$|^intro(?:-highres)?\.png$/.test(name)) remove(`${resources}/${name}`);
+  }
+  const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
+  const services = join(directory, resources, 'services/services.rdb');
+  for (const name of readdirSync(join(directory, programDirectory)).sort()) {
+    if (!excludedLibraries.test(name)) continue;
+    assert(!existsSync(services) || !readFileSync(services, 'utf8').includes(`/${name}`),
+      `Removed component remains registered: ${name}; reconfigure Core with the current component selection`);
+    remove(`${programDirectory}/${name}`);
   }
   const config = `${resources}/config`;
   if (existsSync(join(directory, config))) {
