@@ -19,6 +19,7 @@ const runtimeTargets = {
   'node24-linux-arm64': 'linux-arm64-glibc',
   'node24-macos-arm64': 'darwin-arm64',
   'node24-macos-x64': 'darwin-x64',
+  'node24-win-arm64': 'win32-arm64',
   'node24-win-x64': 'win32-x64',
 };
 const payloadRoots = ['assets', 'bin', 'program', 'sources', 'licenses'];

@@ -61,10 +61,12 @@ The [Node package manifest](packages/entry/package.json) declares the engines fo
 | Engine | Role |
 | --- | --- |
 | `@deepseek-ai/libreoffice-kit-darwin-arm64` | Native helper for macOS on Apple Silicon. |
+| `@deepseek-ai/libreoffice-kit-darwin-x64` | Native helper for Intel macOS. |
+| `@deepseek-ai/libreoffice-kit-win32-arm64` | Native helper for Windows ARM64; requires ARM64 Node.js and the Microsoft Visual C++ v14 ARM64 Redistributable. |
 | `@deepseek-ai/libreoffice-kit-win32-x64` | Native helper for Windows x64; requires the Microsoft Visual C++ v14 x64 Redistributable. |
 | `@deepseek-ai/libreoffice-kit-wasm` | Shared Node WASM engine when no compatible native package is selected. |
 
-Other native directories are development recipes, not additional released targets. The shared WASM package has no npm OS/CPU/libc restriction; that declaration alone does not certify every host. Both engines perform layout and PDF serialization on the CPU.
+Other native directories are development recipes, not additional released targets. The shared WASM package has no npm OS/CPU/libc restriction; that declaration alone does not certify every host. Native and WASM engines perform layout and PDF serialization on the CPU.
 
 Selection uses installed OS/CPU/libc packages. A missing matching native package, unknown Linux libc, or host glibc below the installed native package's recorded minimum selects installed WASM. If WASM is required but absent, `createConverter` rejects with `unavailable`. A corrupt or unusable installed engine rejects; conversion failures do not switch engines.
 

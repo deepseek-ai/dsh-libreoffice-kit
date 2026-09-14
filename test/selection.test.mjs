@@ -14,7 +14,7 @@ test('platform matrix preserves libc rather than guessing glibc', () => {
 });
 
 test('release selection follows the adapter while explicit development scopes can select every recipe', () => {
-  assert.deepEqual(releaseTargets([]), ['darwin-arm64', 'win32-x64', 'wasm']);
+  assert.deepEqual(releaseTargets([]), ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64', 'wasm']);
   const adapter = structuredClone(kitManifest());
   adapter.optionalDependencies = { [`${enginePrefix}-linux-x64-glibc`]: 'workspace:*' };
   assert.deepEqual(releaseTargets([], kitNativeTargets(adapter)), ['linux-x64-glibc', 'wasm']);
@@ -30,7 +30,7 @@ test('CI build selection retains unfinished recipes while publication selects re
   assert.deepEqual(githubMatrix().include.map(row => row.platform).sort(), [...Object.keys(targets), 'wasm'].sort());
   assert.equal(githubMatrix(['--native-only']).include.length, 6);
   assert.deepEqual(githubMatrix(['--released-only']).include.map(row => row.platform).sort(), releaseTargets([]).sort());
-  assert.deepEqual(githubMatrix(['--released-only', '--native-only']).include.map(row => row.platform), ['darwin-arm64', 'win32-x64']);
+  assert.deepEqual(githubMatrix(['--released-only', '--native-only']).include.map(row => row.platform), ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64']);
 });
 
 test('removed musl targets cannot enter development or release selection', () => {

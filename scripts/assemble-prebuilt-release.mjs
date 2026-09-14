@@ -2,16 +2,21 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { materializeEngineArchive } from './engine-archive.mjs';
+import { gunzipSync } from 'node:zlib';
+import { materializeEngineArchive, packEngineArchive } from './engine-archive.mjs';
 import { auditBytes, auditNpmArchive, visitTar } from './publication-privacy.mjs';
 import { packDependencies } from './pack-dependencies.mjs';
+import { npm } from './pack-utils.mjs';
+import { stagePackage, workflowRepositoryUrl } from './pack-release.mjs';
+import { verifyPreparedEngine } from './prepare-artifacts.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
-import { isMain, kitDirectory, kitManifest, readJson, releaseTargets, root } from './platform-matrix.mjs';
+import { isMain, kitDirectory, kitManifest, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
 
 /** Newly promoted targets must carry build recipes already saved in this checkout. */
 export function verifyPromotedRecipe(tar, repo = root) {
   const files = [];
-  visitTar(readFileSync(tar), ({ name, data, type }) => {
+  const packed = readFileSync(tar);
+  visitTar(packed[0] === 0x1f && packed[1] === 0x8b ? gunzipSync(packed) : packed, ({ name, data, type }) => {
     if (type !== '0' || !/^package\/sources\/(engine|scripts)\//.test(name)) return;
     const file = name.slice('package/sources/'.length);
     assert(!file.split('/').includes('..'), 'Unsafe source recipe path');
@@ -31,12 +36,24 @@ export function verifyPromotedRecipe(tar, repo = root) {
   return files;
 }
 
-export function assemblePrebuiltRelease(input, destination) {
+/** Supplemental receipts supply engine identities, never release-wide runtime evidence. */
+export function supplementalEngine(receipt, platform, version) {
+  assert(receipt.version === version && receipt.platform === platform && receipt.engines?.length === 1,
+    'Invalid supplemental engine record');
+  const record = receipt.engines[0];
+  assert(record.platform === platform && record.name === `@deepseek-ai/libreoffice-kit-${platform}` && record.version === version,
+    'Supplemental engine identity mismatch');
+  return record;
+}
+
+export function assemblePrebuiltRelease(input, destination, preparedPlatforms = []) {
   const previous = readJson(join(input, 'release.json'));
   const remote = readJson(join(input, 'github-assets.json'));
   const platforms = releaseTargets([]);
   const version = kitManifest().version;
   assert(previous.version === version, 'Existing release has a different version');
+  assert(new Set(preparedPlatforms).size === preparedPlatforms.length
+    && preparedPlatforms.every(platform => platform !== 'wasm' && platforms.includes(platform)), 'Invalid prepared native platforms');
   const verifyDownload = file => {
     assert(/^[A-Za-z0-9._-]+$/.test(file), 'Unsafe release asset filename');
     const bytes = readFileSync(join(input, file));
@@ -46,18 +63,29 @@ export function assemblePrebuiltRelease(input, destination) {
   verifyDownload('release.json');
   auditBytes(readFileSync(join(input, 'release.json')), 'release.json');
   const records = [...previous.packages];
-  if (platforms.includes('win32-x64') && !records.some(record => record.platform === 'win32-x64')) {
-    verifyDownload('windows-verification.json');
-    auditBytes(readFileSync(join(input, 'windows-verification.json')), 'windows-verification.json');
-    const windows = readJson(join(input, 'windows-verification.json'));
-    assert(windows.version === version && windows.platform === 'win32-x64' && windows.engines?.length === 1,
-      'Invalid supplemental Windows engine record');
-    records.push(windows.engines[0]);
+  for (const [platform, file] of [['win32-x64', 'windows-verification.json'], ['win32-arm64', 'windows-arm64-verification.json']]) {
+    if (!platforms.includes(platform) || preparedPlatforms.includes(platform) || records.some(record => record.platform === platform)) continue;
+    verifyDownload(file);
+    auditBytes(readFileSync(join(input, file)), file);
+    records.push(supplementalEngine(readJson(join(input, file)), platform, version));
   }
   mkdirSync(destination);
   const work = mkdtempSync(join(tmpdir(), 'kit-prebuilt-candidate-'));
   try {
     const packages = platforms.map(platform => {
+      if (preparedPlatforms.includes(platform)) {
+        const directory = join(root, 'packages', platform);
+        verifyPreparedEngine(platform, directory);
+        const manifest = readJson(join(directory, 'package.json'));
+        const staged = join(work, platform);
+        stagePackage(directory, staged, manifest, workflowRepositoryUrl());
+        npm(['pack', '--json', '--ignore-scripts', '--pack-destination', work], staged, work);
+        const gzip = join(work, tarballName(manifest));
+        verifyPromotedRecipe(gzip);
+        const record = { name: manifest.name, version, platform, ...packEngineArchive(gzip, destination, manifest) };
+        rmSync(gzip);
+        return record;
+      }
       const matches = records.filter(record => record.platform === platform);
       assert(matches.length === 1, `Missing or duplicate engine: ${platform}`);
       const record = matches[0];
@@ -83,6 +111,6 @@ export function assemblePrebuiltRelease(input, destination) {
 }
 
 if (isMain(import.meta.url)) {
-  assert(process.argv.length === 4, 'Usage: node scripts/assemble-prebuilt-release.mjs <downloads> <new-candidate>');
-  console.log(JSON.stringify(assemblePrebuiltRelease(resolve(process.argv[2]), resolve(process.argv[3])), null, 2));
+  assert(process.argv.length >= 4, 'Usage: node scripts/assemble-prebuilt-release.mjs <downloads> <new-candidate> [prepared-native-platform ...]');
+  console.log(JSON.stringify(assemblePrebuiltRelease(resolve(process.argv[2]), resolve(process.argv[3]), process.argv.slice(4)), null, 2));
 }

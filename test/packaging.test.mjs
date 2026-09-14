@@ -46,13 +46,13 @@ test('adapter packages retain the license and notices', (t) => {
   assert.equal(verifyKitPackage(directory).name, kitManifest().name);
 });
 
-test('the release declares macOS ARM64, Windows x64 and WASM while other recipes remain available for development', () => {
+test('the release declares macOS and Windows on ARM64/x64, and WASM while other recipes remain available for development', () => {
   const matrix = packageMatrix();
   assert.equal(matrix.length, 7);
   for (const row of matrix) verifyEngineMetadata(row.manifest, row.prebuild);
   const manifest = kitManifest();
   verifyKitMetadata(manifest);
-  assert.deepEqual(kitNativeTargets(manifest), ['darwin-arm64', 'win32-x64']);
+  assert.deepEqual(kitNativeTargets(manifest), ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64']);
   const missingWasm = structuredClone(manifest);
   delete missingWasm.optionalDependencies[wasmName];
   assert.throws(() => verifyKitMetadata(missingWasm), /Optional dependency matrix/);
@@ -74,7 +74,7 @@ test('the installed adapter preserves the canonical optional list and pins prepa
   delete missing.optionalDependencies[`${enginePrefix}-darwin-arm64`];
   assert.throws(() => verifyKitMetadata(missing, true), /Optional dependency matrix/);
   const extra = structuredClone(manifest);
-  extra.optionalDependencies[`${enginePrefix}-win32-arm64`] = engineFamilyVersion();
+  extra.optionalDependencies[`${enginePrefix}-linux-x64-glibc`] = engineFamilyVersion();
   assert.throws(() => verifyKitMetadata(extra, true), /Optional dependency matrix/);
 });
 
