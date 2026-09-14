@@ -11,8 +11,8 @@ python3 benchmarks/fixtures.py .build/benchmark
 node benchmarks/convert.mjs \
   --manifest .build/benchmark/fixtures.json \
   --output .build/comparison \
-  --native-entry /absolute/native-install/node_modules/@deepseek-ai/dsh-libreoffice-kit/lib/index.js \
-  --wasm-entry /absolute/wasm-install/node_modules/@deepseek-ai/dsh-libreoffice-kit/lib/index.js \
+  --native-entry /absolute/native-install/node_modules/@deepseek-ai/libreoffice-kit/lib/index.js \
+  --wasm-entry /absolute/wasm-install/node_modules/@deepseek-ai/libreoffice-kit/lib/index.js \
   --repetitions 3
 node benchmarks/report.mjs \
   --results .build/comparison \

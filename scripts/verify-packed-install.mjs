@@ -34,15 +34,16 @@ export function packAdapter(directory, work) {
   return { manifest, file };
 }
 
-/** expectedBackend asserts actual selection; only wasmOnly controls whether native is installed. */
-export function verifyPackedInstall(directory, { wasmOnly = false, expectedBackend = wasmOnly ? 'wasm' : 'native', keep } = {}) {
+/** Qualify both installed engines or an explicit single-engine installation. */
+export function verifyPackedInstall(directory, { wasmOnly = false, nativeOnly = false, expectedBackend = wasmOnly ? 'wasm' : 'native', keep } = {}) {
+  assert(!(wasmOnly && nativeOnly), 'wasmOnly and nativeOnly are mutually exclusive');
   if (keep) assert(!existsSync(keep), `Retained installation destination already exists: ${keep}`);
   const release = readJson(join(directory, 'release.json'));
   assert(release.schemaVersion === 1, 'Unsupported release manifest');
   const platform = hostTarget();
   if (!wasmOnly) assert(platform && release.platforms.includes(platform), `Release lacks host package ${platform}`);
-  const selected = release.packages.filter((record) => ['wasm', ...(wasmOnly ? [] : [platform])].includes(record.platform));
-  assert(selected.length === (wasmOnly ? 1 : 2), 'Release manifest omits an installed engine');
+  const selected = release.packages.filter((record) => [...(nativeOnly ? [] : ['wasm']), ...(wasmOnly ? [] : [platform])].includes(record.platform));
+  assert(selected.length === (wasmOnly || nativeOnly ? 1 : 2), 'Release manifest omits an installed engine');
   for (const record of [...release.packages, ...release.dependencies]) {
     assert(sha256(join(directory, record.file)) === record.sha256, `Tarball checksum mismatch: ${record.file}`);
   }
@@ -94,5 +95,5 @@ if (isMain(import.meta.url)) {
   const directory = resolve(process.argv[2] ?? join(root, '.release/npm'));
   const keepIndex = process.argv.indexOf('--keep');
   if (keepIndex !== -1) assert(process.argv[keepIndex + 1] && !process.argv[keepIndex + 1].startsWith('--'), '--keep requires a destination path');
-  console.log(JSON.stringify(verifyPackedInstall(directory, { wasmOnly: process.argv.includes('--wasm-only'), ...(keepIndex === -1 ? {} : { keep: resolve(process.argv[keepIndex + 1]) }) })));
+  console.log(JSON.stringify(verifyPackedInstall(directory, { wasmOnly: process.argv.includes('--wasm-only'), nativeOnly: process.argv.includes('--native-only'), ...(keepIndex === -1 ? {} : { keep: resolve(process.argv[keepIndex + 1]) }) })));
 }

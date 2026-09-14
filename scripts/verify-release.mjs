@@ -1,4 +1,5 @@
 /** A metadata check permits planned targets; a release check requires real payloads. */
+import { verifyKitMetadata } from './verify-kit.mjs';
 import { join } from 'node:path';
 import { assert, verifyEngineMetadata, verifyEnginePackage } from './verify-artifacts.mjs';
 import { isMain, kitManifest, kitNativeTargets, packageMatrix, readJson, releaseTag, releaseTargets, root, targets } from './platform-matrix.mjs';
@@ -10,7 +11,7 @@ import { isMain, kitManifest, kitNativeTargets, packageMatrix, readJson, release
  */
 export function verifyRelease({ repo = root, platforms, metadataOnly = false } = {}) {
   const workspace = readJson(join(repo, 'package.json'));
-  const adapter = kitManifest(repo);
+  const adapter = verifyKitMetadata(kitManifest(repo));
   platforms ??= releaseTargets([], kitNativeTargets(adapter));
   assert(Array.isArray(platforms) && platforms.length > 0 && new Set(platforms).size === platforms.length,
     'Release platform selection must be nonempty and unique');

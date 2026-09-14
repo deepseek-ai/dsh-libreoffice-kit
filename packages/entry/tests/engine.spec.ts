@@ -161,7 +161,24 @@ describe('engine resolution', () => {
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })
 
-  it('an absent native package selects required WASM; corrupt installed native never falls back', async () => {
+  it('uses native without resolving WASM and rejects when no engine is installed', async () => {
+    const fixture = await engineFixture()
+    try {
+      const nativeOnly = (name: string): string => {
+        if (name.endsWith('-wasm')) throw new Error('WASM must not be resolved for a usable native engine')
+        return join(fixture.native, 'package.json')
+      }
+      await expect(resolveEngine(nativeOnly, () => true,
+        { platform: 'linux', arch: 'arm64', report: () => ({ header: { glibcVersionRuntime: '2.39' } }) }))
+        .resolves.toMatchObject({ backend: 'native' })
+      const missing = (name: string): never => {
+        throw Object.assign(new Error(`Cannot find module '${name}/package.json'`), { code: 'MODULE_NOT_FOUND' })
+      }
+      await expect(resolveEngine(missing, () => false)).rejects.toThrow(/libreoffice-kit-wasm/)
+    } finally { await rm(fixture.directory, { recursive: true, force: true }) }
+  })
+
+  it('an absent native package selects installed WASM; corrupt installed native never falls back', async () => {
     const fixture = await engineFixture()
     try {
       let wasmResolutions = 0
@@ -235,7 +252,7 @@ describe('glibc floors', () => {
     resolveEngine(name => join(name.endsWith('-wasm') ? fixture.wasm : fixture.native, 'package.json'), () => true,
       { platform: 'linux', arch: 'arm64', report })
 
-  it('a known older glibc selects the required WASM while equal and newer hosts use native', async () => {
+  it('a known older glibc selects the installed WASM while equal and newer hosts use native', async () => {
     const fixture = await engineFixture()
     try {
       for (const version of ['2.17', '2.9', '2.37.9', '2.38', '2.39', '3.0']) {

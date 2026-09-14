@@ -2,13 +2,13 @@
 description: "使用预编译 LibreOffice 引擎，将私有 DOCX、XLSX 和 PPTX 文件转换为 PDF。"
 kind: "package-library"
 ---
-# @deepseek-ai/dsh-libreoffice-kit
+# @deepseek-ai/libreoffice-kit
 
 [English](README.md) | 中文
 
 ## 概述
 
-在 Node.js 中将已授权的磁盘 DOCX、XLSX 和 PPTX 文档转换为 PDF。Host 文档渲染器使用本库进行引擎选择、取消、资源限制和字体加载。它选择已安装的原生引擎或必需的共享 WASM 引擎，不编译 LibreOffice，也不在运行时下载资源。调用方负责源文件授权，并拥有成功生成的输出文件。
+在 Node.js 中将已授权的磁盘 DOCX、XLSX 和 PPTX 文档转换为 PDF。Node 应用使用本库进行引擎选择、取消、资源限制和字体加载。它选择已安装的原生引擎或已安装的共享 WASM 引擎，不编译 LibreOffice，也不在运行时下载资源。调用方负责源文件授权，并拥有成功生成的输出文件。
 
 ## 目录
 
@@ -27,7 +27,7 @@ kind: "package-library"
 内部预览打包 macOS ARM64 和共享 WASM 引擎。这是库依赖。the host application将其组合进 Office 预览。`createConverter` 选择已安装的 OS/架构/libc 引擎；匹配原生包缺失，或已知宿主 glibc 低于其记录的最低要求时，选择 WASM。无效的已安装资源和转换失败都会拒绝请求。
 
 ```js
-import { createConverter } from '@deepseek-ai/dsh-libreoffice-kit';
+import { createConverter } from '@deepseek-ai/libreoffice-kit';
 
 const converter = await createConverter({ timeoutMs: 120_000 });
 try {
@@ -40,6 +40,8 @@ try {
   await converter.dispose();
 }
 ```
+
+原生和 WASM 引擎都是可选依赖。可用的原生引擎无需 WASM。原生引擎缺失或不兼容时，转换需要已安装的 WASM 包，否则 `createConverter()` 以 `unavailable` 拒绝。应用构建者选择并验证随应用分发的引擎。
 
 每个转换器串行执行渲染。一次渲染会创建独立的原生进程或 Node worker 以及私有配置目录，因此字体、文档状态和失败不会泄漏到后续渲染。截止时间在获得转换槽位之后开始计算。`AbortSignal` 可以取消排队中或进行中的工作；取消和 `dispose()` 都会等待进程或 worker 退出并完成临时文件清理。已释放的转换器会拒绝后续工作。
 
@@ -59,7 +61,7 @@ try {
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-本仓库在同一内部 Release 中发布 Node API 和引擎。`ENGINE_VERSION` 固定独立的 `@deepseek-ai/libreoffice-kit-*` 引擎版本。必需 WASM 和可选原生依赖使用 `workspace:*`；打包时写入精确的引擎版本。应用构建时鉴权下载，通过 overrides 将这些版本指向经过验证的本地安装 tarball，并打包已准备的引擎；引擎不发布到 npm registry。[引擎工作区](../../README.zh.md)负责配方、校验和发布。
+本仓库在同一内部 Release 中发布 Node API 和引擎。`ENGINE_VERSION` 固定与 Node API 一致的 `@deepseek-ai/libreoffice-kit-*` 引擎版本。WASM 和原生可选依赖使用 `workspace:*`；打包时写入精确的引擎版本。应用构建时鉴权下载，通过 overrides 将这些版本指向经过验证的本地安装 tarball，并打包已准备的引擎；引擎不发布到 npm registry。[引擎工作区](../../README.zh.md)负责配方、校验和发布。
 
 默认值和所有选项记录在 [TypeScript API](src/index.ts) 中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。转换器复用其第一次字体元数据快照；更改已安装字体后需重新创建转换器。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
 
@@ -71,7 +73,7 @@ try {
 
 Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本排版、字体匹配和 PDF 序列化同样由 CPU 完成。
 
-为获得可复现的比较结果，请在两个相互独立的安装（一个带可选原生包、一个不带）中使用相同的文档、字体、DPI 和限制。报告时应把引擎启动时间和转换时间一起给出；每次渲染都会启动一个全新的引擎。必需的 WASM 资源和平台载荷都带有各自的源码、许可证和完整性清单。
+为获得可复现的比较结果，请在两个相互独立的安装（一个带可选原生包、一个不带）中使用相同的文档、字体、DPI 和限制。报告时应把引擎启动时间和转换时间一起给出；每次渲染都会启动一个全新的引擎。WASM 资源和平台载荷都带有各自的源码、许可证和完整性清单。
 
 不发布 runtime invariant companion，因为每次转换拥有自己的进程或 Worker 及文件，没有需要核对的独立服务状态。
 

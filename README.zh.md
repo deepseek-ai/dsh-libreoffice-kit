@@ -1,5 +1,5 @@
 ---
-description: "预编译的 LibreOfficeKit 转换引擎、必需的 Node WASM 回退及其平台包。"
+description: "预编译的 LibreOfficeKit 转换引擎、可选的 Node WASM 回退及其平台包。"
 kind: "package-library"
 ---
 # LibreOffice engines
@@ -10,7 +10,7 @@ kind: "package-library"
 
 构建并分发预编译的 LibreOffice 引擎，用于磁盘上的 DOCX、XLSX 和 PPTX 转换。本仓库维护源码固定、补丁、原生 helper、共享 Node WebAssembly 引擎，以及 `packages/entry` 中的公开 Node API 和字体加载。
 
-公开包 `@deepseek-ai/dsh-libreoffice-kit` 的 [Node API](packages/entry/README.zh.md) 记录了 `createConverter`、`render`、释放、资源限制和字体。每次转换都会写出一个新的 PDF，调用方可以读取它并交给现有的 PDF 阅读器。
+公开包 `@deepseek-ai/libreoffice-kit` 的 [Node API](packages/entry/README.zh.md) 记录了 `createConverter`、`render`、释放、资源限制和字体。每次转换都会写出一个新的 PDF，调用方可以读取它并交给现有的 PDF 阅读器。
 
 DeepSeek Harness 维护 Cordis 文档提供方、授权和 Web 预览；本仓库维护独立的转换 API。
 

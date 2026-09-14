@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url)
 
 /**
  * Engine-family version every installed engine package must carry. The engine
- * family releases under its own version, independently of this adapter.
+ * family shares its release version with this Node API.
  */
 export const ENGINE_VERSION = '0.0.1'
 
@@ -131,7 +131,7 @@ function glibcVersion(value: unknown): number[] | undefined {
  * @param resolvePackage - Package manifest resolver; injectable for selection tests.
  * @param packageExists - Installed-package probe; injectable for selection tests.
  * @param host - Process identification and diagnostic report.
- * @returns the installed native engine, or the required WASM engine.
+ * @returns the installed native engine, or the installed WASM engine.
  */
 export async function resolveEngine(resolvePackage: (name: string) => string = name => require.resolve(`${name}/package.json`),
   packageExists: (name: string) => boolean = installedPackageExists,

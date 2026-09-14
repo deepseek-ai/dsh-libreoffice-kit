@@ -1,5 +1,5 @@
 ---
-description: "Prebuilt LibreOfficeKit conversion engines, the required Node WASM fallback, and their platform packages."
+description: "Prebuilt LibreOfficeKit conversion engines, the optional Node WASM fallback, and their platform packages."
 kind: "package-library"
 ---
 # LibreOffice engines
@@ -10,7 +10,7 @@ English | [中文](README.zh.md)
 
 Build and distribute precompiled LibreOffice engines for on-disk DOCX, XLSX, and PPTX conversion. This workspace owns the source pin, patches, native helper, and shared Node WebAssembly engine. The public Node API and font loading live in `packages/entry`.
 
-The public package `@deepseek-ai/dsh-libreoffice-kit` [Node API](packages/entry/README.md) documents `createConverter`, `render`, disposal, resource limits, and fonts. Each conversion writes a fresh PDF that the caller can read and send to an existing PDF viewer.
+The public package `@deepseek-ai/libreoffice-kit` [Node API](packages/entry/README.md) documents `createConverter`, `render`, disposal, resource limits, and fonts. Each conversion writes a fresh PDF that the caller can read and send to an existing PDF viewer.
 
 DeepSeek Harness owns the Cordis document provider, authorization, and Web preview; this repository owns the standalone conversion API.
 

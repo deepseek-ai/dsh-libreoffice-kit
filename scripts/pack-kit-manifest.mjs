@@ -1,7 +1,6 @@
 /** Validate engine versions after pnpm resolves workspace dependencies. */
-import { join } from 'node:path';
-import { enginePrefix, kitManifest, kitNativeTargets, kitPackageName, readJson, root, wasmName } from './platform-matrix.mjs';
-import { assert } from './verify-artifacts.mjs';
+import { kitPackageName } from './platform-matrix.mjs';
+import { verifyKitMetadata } from './verify-kit.mjs';
 
 /**
  * Application builds override these exact versions with authenticated local engine archives.
@@ -10,12 +9,5 @@ import { assert } from './verify-artifacts.mjs';
  */
 export function packKitManifest(manifest) {
   if (manifest.name !== kitPackageName) return manifest;
-  const version = readJson(join(root, 'package.json')).version;
-  const native = kitNativeTargets(kitManifest()).map(target => `${enginePrefix}-${target}`);
-  assert(manifest.dependencies?.[wasmName] === version, 'Packed adapter WASM dependency must match the engine family version');
-  assert(JSON.stringify(Object.keys(manifest.optionalDependencies ?? {}).sort()) === JSON.stringify([...native].sort()), 'Packed adapter native targets differ from the release declaration');
-  for (const name of native) {
-    assert(manifest.optionalDependencies[name] === version, 'Packed adapter native dependency must match the engine family version');
-  }
-  return manifest;
+  return verifyKitMetadata(manifest, true);
 }

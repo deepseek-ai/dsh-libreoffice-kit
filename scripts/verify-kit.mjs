@@ -18,13 +18,13 @@ export function engineFamilyVersion(repo = root) {
 export function verifyKitMetadata(manifest, packed = false, nativeTargets) {
   assert(manifest.name === kitPackageName && manifest.type === 'module' && manifest.engines?.node === nodeRange, 'Invalid adapter identity/Node baseline');
   const version = engineFamilyVersion();
+  assert(manifest.version === version, 'The Node API version must equal the kit family version');
   const declared = packed ? version : 'workspace:*';
-  assert(manifest.dependencies?.[wasmName] === declared, 'The WASM engine must be a required dependency pinned to the engine family version');
-  assert(manifest.optionalDependencies?.[wasmName] === undefined, 'The WASM engine must not be optional');
+  assert(manifest.dependencies?.[wasmName] === undefined, 'The WASM engine must be optional');
   const expected = (nativeTargets ?? kitNativeTargets(packed ? kitManifest() : manifest))
-    .map((target) => `${enginePrefix}-${target}`).sort();
+    .map((target) => `${enginePrefix}-${target}`).concat(wasmName).sort();
   assert(JSON.stringify(Object.keys(manifest.optionalDependencies ?? {}).sort()) === JSON.stringify(expected), 'Optional dependency matrix is incomplete');
-  for (const name of expected) assert(manifest.optionalDependencies[name] === declared, 'Native dependency ranges must equal the engine family version');
+  for (const name of expected) assert(manifest.optionalDependencies[name] === declared, 'Optional engine dependency ranges must equal the engine family version');
   return manifest;
 }
 

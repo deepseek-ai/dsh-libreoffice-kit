@@ -41,9 +41,6 @@ importers:
 
   packages/entry:
     dependencies:
-      '@deepseek-ai/libreoffice-kit-wasm':
-        specifier: workspace:*
-        version: link:../wasm
       fflate:
         specifier: 0.8.2
         version: 0.8.2
@@ -57,6 +54,9 @@ importers:
       '@deepseek-ai/libreoffice-kit-darwin-arm64':
         specifier: workspace:*
         version: link:../darwin-arm64
+      '@deepseek-ai/libreoffice-kit-wasm':
+        specifier: workspace:*
+        version: link:../wasm
 
   packages/linux-arm64-glibc: {}
 

@@ -10,7 +10,7 @@ export const releaseRepository = 'deepseek-harness/libreoffice-kit';
 /** Repository maintaining the source and Actions builds referenced by release evidence. */
 export const sourceRepository = releaseRepository;
 export const wasmName = `${enginePrefix}-wasm`;
-export const kitPackageName = '@deepseek-ai/dsh-libreoffice-kit';
+export const kitPackageName = '@deepseek-ai/libreoffice-kit';
 export const nodeRange = '>=22.19.0';
 export const targets = Object.freeze({
   'darwin-arm64': { os: 'darwin', cpu: 'arm64', runner: 'macos-15' },
@@ -35,7 +35,7 @@ export function kitManifest(repo = root) {
   return readJson(join(kitDirectory(repo), 'package.json'));
 }
 
-/** Release tags are namespaced because this repository also releases the Landlock family. */
+/** Release tags identify this standalone kit family. */
 export function releaseTag(version) {
   return `libreoffice-kit-v${version}`;
 }
@@ -71,7 +71,7 @@ export function hostTarget(platform = process.platform, arch = process.arch, rep
 
 /** The adapter declares released native packages; targets also contains unfinished build recipes. */
 export function kitNativeTargets(manifest) {
-  return Object.keys(manifest.optionalDependencies ?? {}).map((name) => {
+  return Object.keys(manifest.optionalDependencies ?? {}).filter(name => name !== wasmName).map((name) => {
     const platform = name.slice(enginePrefix.length + 1);
     if (!name.startsWith(`${enginePrefix}-`) || !Object.hasOwn(targets, platform)) throw new Error(`Unknown native optional dependency: ${name}`);
     return platform;

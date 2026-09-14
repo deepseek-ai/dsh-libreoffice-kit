@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { zipSync, strToU8 } from 'fflate';
-import { createConverter } from '@deepseek-ai/dsh-libreoffice-kit';
+import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
 
 const parts = {

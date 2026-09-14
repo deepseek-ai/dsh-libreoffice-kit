@@ -32,6 +32,8 @@ function scratch(t) {
 
 test('the workspace adapter passes the manifest check the engine lane runs', () => {
   assert.equal(verifyKitPackage(kitDirectory()).name, kitManifest().name);
+  assert.throws(() => verifyKitMetadata({ ...kitManifest(), version: '0.0.0' }), /Node API version/);
+  assert.throws(() => verifyKitMetadata({ ...kitManifest(), name: '@deepseek-ai/obsolete-kit' }), /identity/);
 });
 
 test('adapter packages retain the license and notices', (t) => {
@@ -52,8 +54,8 @@ test('the internal preview declares macOS ARM64 and WASM while other recipes rem
   verifyKitMetadata(manifest);
   assert.deepEqual(kitNativeTargets(manifest), ['darwin-arm64']);
   const missingWasm = structuredClone(manifest);
-  delete missingWasm.dependencies[wasmName];
-  assert.throws(() => verifyKitMetadata(missingWasm), /required dependency/);
+  delete missingWasm.optionalDependencies[wasmName];
+  assert.throws(() => verifyKitMetadata(missingWasm), /Optional dependency matrix/);
   assert.throws(() => verifyKitMetadata(manifest, true), /engine family version/);
   verifyKitMetadata(packedAdapterManifest(manifest), true);
 });
@@ -64,7 +66,7 @@ test('the installed adapter preserves the canonical optional list and pins prepa
   assert.deepEqual(Object.keys(manifest.optionalDependencies), Object.keys(source.optionalDependencies ?? {}));
   const version = engineFamilyVersion();
   const url = () => version;
-  assert.equal(manifest.dependencies[wasmName], url(wasmName));
+  assert.equal(manifest.optionalDependencies[wasmName], url(wasmName));
   for (const native of kitNativeTargets(source)) assert.equal(manifest.optionalDependencies[`${enginePrefix}-${native}`], url(`${enginePrefix}-${native}`));
   for (const name of ['fflate', 'fontkit', 'saxes']) assert.equal(manifest.dependencies[name], source.dependencies[name]);
   verifyKitMetadata(manifest, true);
@@ -80,18 +82,18 @@ test('adapter engine declarations reject unknown native packages and mismatched 
   const source = kitManifest();
   for (const name of [`${enginePrefix}-freebsd-x64`, 'unrelated-native']) {
     const invalid = structuredClone(source);
-    invalid.optionalDependencies = { [name]: 'workspace:*' };
+    invalid.optionalDependencies = { [wasmName]: 'workspace:*', [name]: 'workspace:*' };
     assert.throws(() => verifyKitMetadata(invalid), /Unknown native optional dependency/);
   }
   const invalidSource = structuredClone(source);
-  invalidSource.optionalDependencies = { [`${enginePrefix}-darwin-arm64`]: engineFamilyVersion() };
+  invalidSource.optionalDependencies[`${enginePrefix}-darwin-arm64`] = engineFamilyVersion();
   assert.throws(() => verifyKitMetadata(invalidSource), /engine family version/);
   const invalidPacked = packedAdapterManifest(source);
   invalidPacked.optionalDependencies[`${enginePrefix}-darwin-arm64`] = '0.0.0';
   assert.throws(() => verifyKitMetadata(invalidPacked, true, ['darwin-arm64']), /engine family version/);
-  const optionalWasm = packedAdapterManifest(source);
-  optionalWasm.optionalDependencies[wasmName] = engineFamilyVersion();
-  assert.throws(() => verifyKitMetadata(optionalWasm, true), /must not be optional/);
+  const requiredWasm = packedAdapterManifest(source);
+  requiredWasm.dependencies[wasmName] = engineFamilyVersion();
+  assert.throws(() => verifyKitMetadata(requiredWasm, true), /must be optional/);
 });
 
 test('workflow repository identity requires a repository and an HTTPS origin', () => {

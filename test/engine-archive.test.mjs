@@ -12,7 +12,7 @@ function fixture(t) {
   t.after(() => rmSync(work, { recursive: true, force: true, maxRetries: 3 }));
   const packageDir = join(work, 'package');
   mkdirSync(packageDir);
-  const manifest = { name: '@deepseek-ai/dsh-libreoffice-kit-fixture', version: '1.0.0', files: ['worker'] };
+  const manifest = { name: '@deepseek-ai/libreoffice-kit-fixture', version: '1.0.0', files: ['worker'] };
   writeFileSync(join(packageDir, 'package.json'), JSON.stringify(manifest));
   writeFileSync(join(packageDir, 'worker'), 'fixture engine\n');
   chmodSync(join(packageDir, 'worker'), 0o755);

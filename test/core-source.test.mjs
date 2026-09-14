@@ -25,8 +25,9 @@ function fixture(t) {
   const core = join(repo, coreSubmodule);
   mkdirSync(core, { recursive: true });
   git(core, ['init', '-q']);
+  writeFileSync(join(core, '.gitattributes'), '*.cxx -text\n');
   writeFileSync(join(core, 'source.cxx'), 'upstream\n');
-  git(core, ['add', 'source.cxx']);
+  git(core, ['add', '.gitattributes', 'source.cxx']);
   const commit = () => git(core, ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
     '-c', 'commit.gpgsign=false', 'commit', '-qam', 'fixture']);
   commit();

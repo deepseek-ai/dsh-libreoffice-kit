@@ -2,13 +2,13 @@
 description: "Convert private DOCX, XLSX, and PPTX files to PDF with precompiled LibreOffice engines."
 kind: "package-library"
 ---
-# @deepseek-ai/dsh-libreoffice-kit
+# @deepseek-ai/libreoffice-kit
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-Convert authorized disk DOCX, XLSX, and PPTX documents to PDF in Node.js. The Host document renderer uses this library for engine selection, cancellation, resource limits, and font loading. It selects an installed native engine or the required shared WASM engine without compiling LibreOffice or downloading assets at runtime. Callers own source authorization and successful output files.
+Convert authorized disk DOCX, XLSX, and PPTX documents to PDF in Node.js. Node applications use this library for engine selection, cancellation, resource limits, and font loading. It selects an installed native engine or an installed shared WASM engine without compiling LibreOffice or downloading assets at runtime. Callers own source authorization and successful output files.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Convert authorized disk DOCX, XLSX, and PPTX documents to PDF in Node.js. The Ho
 The internal preview bundles macOS ARM64 and shared WASM engines. This is a library dependency. The the host application composes it into Office preview. `createConverter` selects an installed OS/architecture/libc engine; an absent matching native package or a known host glibc below its recorded minimum selects WASM. Invalid installed assets and failed conversions reject.
 
 ```js
-import { createConverter } from '@deepseek-ai/dsh-libreoffice-kit';
+import { createConverter } from '@deepseek-ai/libreoffice-kit';
 
 const converter = await createConverter({ timeoutMs: 120_000 });
 try {
@@ -40,6 +40,8 @@ try {
   await converter.dispose();
 }
 ```
+
+Native and WASM engines are optional dependencies. A usable native engine does not require WASM. When native selection is unavailable or incompatible, conversion requires an installed WASM package; otherwise `createConverter()` rejects with `unavailable`. Application builders choose and verify the engines they distribute.
 
 Each converter serializes renders. A render creates a separate native process or Node worker and private profile, so fonts, document state, and failures do not leak into later renders. The deadline begins after acquiring its conversion slot. An `AbortSignal` cancels queued or active work; cancellation and `dispose()` await process or worker exit and scratch cleanup. Disposed converters reject further work.
 
@@ -59,7 +61,7 @@ The caller authorizes input access and owns private input/output directories; pa
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-This repository publishes the Node API and engines in the same internal Release. `ENGINE_VERSION` pins the independent `@deepseek-ai/libreoffice-kit-*` engine version. The required WASM and optional native dependencies use `workspace:*`; packing records exact engine versions. Application builds authenticate downloads, override those versions with verified local installation tarballs, and bundle prepared engines; engines are not published to the npm registry. The [engine workspace](../../README.md) owns recipes, validation, and publication.
+This repository publishes the Node API and engines in the same internal Release. `ENGINE_VERSION` pins the matching `@deepseek-ai/libreoffice-kit-*` engine version. Both WASM and native optional dependencies use `workspace:*`; packing records exact engine versions. Application builds authenticate downloads, override those versions with verified local installation tarballs, and bundle prepared engines; engines are not published to the npm registry. The [engine workspace](../../README.md) owns recipes, validation, and publication.
 
 Defaults and all options are documented in [the TypeScript API](src/index.ts). Font directories use conventional system/user paths for the selected OS. Indexing skips missing or protected sources and propagates other filesystem errors. `fontkit` indexes original font files and selects installed faces and glyph coverage; it does not rewrite fonts. The converter reuses its first font metadata snapshot; recreate the converter after changing installed fonts. Original font bytes and decoded glyph coverage remain conversion-local. `missingFonts` contains absent families declared in readable document XML, excluding unrelated engine defaults. Missing glyphs without a named missing family are not a complete document accessibility report.
 
@@ -71,7 +73,7 @@ Native conversion writes missing-family choices into its private LibreOffice pro
 
 Node WASM image downscaling uses LibreOffice's CPU image filter. Text layout, font matching, and PDF serialization are CPU work as well.
 
-For reproducible comparisons, use identical documents, fonts, DPI, and limits in separate installations with and without the optional native package. Report engine startup together with conversion time; every render starts a fresh engine. The required WASM assets and platform payloads carry their source, license, and integrity manifests.
+For reproducible comparisons, use identical documents, fonts, DPI, and limits in separate installations with and without the optional native package. Report engine startup together with conversion time; every render starts a fresh engine. The WASM assets and platform payloads carry their source, license, and integrity manifests.
 
 No runtime invariant companion is published because each conversion owns its process or Worker and files, with no separately observed service state to reconcile.
 

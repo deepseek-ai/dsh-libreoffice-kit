@@ -1,7 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-libreoffice-kit",
+  "name": "@deepseek-ai/libreoffice-kit",
   "description": "Convert on-disk OOXML documents to PDF with prebuilt macOS ARM64 or Node WASM LibreOffice",
-  "version": "0.1.5-rc.2",
+  "version": "0.0.1",
   "publishConfig": {
     "access": "public"
   },
@@ -31,12 +31,12 @@
     "lib/types/**/*.d.ts"
   ],
   "dependencies": {
-    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*",
     "fflate": "0.8.2",
     "fontkit": "2.0.4",
     "saxes": "6.0.0"
   },
   "optionalDependencies": {
-    "@deepseek-ai/libreoffice-kit-darwin-arm64": "workspace:*"
+    "@deepseek-ai/libreoffice-kit-darwin-arm64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*"
   }
 }
