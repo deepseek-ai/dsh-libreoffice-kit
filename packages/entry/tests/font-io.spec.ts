@@ -129,7 +129,8 @@ it.each(['size', 'mtimeMs', 'ctimeMs'] as const)('rejects an indexed file whose 
   const face = await fontFile()
   const before = statSync(face.path)
   const after = statSync(face.path)
-  after[key] += 1
+  // NTFS inode numbers can exceed Number.MAX_SAFE_INTEGER, where adding one is unchanged.
+  after[key] = before[key] === 0 ? 1 : 0
   vi.mocked(fstatSync).mockReturnValueOnce(before).mockReturnValueOnce(after)
   expect(() => index(face.path)).toThrow('changed while indexing')
   expect(closeSync).toHaveBeenCalledOnce()
