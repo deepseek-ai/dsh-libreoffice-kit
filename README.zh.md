@@ -39,7 +39,7 @@ WASM 打包从文件系统镜像中移除明确列出的桌面资源，重新生
 
 ## Development
 
-[原生源码](engine/native/)和 [Node WASM 配方](engine/wasm-source/README.zh.md)编译同一个固定的 LibreOffice 修订版。上游源码在构建时获取到被忽略的目录；仓库只跟踪修订版固定信息、补丁以及我们自己的 C++ 和构建脚本。对应的源码、补丁、哈希和再分发声明随每个引擎包一起分发。本仓库也负责组件选择、去重、桌面资源裁剪、符号清理和签名。准备好的产物必须匹配完整的配置、补丁、暂存和瘦身配方；不需要外部瘦身脚本。不捆绑任何字体集合。
+[原生源码](engine/native/)和 [Node WASM 配方](engine/wasm-source/README.zh.md)编译同一个由 `engine/core` submodule 固定的 LibreOffice 修订版。[.gitmodules](.gitmodules) 记录上游 URL，gitlink 记录 commit。检出脚本按需初始化 submodule，并在被忽略的 `.build/` 下创建独立源码树用于应用补丁。对应的源码配方、解析后的固定信息、补丁、哈希和再分发声明随每个引擎包一起分发。本仓库也负责组件选择、去重、桌面资源裁剪、符号清理和签名。准备好的产物必须匹配完整的配置、补丁、暂存和瘦身配方；不需要外部瘦身脚本。不捆绑任何字体集合。
 
 在此目录运行 `pnpm verify:metadata`、`pnpm test` 和 `pnpm test:packaging`；它们不需要构建 LibreOffice。原生和 WASM 载荷由 `pnpm gha:matrix` 声明的对应 CI runner 构建。
 

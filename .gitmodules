@@ -1,0 +1,4 @@
+[submodule "libreoffice"]
+	path = engine/core
+	url = https://github.com/LibreOffice/core.git
+	shallow = true

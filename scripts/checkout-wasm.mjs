@@ -1,11 +1,14 @@
 /** Fetch the pinned Core/emsdk sources and install the recorded WASM toolchain. */
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJson, root } from './platform-matrix.mjs';
+import { root } from './platform-matrix.mjs';
 import { run } from './pack-utils.mjs';
+import { checkoutCore } from './core-checkout.mjs';
+import { readWasmSource } from '../engine/wasm-source/source.mjs';
 
-const pinned = readJson(join(root, 'engine/wasm-source/source.json'));
-for (const [name, spec] of [['core', pinned.libreoffice], ['emsdk', pinned.emsdk]]) {
+const pinned = readWasmSource();
+checkoutCore(join(root, '.build/wasm/core'));
+for (const [name, spec] of [['emsdk', pinned.emsdk]]) {
   const directory = join(root, '.build/wasm', name);
   if (!existsSync(join(directory, '.git'))) {
     mkdirSync(directory, { recursive: true });

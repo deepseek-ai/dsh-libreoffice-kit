@@ -1,12 +1,9 @@
 {
   "schemaVersion": 1,
   "libreoffice": {
-    "repository": "https://github.com/LibreOffice/core.git",
     "tag": "libreoffice-26.8.0.3",
-    "commit": "bce0998afefdbc355585ca324285661a2170ba77",
     "version": "26.8.0.3",
-    "sourceArchive": "https://download.documentfoundation.org/libreoffice/src/26.8.0/libreoffice-26.8.0.3.tar.xz",
-    "upstreamRepository": "https://git.libreoffice.org/core"
+    "sourceArchive": "https://download.documentfoundation.org/libreoffice/src/26.8.0/libreoffice-26.8.0.3.tar.xz"
   },
   "emsdk": {
     "repository": "https://github.com/emscripten-core/emsdk.git",
