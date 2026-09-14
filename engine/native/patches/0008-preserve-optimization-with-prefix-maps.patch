@@ -1,0 +1,21 @@
+diff --git a/solenv/gbuild/LinkTarget.mk b/solenv/gbuild/LinkTarget.mk
+--- a/solenv/gbuild/LinkTarget.mk
++++ b/solenv/gbuild/LinkTarget.mk
+@@ -62,11 +62,13 @@
+ 
+ # generic cflags/cxxflags to use (optimization flags, debug flags)
+ # user supplied CFLAGS/CXXFLAGS override default debug/optimization flags
++# Prefix maps change build metadata, not optimization or debug policy.
++gb_LinkTarget__get_userflags=$(if $(strip $(filter-out -ffile-prefix-map=% -fdebug-prefix-map=% /pathmap:%,$(1))),$(1),$(call gb_LinkTarget__get_debugflags,$(2)) $(1))
+ # call gb_LinkTarget__get_cflags,linktargetmakefilename
+-gb_LinkTarget__get_cflags=$(if $(CFLAGS),$(CFLAGS),$(call gb_LinkTarget__get_debugflags,$(1)))
+-gb_LinkTarget__get_objcflags=$(if $(OBJCFLAGS),$(OBJCFLAGS),$(call gb_LinkTarget__get_debugflags,$(1)))
+-gb_LinkTarget__get_cxxflags=$(if $(CXXFLAGS),$(CXXFLAGS),$(call gb_LinkTarget__get_debugflags,$(1)))
+-gb_LinkTarget__get_objcxxflags=$(if $(OBJCXXFLAGS),$(OBJCXXFLAGS),$(call gb_LinkTarget__get_debugflags,$(1)))
++gb_LinkTarget__get_cflags=$(call gb_LinkTarget__get_userflags,$(CFLAGS),$(1))
++gb_LinkTarget__get_objcflags=$(call gb_LinkTarget__get_userflags,$(OBJCFLAGS),$(1))
++gb_LinkTarget__get_cxxflags=$(call gb_LinkTarget__get_userflags,$(CXXFLAGS),$(1))
++gb_LinkTarget__get_objcxxflags=$(call gb_LinkTarget__get_userflags,$(OBJCXXFLAGS),$(1))
+ gb_LinkTarget__get_cxxclrflags=$(call gb_LinkTarget__get_debugflags,$(1))
+ # call gb_LinkTarget__get_ldflags,linktargetmakefilename
+ gb_LinkTarget__get_ldflags=$(if $(LDFLAGS),$(LDFLAGS),$(call gb_LinkTarget__get_debugldflags,$(1)))

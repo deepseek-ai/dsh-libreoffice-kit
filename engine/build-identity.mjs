@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 export const buildVendor = 'DeepSeek';
+const compilerFlagKeys = ['CFLAGS', 'CXXFLAGS', 'OBJCFLAGS', 'OBJCXXFLAGS', 'ENVCFLAGS', 'ENVCFLAGSCXX'];
 
 /** Map the most specific paths first, including external build directories. */
 export function buildPathMap(paths) {
@@ -33,13 +34,13 @@ export function buildPathFlags(platform, paths) {
 export function buildEnvironment(environment, platform, paths) {
   const result = Object.fromEntries(Object.entries(environment).filter(([key]) => !/KEY|TOKEN|SECRET|PASSWORD/i.test(key)));
   const flags = buildPathFlags(platform, paths).join(' ');
-  for (const key of ['CFLAGS', 'CXXFLAGS', 'ENVCFLAGS', 'ENVCFLAGSCXX']) result[key] = `${result[key] ?? ''} ${flags}`.trim();
+  for (const key of compilerFlagKeys) result[key] = `${result[key] ?? ''} ${flags}`.trim();
   return result;
 }
 
 /** Hashed private receipt prevents resuming a tree configured without these flags. */
 export function buildIdentity(platform, paths, environment) {
-  const flags = Object.fromEntries(['CFLAGS', 'CXXFLAGS', 'ENVCFLAGS', 'ENVCFLAGSCXX'].map(key => [key, environment[key] ?? '']));
+  const flags = Object.fromEntries(compilerFlagKeys.map(key => [key, environment[key] ?? '']));
   return { schemaVersion: 1, vendor: buildVendor,
     recipe: createHash('sha256').update(readFileSync(new URL(import.meta.url))).digest('hex'),
     configuration: createHash('sha256').update(JSON.stringify({ platform, paths, flags })).digest('hex'),
