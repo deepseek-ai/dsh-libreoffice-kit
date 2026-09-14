@@ -3,10 +3,12 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { buildPathFlags, publicBuildValue } from '../build-identity.mjs';
-import { hostTarget, root } from '../../scripts/platform-matrix.mjs';
+import { root } from '../../scripts/platform-matrix.mjs';
+import { verifyNativeImage } from '../../scripts/verify-artifacts.mjs';
+import { verifyBuildPlatform } from './build-platform.mjs';
 
-export function buildHelper({ platform, core, executable, cwd, env = process.env, repo = root }) {
-  if (platform !== hostTarget()) throw new Error('The helper must be compiled on its matching OS, architecture, and libc');
+export function buildHelper({ platform, core, executable, cwd, env = process.env, repo = root, crossCompile = false }) {
+  verifyBuildPlatform(platform, { crossCompile, env });
   const windows = platform.startsWith('win32-');
   const command = windows ? 'cl.exe' : 'c++';
   const args = windows
@@ -18,6 +20,7 @@ export function buildHelper({ platform, core, executable, cwd, env = process.env
   const result = spawnSync(command, args, { cwd, env, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`Native helper compiler exited ${result.status}, signal ${result.signal}`);
+  verifyNativeImage(executable, platform);
   return { ...publicBuildValue({ command, args }, paths),
     commandSha256: createHash('sha256').update(JSON.stringify({ command, args })).digest('hex') };
 }

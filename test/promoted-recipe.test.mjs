@@ -16,6 +16,12 @@ test('promotion rejects an engine whose build fixes have not been saved in the s
   assert.throws(() => verifyPromotedRecipe(archive, repo), /differs from checkout/);
   for (const file of files) writeFileSync(join(repo, file), 'reviewed source');
   assert.deepEqual(verifyPromotedRecipe(archive, repo), files);
+  writeFileSync(join(repo, files[1]), 'reviewed source\n');
+  writeFileSync(archive, tarFixture(Object.fromEntries(files.map(file => [`package/sources/${file}`, file.endsWith('.mjs') ? 'reviewed source\r\n' : 'reviewed source']))));
+  assert.deepEqual(verifyPromotedRecipe(archive, repo), files);
+  writeFileSync(join(repo, files[2]), 'reviewed source\r\n');
+  assert.throws(() => verifyPromotedRecipe(archive, repo), /differs from checkout/);
+  writeFileSync(join(repo, files[2]), 'reviewed source');
   writeFileSync(join(repo, files[0]), 'different helper');
   assert.throws(() => verifyPromotedRecipe(archive, repo), /differs from checkout/);
   writeFileSync(archive, tarFixture({ 'package/package.json': '{}' }));

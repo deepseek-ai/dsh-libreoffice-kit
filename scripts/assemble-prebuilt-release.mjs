@@ -15,7 +15,15 @@ export function verifyPromotedRecipe(tar, repo = root) {
     if (type !== '0' || !/^package\/sources\/(engine|scripts)\//.test(name)) return;
     const file = name.slice('package/sources/'.length);
     assert(!file.split('/').includes('..'), 'Unsafe source recipe path');
-    assert(existsSync(join(repo, file)) && readFileSync(join(repo, file)).equals(data), `Promoted engine source differs from checkout: ${file}`);
+    const current = existsSync(join(repo, file)) ? readFileSync(join(repo, file)) : undefined;
+    // Git normalizes our JS files on Windows; upstream patch bytes always remain exact.
+    const normalizeJs = bytes => {
+      const text = bytes.toString('utf8');
+      assert(Buffer.from(text).equals(bytes), 'Invalid UTF-8 source recipe');
+      return text.replaceAll('\r\n', '\n');
+    };
+    assert(current && (current.equals(data) || (file.endsWith('.mjs') && normalizeJs(current) === normalizeJs(data))),
+      `Promoted engine source differs from checkout: ${file}`);
     files.push(file);
   });
   assert(files.includes('engine/native/worker.cxx') && files.includes('engine/native/build-helper.mjs')

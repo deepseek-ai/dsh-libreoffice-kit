@@ -30,7 +30,7 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
     if (!['2022', '2026'].includes(visualStudio)) throw new Error('LIBREOFFICE_KIT_VISUAL_STUDIO must be 2022 or 2026');
     flags.push(`--host=${platform.endsWith('arm64') ? 'aarch64' : 'x86_64'}-pc-cygwin`,
       `--with-visual-studio=${visualStudio}`, '--without-lxml', '--enable-skia');
-    if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio}`);
+    if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio} --enable-python=no --without-lxml --without-doxygen --disable-odk --disable-werror --disable-debug --disable-symbols`);
   }
   return flags;
 }
