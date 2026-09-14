@@ -7,10 +7,11 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { source, verifyConfigureInput } from '../engine/native/configure.mjs';
-import { enginePrefix, isMain, kitManifest, kitNativeTargets, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, tarballName, targets } from './platform-matrix.mjs';
+import { enginePrefix, isMain, kitManifest, kitNativeTargets, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, targets } from './platform-matrix.mjs';
 import { assert, regularFile, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { run } from './pack-utils.mjs';
 import { fetchReleaseAsset } from './github-release-fetch.mjs';
+import { materializeEngineArchive, verifyEngineArchiveRecord } from './engine-archive.mjs';
 
 const runtimeTargets = {
   'node24-linux-x64': 'linux-x64-glibc',
@@ -42,7 +43,7 @@ export function verifyPreparedEngine(platform, directory = join(root, 'packages'
   const pinned = wasm ? readJson(join(repo, 'engine/wasm-source/source.json')).libreoffice : source;
   assert(prebuild.source.repository === pinned.repository && prebuild.source.revision === (pinned.commit ?? pinned.revision), 'Prepared engine upstream revision mismatch');
   const files = wasm
-    ? ['source.json', 'autogen.input', 'lok.cxx', ...readdirSync(join(repo, 'engine/wasm-source/patches')).map(file => `patches/${file}`)]
+    ? ['source.json', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(repo, 'engine/wasm-source/patches')).map(file => `patches/${file}`)]
     : ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles(repo)];
   const patchPrefix = wasm ? 'patches/' : 'engine/native/patches/';
   const expectedPatches = files.filter(file => file.startsWith(patchPrefix)).map(file => `sources/${file}`).sort();
@@ -69,7 +70,8 @@ export async function fetchPrebuilt(platform, { repo = root, fetchImpl = fetchRe
   const records = metadata.packages?.filter(record => record.name === manifest.name);
   assert(records?.length === 1, 'GitHub Release index must name the engine exactly once');
   const record = records[0];
-  assert(record.platform === platform && record.file === tarballName(manifest), 'GitHub Release engine platform/file mismatch');
+  assert(record.platform === platform && record.version === manifest.version, 'GitHub Release engine platform/version mismatch');
+  verifyEngineArchiveRecord(record);
   assert(typeof record.sha256 === 'string' && /^[a-f0-9]{64}$/.test(record.sha256), 'Engine tarball requires SHA-256 integrity');
   assert(Number.isSafeInteger(record.bytes) && record.bytes > 0, 'Engine tarball requires its byte count');
   const work = mkdtempSync(join(tmpdir(), 'libreoffice-prebuilt-'));
@@ -78,14 +80,15 @@ export async function fetchPrebuilt(platform, { repo = root, fetchImpl = fetchRe
     assert(download.ok && download.body, `GitHub Release tarball request failed: HTTP ${download.status}`);
     const hash = createHash('sha256');
     let downloadedBytes = 0;
-    const archive = join(work, 'engine.tgz');
+    const archive = join(work, record.file);
     await pipeline(Readable.fromWeb(download.body), new Transform({
       transform(chunk, encoding, callback) { downloadedBytes += chunk.length; hash.update(chunk); callback(null, chunk); },
     }), createWriteStream(archive, { flags: 'wx', mode: 0o600 }));
     assert(downloadedBytes === record.bytes && hash.digest('hex') === record.sha256, 'Engine tarball integrity mismatch');
+    const install = materializeEngineArchive(work, record, join(work, 'install'));
     const unpacked = join(work, 'unpacked');
     mkdirSync(unpacked);
-    run('tar', ['-xzf', archive, '-C', unpacked], { timeout: 900_000 });
+    run('tar', ['-xf', install, '-C', unpacked], { timeout: 900_000 });
     const engine = join(unpacked, 'package');
     verifyPreparedEngine(platform, engine, repo);
     // Keep the workspace's manifest and docs; only engine payload is replaced.

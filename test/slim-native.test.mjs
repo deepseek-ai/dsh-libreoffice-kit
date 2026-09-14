@@ -20,18 +20,34 @@ for (const platform of ['darwin-arm64', 'linux-arm64-glibc']) test(`${platform} 
   const { directory, put } = fixture(t);
   const program = platform.startsWith('darwin-') ? 'program/Office.app/Contents/Frameworks' : 'program/program';
   const resources = `${dirname(program)}/${platform.startsWith('darwin-') ? 'Resources' : 'share'}`;
-  const desktop = ['gallery/picture.svg', 'template/blank.ott', 'wizards/index.py', 'tipoftheday/tips.txt', 'config/images_colibre.zip', 'config/images.zip', 'main.icns', 'intro-highres.png'];
-  const runtime = ['config/soffice.cfg/settings.xml', 'registry/writer.xcd', 'filter/ooxml.xcu', 'fonts/font.ttf', 'liblangtag/language.xml', 'LICENSE', 'NOTICE'];
+  const desktop = ['gallery/picture.svg', 'template/blank.ott', 'wizards/index.py', 'tipoftheday/tips.txt', 'config/images_colibre.zip', 'config/images.zip', 'main.icns', 'intro-highres.png',
+    'basic/Standard/script.xlb', 'Scripts/python/ScriptForgeHelper.py',
+    'config/soffice.cfg/modules/swriter/ui/notebookbar.ui', 'config/soffice.cfg/modules/scalc/ui/notebookbar_compact.ui',
+    'config/soffice.cfg/modules/swriter/toolbar/standardbar.xml', 'config/soffice.cfg/modules/simpress/menubar/menubar.xml'];
+  const runtime = ['config/soffice.cfg/settings.xml', 'config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui', 'config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
+    'registry/writer.xcd', 'filter/ooxml.xcu', 'fonts/font.ttf', 'liblangtag/language.xml', 'LICENSE', 'NOTICE'];
+  const programResources = platform.startsWith('darwin-') ? resources : program;
+  const presets = `${platform.startsWith('darwin-') ? resources : dirname(program)}/presets`;
+  const scriptFiles = [`${presets}/basic/Standard/Module1.xba`, ...['access2base.py', 'scriptforge.py', 'scriptforge.pyi'].map(name => `${programResources}/${name}`)];
   const launcher = platform.startsWith('darwin-') ? `${dirname(program)}/MacOS/soffice` : `${program}/soffice.bin`;
   put(launcher);
   for (const name of [...desktop, ...runtime]) put(`${resources}/${name}`);
+  for (const name of scriptFiles) put(name);
   put(`${program}/library`, 'library');
   const result = pruneNativePayload(directory, platform, program);
-  assert.equal(result.removedBytes, (desktop.length + 1) * 7);
+  assert.equal(result.removedBytes, (desktop.length + scriptFiles.length + 1) * 7);
   assert.equal(existsSync(join(directory, launcher)), false);
   for (const name of desktop) assert.equal(existsSync(join(directory, resources, name)), false, name);
+  for (const name of scriptFiles) assert.equal(existsSync(join(directory, name)), false, name);
   for (const name of runtime) assert.equal(readFileSync(join(directory, resources, name), 'utf8'), 'fixture', name);
   assert.equal(pruneNativePayload(directory, platform, program).removedBytes, 0);
+});
+
+test('Linux rejects a disabled LDAP library that remains in its program service registry', t => {
+  const { directory, put } = fixture(t);
+  put('program/program/libldapbe2lo.so');
+  put('program/program/services/services.rdb', '<component uri="vnd.sun.star.expand:$LO_LIB_DIR/libldapbe2lo.so"/>');
+  assert.throws(() => pruneNativePayload(directory, 'linux-arm64-glibc', 'program/program'), /remains registered.*reconfigure/);
 });
 
 test('macOS removes a byte-identical build alias and rejects an alias with different library bytes', t => {
@@ -93,19 +109,19 @@ test('staging drops PDF import, desktop integrations, help search and network mo
   const contents = 'program/LibreOfficeDev.app/Contents';
   const libraries = `${contents}/Frameworks`;
   const discarded = ['MacOS/xpdfimport', 'Resources/xpdfimport/poppler_data/cMap/data', 'Library/Spotlight/OOo.mdimporter/binary', 'PlugIns/QuickLook.appex/binary',
-    ...['libclucene.dylib', 'libucpchelp1.dylib', 'libhelplinkerlo.dylib', 'libcurl.4.dylib', 'libucpdav1.dylib', 'libucpcmis1lo.dylib', 'libLanguageToollo.dylib', 'libpdfimportlo.dylib'].map(name => `Frameworks/${name}`)];
+    ...['libclucene.dylib', 'libucpchelp1.dylib', 'libhelplinkerlo.dylib', 'libcurl.4.dylib', 'libucpdav1.dylib', 'libucpcmis1lo.dylib', 'libLanguageToollo.dylib', 'libpdfimportlo.dylib', 'libpdfiumlo.dylib', 'libldapbe2lo.dylib'].map(name => `Frameworks/${name}`)];
   for (const file of discarded) put(`${contents}/${file}`);
-  const kept = ['libpdffilterlo.dylib', 'libswlo.dylib', 'libsclo.dylib', 'libsdlo.dylib', 'libucb1.dylib', 'libucpfile1.dylib'];
+  const kept = ['libpdffilterlo.dylib', 'libswlo.dylib', 'libsclo.dylib', 'libsdlo.dylib', 'libucb1.dylib', 'libucpfile1.dylib', 'libsblo.dylib', 'libxmlscriptlo.dylib'];
   for (const name of kept) put(`${libraries}/${name}`);
   pruneNativePayload(directory, 'darwin-arm64', libraries);
   for (const file of discarded) assert.ok(!existsSync(join(directory, contents, file)), file);
   for (const name of kept) assert.ok(existsSync(join(directory, libraries, name)), name);
 });
 
-test('staging refuses to prune a component that Core still registers', t => {
+for (const library of ['libucpdav1.dylib', 'libpdfiumlo.dylib', 'libldapbe2lo.dylib']) test(`staging refuses to prune registered ${library}`, t => {
   const { directory, put } = fixture(t);
   const contents = 'program/LibreOfficeDev.app/Contents';
-  put(`${contents}/Frameworks/libucpdav1.dylib`);
-  put(`${contents}/Resources/services/services.rdb`, '<component uri="vnd.sun.star.expand:$LO_LIB_DIR/libucpdav1.dylib"/>');
+  put(`${contents}/Frameworks/${library}`);
+  put(`${contents}/Resources/services/services.rdb`, `<component uri="vnd.sun.star.expand:$LO_LIB_DIR/${library}"/>`);
   assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', `${contents}/Frameworks`), /remains registered.*reconfigure/);
 });

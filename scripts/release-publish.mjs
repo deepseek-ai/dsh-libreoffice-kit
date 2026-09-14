@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { assert, sha256 } from './verify-artifacts.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
 import { enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
+import { verifyEngineArchiveRecord } from './engine-archive.mjs';
 
 /**
  * Check the candidate against its verification receipts before any upload.
@@ -23,8 +24,9 @@ export function validatePublication(directory, env = process.env) {
   const expected = release.platforms.map((platform) => `${enginePrefix}-${platform}`);
   assert(JSON.stringify(release.packages.map((record) => record.name)) === JSON.stringify(expected), 'Release package order is incomplete or names an undeclared package');
   for (const [index, record] of release.packages.entries()) {
-    assert(record.platform === release.platforms[index] && record.file === tarballName(record), 'Release platform or tarball filename differs from the canonical engine asset');
-    assert(record.version === release.version && sha256(join(directory, record.file)) === record.sha256, `Invalid release tarball: ${record.file}`);
+    assert(record.platform === release.platforms[index], 'Release platform differs from the canonical engine asset');
+    verifyEngineArchiveRecord(record);
+    assert(record.version === release.version && statSync(join(directory, record.file)).size === record.bytes && sha256(join(directory, record.file)) === record.sha256, `Invalid release tarball: ${record.file}`);
   }
   const evidence = readJson(join(directory, 'verification.json'));
   assert(evidence.sourceCommit === env.GITHUB_SHA && /^[a-f0-9]{40}$/.test(evidence.sourceCommit), 'Verification is not for this release commit');
@@ -62,7 +64,7 @@ export function writePublicationIndex(directory, release, repository) {
   const packages = release.packages.map((record) => {
     const file = join(directory, record.file);
     assert(sha256(file) === record.sha256, `Invalid release tarball: ${record.file}`);
-    return { name: record.name, platform: record.platform, file: record.file, sha256: record.sha256, bytes: statSync(file).size };
+    return { name: record.name, version: record.version, platform: record.platform, file: record.file, sha256: record.sha256, bytes: statSync(file).size, install: record.install };
   });
   const source = { repository: sourceRepository, commit: readJson(join(directory, 'verification.json')).sourceCommit,
     releaseManifestSha256: sha256(join(directory, 'release.json')), verificationSha256: sha256(join(directory, 'verification.json')) };

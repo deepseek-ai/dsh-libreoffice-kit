@@ -35,7 +35,7 @@ try {
   for (const name of readdirSync(paths.bundle)) copyFileSync(join(paths.bundle, name), join(destination, 'assets', name));
   for (const name of ['LICENSE', 'NOTICE']) copyFileSync(join(paths.build, 'instdir', name), join(destination, 'licenses', name));
   copyFileSync(join(root, 'NOTICE'), join(destination, 'licenses/DeepSeek-Harness-MIT.txt'));
-  for (const name of ['source.json', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs']) {
+  for (const name of ['source.json', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs']) {
     copyFileSync(join(owner, name), join(destination, 'sources', name));
   }
   cpSync(join(owner, 'patches'), join(destination, 'sources/patches'), { recursive: true });

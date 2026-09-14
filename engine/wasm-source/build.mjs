@@ -8,6 +8,7 @@ import { availableParallelism } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { slimWasmData } from './slim.mjs';
 
 const owner = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(owner, '../..');
@@ -181,11 +182,27 @@ function compile() {
 function packageArtifacts() {
   if (!existsSync(receiptPath)) throw new Error('No successful LibreOffice build receipt exists; run the compile stage');
   const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
-  const inputs = buildInputs();
-  const files = artifactHashes();
-  if (JSON.stringify(receipt.inputs) !== JSON.stringify(inputs) || JSON.stringify(receipt.files) !== JSON.stringify(files)) {
+  const compiledInputs = buildInputs();
+  const compiledFiles = artifactHashes();
+  if (JSON.stringify(receipt.inputs) !== JSON.stringify(compiledInputs) || JSON.stringify(receipt.files) !== JSON.stringify(compiledFiles)) {
     throw new Error('LibreOffice sources or assets differ from the successful build receipt; rerun the compile stage');
   }
+  const program = path.join(build, 'instdir/program');
+  const originalData = readFileSync(path.join(program, artifacts['soffice.data']));
+  const originalMetadata = readFileSync(path.join(program, artifacts['soffice.data.js.metadata']));
+  if (sha256(originalData) !== compiledFiles['soffice.data'] || sha256(originalMetadata) !== compiledFiles['soffice.data.js.metadata']) {
+    throw new Error('LibreOffice filesystem image changed during packaging');
+  }
+  const slimmed = slimWasmData(originalData, JSON.parse(originalMetadata.toString('utf8')));
+  const repacked = {
+    'soffice.data': slimmed.data,
+    'soffice.data.js.metadata': Buffer.from(`${JSON.stringify(slimmed.metadata)}\n`),
+  };
+  const inputs = { ...compiledInputs, packaging: {
+    recipes: Object.fromEntries(['build.mjs', 'slim.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
+    compiledFiles,
+  } };
+  const files = { ...compiledFiles, ...Object.fromEntries(Object.entries(repacked).map(([name, bytes]) => [name, sha256(bytes)])) };
   const manifest = {
     schemaVersion: 2,
     runtime: 'node',
@@ -199,6 +216,7 @@ function packageArtifacts() {
     buildId: sha256(JSON.stringify({ inputs, files })),
     files,
     inputs,
+    slimming: { removed: slimmed.removed, removedBytes: slimmed.removedBytes },
   };
   const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
   if (existsSync(output)) {
@@ -214,7 +232,8 @@ function packageArtifacts() {
     try {
       for (const [name, filename] of Object.entries(artifacts)) {
         const target = path.join(staging, name);
-        copyFileSync(path.join(build, 'instdir/program', filename), target);
+        if (repacked[name]) writeFileSync(target, repacked[name]);
+        else copyFileSync(path.join(program, filename), target);
         if (hashFile(target) !== files[name]) throw new Error(`LibreOffice asset changed during packaging: ${filename}`);
       }
       writeFileSync(path.join(staging, 'manifest.json'), serialized);

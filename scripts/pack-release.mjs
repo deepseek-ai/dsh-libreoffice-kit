@@ -1,11 +1,12 @@
 /** Pack prevalidated engine payloads with npm, preserving native executable modes. */
 import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { assert, sha256 } from './verify-artifacts.mjs';
+import { assert } from './verify-artifacts.mjs';
 import { verifyRelease } from './verify-release.mjs';
 import { npm, scratch } from './pack-utils.mjs';
 import { isMain, kitDirectory, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
 import { packDependencies } from './pack-dependencies.mjs';
+import { packEngineArchive } from './engine-archive.mjs';
 
 /** Resolve npm's repository identity from the workflow environment, or retain local source metadata. */
 export function workflowRepositoryUrl(env = process.env) {
@@ -49,9 +50,10 @@ export function packRelease(destination, platforms, repo = root) {
         packDirectory = join(work, platform);
         stagePackage(dir, packDirectory, manifest, repositoryUrl);
       }
-      npm(['pack', '--json', '--ignore-scripts', '--pack-destination', destination], packDirectory, work);
-      const file = tarballName(manifest);
-      packages.push({ name: manifest.name, version: manifest.version, platform, file, sha256: sha256(join(destination, file)) });
+      npm(['pack', '--json', '--ignore-scripts', '--pack-destination', work], packDirectory, work);
+      const gzip = join(work, tarballName(manifest));
+      packages.push({ name: manifest.name, version: manifest.version, platform, ...packEngineArchive(gzip, destination, manifest) });
+      rmSync(gzip);
     }
     const dependencies = packDependencies(kitDirectory(repo), join(destination, 'dependencies'), work);
     const result = { schemaVersion: 1, version: checked.version, platforms, packages, dependencies };

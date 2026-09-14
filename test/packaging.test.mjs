@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, syml
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { enginePrefix, kitDirectory, kitManifest, kitNativeTargets, packageMatrix, readJson, releaseAssetUrl, root, tarballName, wasmName } from '../scripts/platform-matrix.mjs';
+import { enginePrefix, kitDirectory, kitManifest, kitNativeTargets, packageMatrix, readJson, root, wasmName } from '../scripts/platform-matrix.mjs';
 import { regularFile, safePath, verifyEngineMetadata, verifyEnginePackage, verifyNativeHeader, verifyNativeImage, verifyNoInstallHooks } from '../scripts/verify-artifacts.mjs';
 import { engineFamilyVersion, verifyKitMetadata, verifyKitPackage } from '../scripts/verify-kit.mjs';
 import { packRelease, stagePackage, workflowRepositoryUrl } from '../scripts/pack-release.mjs';
@@ -58,12 +58,12 @@ test('the internal preview declares macOS ARM64 and WASM while other recipes rem
   verifyKitMetadata(packedAdapterManifest(manifest), true);
 });
 
-test('the installed adapter preserves the canonical optional list and pins GitHub Release assets', () => {
+test('the installed adapter preserves the canonical optional list and pins prepared engine versions', () => {
   const source = kitManifest();
   const manifest = packedAdapterManifest(source);
   assert.deepEqual(Object.keys(manifest.optionalDependencies), Object.keys(source.optionalDependencies ?? {}));
   const version = engineFamilyVersion();
-  const url = name => releaseAssetUrl(version, tarballName({ name, version }));
+  const url = () => version;
   assert.equal(manifest.dependencies[wasmName], url(wasmName));
   for (const native of kitNativeTargets(source)) assert.equal(manifest.optionalDependencies[`${enginePrefix}-${native}`], url(`${enginePrefix}-${native}`));
   for (const name of ['fflate', 'fontkit', 'saxes']) assert.equal(manifest.dependencies[name], source.dependencies[name]);
@@ -243,7 +243,7 @@ test('native recipes preserve upstream platform differences', () => {
 test('native conversion builds omit desktop content and interactive document services', () => {
   for (const { prebuild } of packageMatrix().filter(row => row.prebuild.platform !== 'wasm')) {
     const flags = configureFlags(prebuild.platform, '/build/tarballs', 8);
-    for (const component of ['extensions', 'database-connectivity', 'scripting', 'sdremote', 'sdremote-bluetooth'])
+    for (const component of ['extensions', 'database-connectivity', 'scripting', 'sdremote', 'sdremote-bluetooth', 'ldap'])
       assert.ok(flags.includes(`--disable-${component}`), `${prebuild.platform} must omit ${component}`);
     for (const content of ['galleries', 'templates', 'theme'])
       assert.ok(flags.includes(`--with-${content}=no`), `${prebuild.platform} must omit desktop ${content}`);
@@ -256,6 +256,7 @@ test('configure receipts reject stale or overridden components while allowing bu
     const flags = configureFlags(platform, '/different/cache', 4);
     assert.doesNotThrow(() => verifyConfigureInput(platform, flags));
     assert.throws(() => verifyConfigureInput(platform, flags.filter(flag => flag !== '--disable-scripting')), /rebuild Core/);
+    assert.throws(() => verifyConfigureInput(platform, flags.filter(flag => flag !== '--disable-ldap')), /rebuild Core/);
     assert.throws(() => verifyConfigureInput(platform, [...flags, '--enable-scripting']), /rebuild Core/);
     if (platform.startsWith('win32-')) assert.doesNotThrow(() => verifyConfigureInput(platform, configureFlags(platform, '/cache', 8, '2026')));
   }

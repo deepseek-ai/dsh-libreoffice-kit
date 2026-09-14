@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { artifactPlan, fetchPrebuilt, verifyPreparedEngine } from '../scripts/prepare-artifacts.mjs';
-import { readJson, releaseRepository, releaseTag, root, tarballName } from '../scripts/platform-matrix.mjs';
+import { packEngineArchive } from '../scripts/engine-archive.mjs';
+import { readJson, releaseRepository, releaseTag, root } from '../scripts/platform-matrix.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
 import { source, configureFlags } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
@@ -87,7 +87,7 @@ function fixture(t, platform = 'darwin-arm64') {
   prebuild.licenses = [{ component: 'LibreOffice', spdx: 'MPL-2.0', path: 'licenses/MPL.txt' }];
   const wasm = platform === 'wasm';
   const files = wasm
-    ? ['source.json', 'autogen.input', 'lok.cxx', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)]
+    ? ['source.json', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)]
     : ['engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
   for (const file of files) put(`sources/${file}`, readFileSync(join(root, wasm ? 'engine/wasm-source' : '', file)));
   if (!wasm) {
@@ -98,11 +98,11 @@ function fixture(t, platform = 'darwin-arm64') {
   writeFileSync(join(directory, 'prebuilds.json'), JSON.stringify(prebuild));
   const archive = join(work, 'engine.tgz');
   run('tar', ['-czf', archive, '-C', work, 'package']);
-  const bytes = readFileSync(archive);
+  const record = { name: manifest.name, version: manifest.version, platform, ...packEngineArchive(archive, work, manifest) };
+  const bytes = readFileSync(join(work, record.file));
   const metadata = { repository: releaseRepository, tag: releaseTag(manifest.version), version: manifest.version,
-    packages: [{ name: manifest.name, platform, file: tarballName(manifest), bytes: bytes.length,
-      sha256: createHash('sha256').update(bytes).digest('hex') }] };
-  const fetchImpl = async url => String(url).endsWith('.tgz') ? new Response(bytes) : Response.json(metadata);
+    packages: [record] };
+  const fetchImpl = async url => String(url).endsWith('.tar.xz') ? new Response(bytes) : Response.json(metadata);
   return { work, repo, directory, target, metadata, fetchImpl };
 }
 
@@ -120,7 +120,7 @@ test('tarball failures and integrity errors never become source-build fallback',
   const f = fixture(t);
   for (const status of [404, 503]) await assert.rejects(fetchPrebuilt('darwin-arm64', {
     repo: f.repo,
-    fetchImpl: async url => String(url).endsWith('.tgz') ? new Response(null, { status }) : Response.json(f.metadata),
+    fetchImpl: async url => String(url).endsWith('.tar.xz') ? new Response(null, { status }) : Response.json(f.metadata),
   }), new RegExp(`tarball request failed: HTTP ${status}`));
   f.metadata.packages[0].sha256 = '0'.repeat(64);
   await assert.rejects(fetchPrebuilt('darwin-arm64', f), /integrity mismatch/);
@@ -141,7 +141,7 @@ test('the release index cannot redirect an engine to another repository, version
     const metadata = structuredClone(f.metadata);
     change(metadata);
     await assert.rejects(fetchPrebuilt('darwin-arm64', { repo: f.repo, fetchImpl: async () => Response.json(metadata) }),
-      /mismatch|exactly once|byte count|integrity/);
+      /mismatch|exactly once|byte count|integrity|transfer filename/);
   }
 });
 

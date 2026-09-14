@@ -15,7 +15,7 @@ function files(directory, prefix = '') {
 }
 
 /**
- * Remove only a duplicate macOS build alias and explicitly identified desktop resources.
+ * Remove a duplicate macOS build alias, disabled components and desktop resources.
  * @param directory - Staged native package directory.
  * @param platform - Native engine target.
  * @param programDirectory - Package-relative directory holding Core's shared libraries.
@@ -36,6 +36,7 @@ export function pruneNativePayload(directory, platform, programDirectory) {
     if (/^LibreOffice(?:Dev)?[0-9.]+_SDK$/.test(name)) remove(`program/${name}`);
   const darwin = platform.startsWith('darwin-');
   const resources = `${dirname(programDirectory).replaceAll('\\', '/')}/${darwin ? 'Resources' : 'share'}`;
+  const programResources = darwin ? resources : programDirectory;
   if (darwin) {
     const alias = `${dirname(programDirectory).replaceAll('\\', '/')}/MacOS/urelibs`;
     if (existsSync(join(directory, alias))) {
@@ -58,12 +59,15 @@ export function pruneNativePayload(directory, platform, programDirectory) {
   for (const name of ['soffice', 'soffice.bin', 'unopkg', 'unopkg.bin', 'gengal', 'gengal.bin', 'senddoc', 'unoinfo', 'xpdfimport'])
     remove(`${launchers}/${name}`);
   for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport']) remove(`${resources}/${name}`);
+  for (const name of ['basic', 'Scripts']) remove(`${resources}/${name}`);
+  remove(`${darwin ? resources : dirname(programDirectory).replaceAll('\\', '/')}/presets/basic`);
+  for (const name of ['access2base.py', 'scriptforge.py', 'scriptforge.pyi']) remove(`${programResources}/${name}`);
   if (existsSync(join(directory, resources))) {
     for (const name of readdirSync(join(directory, resources)).sort())
       if (/\.icns$|^intro(?:-highres)?\.png$/.test(name)) remove(`${resources}/${name}`);
   }
-  const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
-  const services = join(directory, resources, 'services/services.rdb');
+  const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|pdfiumlo|ldapbe2lo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
+  const services = join(directory, programResources, 'services/services.rdb');
   for (const name of readdirSync(join(directory, programDirectory)).sort()) {
     if (!excludedLibraries.test(name)) continue;
     assert(!existsSync(services) || !readFileSync(services, 'utf8').includes(`/${name}`),
@@ -74,6 +78,11 @@ export function pruneNativePayload(directory, platform, programDirectory) {
   if (existsSync(join(directory, config))) {
     for (const name of readdirSync(join(directory, config)).sort())
       if (/^images(?:_[a-z0-9_]+)?\.zip$/.test(name)) remove(`${config}/${name}`);
+    const ui = `${config}/soffice.cfg`;
+    if (existsSync(join(directory, ui))) {
+      for (const file of files(join(directory, ui)))
+        if (basename(file).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(file)) remove(`${ui}/${file}`);
+    }
   }
   return { removed, removedBytes };
 }

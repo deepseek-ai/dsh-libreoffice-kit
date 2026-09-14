@@ -7,12 +7,13 @@ import { assert, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { auditMacOS } from './audit-macos.mjs';
 import { verifyKitPackage } from './verify-kit.mjs';
 import { hostTarget, isMain, kitDirectory, readJson, root, tarballName } from './platform-matrix.mjs';
+import { materializeEngineArchive } from './engine-archive.mjs';
 
 /**
  * Resolve the adapter tarball the rehearsal installs: the candidate directory's
  * own pack when the release staged one, otherwise `pnpm pack` of the built
  * workspace adapter, which substitutes the `workspace:*` engine ranges with the
- * versioned GitHub Release URLs.
+ * exact engine versions; installation supplies prepared local archives.
  * @param directory - Release candidate directory.
  * @param work - Scratch directory holding the isolated npm configuration.
  * @returns the adapter manifest and the tarball to install.
@@ -47,13 +48,14 @@ export function verifyPackedInstall(directory, { wasmOnly = false, expectedBacke
   }
   const work = mkdtempSync(join(tmpdir(), 'libreoffice-kit-install-'));
   try {
+    const installs = selected.map(record => ({ ...record, file: materializeEngineArchive(directory, record, join(work, 'engines')) }));
     const adapter = packAdapter(directory, work);
     const consumer = join(work, 'consumer');
     mkdirSync(consumer);
     writeFileSync(join(consumer, 'package.json'), `${JSON.stringify({ name: 'libreoffice-kit-install-smoke', version: '0.0.0', private: true, type: 'module',
       overrides: Object.fromEntries(selected.map(record => [record.name, `$${record.name}`])),
-      dependencies: Object.fromEntries([...selected, ...release.dependencies]
-        .map((record) => [record.name, `file:${join(directory, record.file)}`])
+      dependencies: Object.fromEntries(installs.map(record => [record.name, `file:${record.file}`])
+        .concat(release.dependencies.map(record => [record.name, `file:${join(directory, record.file)}`]))
         .concat([[adapter.manifest.name, `file:${adapter.file}`]])),
     }, null, 2)}\n`);
     npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', '--omit=optional'], consumer, work);

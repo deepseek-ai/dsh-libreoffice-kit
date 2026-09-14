@@ -12,6 +12,7 @@ import {
   writeReleaseNotes,
 } from '../scripts/release-publish.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
+import { engineArchiveName } from '../scripts/engine-archive.mjs';
 import { githubMatrix } from '../scripts/github-matrix.mjs';
 
 test('release host verification selects adapter-declared engines, not every unfinished native recipe', () => {
@@ -27,9 +28,9 @@ function fixture(t, platforms = releaseTargets([])) {
   const version = readJson(join(root, 'package.json')).version;
   const env = { GITHUB_REF: `refs/tags/${releaseTag(version)}`, GITHUB_SHA: '1'.repeat(40) };
   const packages = platforms.map(platform => {
-    const file = tarballName({ name: `${enginePrefix}-${platform}`, version });
+    const file = engineArchiveName({ name: `${enginePrefix}-${platform}`, version });
     writeFileSync(join(directory, file), `publication test bytes: ${platform}`);
-    return { name: `${enginePrefix}-${platform}`, platform, version, file, sha256: sha256(join(directory, file)) };
+    return { name: `${enginePrefix}-${platform}`, platform, version, file, bytes: Buffer.byteLength(`publication test bytes: ${platform}`), sha256: sha256(join(directory, file)), install: { file: file.replace(/\.xz$/, ''), bytes: 1, sha256: '0'.repeat(64) } };
   });
   const release = { schemaVersion: 1, version, platforms, packages, dependencies: [] };
   const save = (file, value) => writeFileSync(join(directory, file), `${JSON.stringify(value)}\n`);
@@ -69,7 +70,7 @@ test('publication rejects partial, duplicate and undeclared development targets'
 test('publication requires the matching tag and source commit', t => {
   const { directory, env, evidence, save } = fixture(t);
   assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: 'refs/heads/main' }), /matching release tag/);
-  assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: `refs/tags/${releaseTag('0.0.0')}` }), /matching release tag/);
+  assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: `refs/tags/${releaseTag('99.0.0')}` }), /matching release tag/);
   assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: 'refs/tags/v0.1.0' }), /matching release tag/);
   evidence.sourceCommit = '2'.repeat(40);
   save('verification.json', evidence);
@@ -85,14 +86,22 @@ test('publication rejects changed candidate and tarball bytes', t => {
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
 
+test('publication rejects a transfer size that differs from the pinned archive', t => {
+  const { directory, env, release, save } = fixture(t);
+  release.packages[0].bytes += 1;
+  save('release.json', release);
+  assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
+});
+
 test('publication requires the canonical engine order and matching package versions', t => {
   const { directory, env, release, save } = fixture(t);
   release.packages.reverse();
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /package order/);
   release.packages.reverse();
-  release.packages[0].version = '0.0.0';
-  release.packages[0].file = tarballName(release.packages[0]);
+  release.packages[0].version = '99.0.0';
+  release.packages[0].file = engineArchiveName(release.packages[0]);
+  release.packages[0].install.file = release.packages[0].file.replace(/\.xz$/, '');
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
@@ -103,10 +112,10 @@ test('publication rejects noncanonical filenames, platform identities and family
   for (const change of [{ file: '../different.tgz' }, { platform: 'wasm' }]) {
     release.packages[0] = { ...first, ...change };
     save('release.json', release);
-    assert.throws(() => validatePublication(directory, env), /canonical engine asset/);
+    assert.throws(() => validatePublication(directory, env), /canonical engine asset|transfer filename/);
   }
   release.packages[0] = first;
-  release.version = '0.0.0';
+  release.version = '99.0.0';
   save('release.json', release);
   assert.throws(() => validatePublication(directory, { ...env, GITHUB_REF: `refs/tags/${releaseTag(release.version)}` }), /engine workspace/);
 });

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 import { hooks } from '../.pnpmfile.mjs';
 import { packKitManifest } from '../scripts/pack-kit-manifest.mjs';
-import { kitManifest, releaseAssetUrl, root, tarballName, wasmName } from '../scripts/platform-matrix.mjs';
+import { kitManifest, root, wasmName } from '../scripts/platform-matrix.mjs';
 import { engineFamilyVersion, verifyKitMetadata } from '../scripts/verify-kit.mjs';
 
 function resolvedManifest() {
@@ -15,13 +15,13 @@ function resolvedManifest() {
   return manifest;
 }
 
-test('pnpm packs the adapter with versioned GitHub engine assets and keeps development manifests unchanged', () => {
+test('pnpm packs exact engine versions for prepared local archives and keeps development manifests unchanged', () => {
   const manifest = resolvedManifest();
   const before = structuredClone(manifest);
   const packed = packKitManifest(manifest);
   const version = engineFamilyVersion();
   for (const name of [wasmName, ...Object.keys(manifest.optionalDependencies)]) {
-    assert.equal((name === wasmName ? packed.dependencies : packed.optionalDependencies)[name], releaseAssetUrl(version, tarballName({ name, version })));
+    assert.equal((name === wasmName ? packed.dependencies : packed.optionalDependencies)[name], version);
   }
   assert.equal(packed.dependencies.fflate, manifest.dependencies.fflate);
   assert.deepEqual(manifest, before);
@@ -39,7 +39,7 @@ test('packing rejects stale engine versions and an altered native target set', (
   const missing = resolvedManifest();
   delete missing.optionalDependencies[Object.keys(missing.optionalDependencies)[0]];
   assert.throws(() => packKitManifest(missing), /native targets/);
-  assert.throws(() => verifyKitMetadata(resolvedManifest(), true), /WASM engine/);
+  assert.equal(verifyKitMetadata(resolvedManifest(), true).dependencies[wasmName], engineFamilyVersion());
 });
 
 test('the workspace enables the narrow pack hook and unrelated packages retain their dependencies', () => {

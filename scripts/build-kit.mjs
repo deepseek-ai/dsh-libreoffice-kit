@@ -25,7 +25,7 @@ export function buildKitSources() {
 /**
  * Build the adapter and pack it beside the engine tarballs a rehearsal
  * installs. `pnpm pack` substitutes the `workspace:*` engine ranges with the
- * versioned GitHub Release URLs through the repository's pack hook.
+ * exact engine versions; installation supplies prepared local archives through the repository's pack hook.
  * @param destination - Release candidate directory to pack into.
  * @param work - Scratch directory holding the isolated npm configuration; omit for the caller's environment.
  * @returns the adapter manifest and the packed tarball.
