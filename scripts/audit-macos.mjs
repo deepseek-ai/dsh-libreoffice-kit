@@ -1,6 +1,6 @@
 /** Audit packaged Mach-O architecture, deployment versions, signatures, and dynamic library closure. */
 import { closeSync, existsSync, openSync, readSync, realpathSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { assert } from './verify-artifacts.mjs';
 import { isMain, readJson } from './platform-matrix.mjs';
@@ -26,11 +26,12 @@ export function resolveDependency(dependency, file, executable, rpaths, director
   const candidates = dependency.startsWith('@rpath/')
     ? rpaths.map(path => join(expand(path), dependency.slice('@rpath/'.length)))
     : [expand(dependency)];
-  const found = candidates.find(path => path.startsWith('/') && existsSync(path));
+  const found = candidates.find(path => isAbsolute(path) && existsSync(path));
   assert(found, `Unresolved Mach-O dependency ${dependency} in ${relative(directory, file)}`);
   const resolved = realpathSync(found);
-  assert(!relative(realpathSync(directory), resolved).startsWith('..'), `Mach-O dependency escapes the package: ${dependency}`);
-  return relative(realpathSync(directory), resolved);
+  const local = relative(realpathSync(directory), resolved);
+  assert(!local.startsWith('..') && !isAbsolute(local), `Mach-O dependency escapes the package: ${dependency}`);
+  return local.replaceAll('\\', '/');
 }
 
 /**
