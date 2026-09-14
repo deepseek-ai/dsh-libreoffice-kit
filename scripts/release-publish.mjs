@@ -92,7 +92,7 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Standalone OOXML-to-PDF conversion for Node.js, with prebuilt macOS ARM64, Windows x64, and shared WASM engines.',
+    'Standalone OOXML-to-PDF conversion for Node.js, with prebuilt macOS and Windows engines for ARM64 and x64, plus a shared WASM engine.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',
