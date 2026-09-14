@@ -32,8 +32,8 @@ Measured local candidate sizes below compare the preceding `0.1.2` gzip packages
 
 | Engine | Previous download | Current download | Reduction | Previous unpacked | Current unpacked |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| macOS ARM64 | 98.85 MB | 60.49 MB | 38.80% | 301.04 MB | 269.43 MB |
-| CPU WASM | 56.47 MB | 35.87 MB | 36.47% | 210.24 MB | 190.61 MB |
+| macOS ARM64 | 98.85 MB | 60.49 MB | 38.81% | 301.04 MB | 269.43 MB |
+| CPU WASM | 56.47 MB | 35.85 MB | 36.51% | 210.24 MB | 190.64 MB |
 
 The local macOS ARM64 validation installs the same candidate offline with native and WASM selection. Six synthetic DOCX/XLSX/PPTX documents per engine, including Chinese/English text, tables, formulas, and images, retain identical extracted text, page counts, and 96-DPI rendered pixels against the preceding packages. Runtime checks cover external-link suppression, font substitutions, limits, and cancellation. This evidence covers those fixtures and host; it is not an exhaustive document-fidelity or platform certification. See [packaging](docs/packaging.md) for archive integrity and [release qualification](docs/building.md) for the independent release workflow.
 
