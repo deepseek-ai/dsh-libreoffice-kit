@@ -51,7 +51,8 @@ function fixture(t, platforms = releaseTargets([])) {
   const adapter = { sha256: sha256(join(directory, adapterFile)) };
   const evidence = { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, platforms: platforms.map(platform => ({
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
-    [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true } },
+    [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
+      formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
   })) };
   save('verification.json', evidence);
   return { directory, release, evidence, env, save };
@@ -60,6 +61,17 @@ function fixture(t, platforms = releaseTargets([])) {
 test('publication accepts the complete adapter-declared engine inventory with matching verification metadata', t => {
   const { directory, release, env } = fixture(t);
   assert.deepEqual(validatePublication(directory, env), release);
+});
+
+test('publication rejects receipts missing legacy Office conversion results', t => {
+  const { directory, env, evidence, save } = fixture(t);
+  for (const platform of evidence.platforms) for (const format of ['doc', 'xls', 'ppt']) {
+    const invalid = structuredClone(evidence);
+    const record = invalid.platforms.find(entry => entry.platform === platform.platform);
+    delete record[platform.platform === 'wasm' ? 'wasm' : 'native'].formats[format];
+    save('verification.json', invalid);
+    assert.throws(() => validatePublication(directory, env), /Missing Office format conversion evidence/);
+  }
 });
 
 test('publication rejects adapter bytes changed after the conversion receipts', t => {

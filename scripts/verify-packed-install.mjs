@@ -74,12 +74,12 @@ export function verifyPackedInstall(directory, options = {}) {
       env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' }, timeout: 180_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
     assert(result.backend === expectedBackend && result.pdfBytes > 100, 'Installed conversion did not return the expected PDF/backend');
-    assert(['docx', 'xlsx', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
-      'Installed conversion must include DOCX, XLSX, and PPTX PDFs');
+    assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
+      'Installed conversion must include DOC, DOCX, XLS, XLSX, PPT, and PPTX PDFs');
     assert(result.embeddedGraphics?.pdfInEmf === true, 'Installed conversion must preserve embedded PDF graphics');
     if (keep) {
       mkdirSync(dirname(keep), { recursive: true });
-      for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'runtime-embedded-pdf-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'roundtrip.xlsx.pdf', 'roundtrip.pptx.pdf', 'external.docx', 'external.pdf', 'embedded-pdf.docx', 'embedded-pdf.pdf'])
+      for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'runtime-embedded-pdf-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'roundtrip.doc.pdf', 'roundtrip.xls.pdf', 'roundtrip.ppt.pdf', 'roundtrip.xlsx.pdf', 'roundtrip.pptx.pdf', 'external.docx', 'external.pdf', 'embedded-pdf.docx', 'embedded-pdf.pdf'])
         rmSync(join(consumer, file));
       rmSync(join(consumer, 'fixtures'), { recursive: true });
       try { renameSync(consumer, keep); }

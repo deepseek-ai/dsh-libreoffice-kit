@@ -40,6 +40,8 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     assert(record?.nativeInstalled === (platform !== 'wasm') && record?.wasmInstalled === (platform === 'wasm') && record?.passed === true,
       `Missing native/WASM installed conversion evidence: ${platform}`);
     const conversion = record[platform === 'wasm' ? 'wasm' : 'native'];
+    assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => conversion?.formats?.[format]?.backend === (platform === 'wasm' ? 'wasm' : 'native')
+      && conversion.formats[format].pdfBytes > 100), `Missing Office format conversion evidence: ${platform}`);
     assert(conversion?.adapter?.sha256 === adapterSha256,
       `Verification belongs to different adapter bytes: ${platform}`);
     assert(conversion?.embeddedGraphics?.pdfInEmf === true,
@@ -95,7 +97,7 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Standalone OOXML-to-PDF conversion for Node.js, with required native engines for macOS and Windows on ARM64 and x64, and a WASM engine for Linux. macOS and Windows do not fall back to WASM.',
+    'Standalone Office-to-PDF conversion for Node.js: DOC, DOCX, XLS, XLSX, PPT and PPTX. Required native engines serve macOS and Windows on ARM64 and x64; Linux uses WASM. macOS and Windows do not fall back to WASM.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',

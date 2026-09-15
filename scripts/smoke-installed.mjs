@@ -31,7 +31,7 @@ try {
   assert.equal(pdf.subarray(0, 5).toString('ascii'), '%PDF-');
   assert.match(pdf.subarray(-2048).toString('latin1'), /%%EOF/);
   const formats = { docx: { backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts } };
-  for (const [extension, fixture] of [['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
+  for (const [extension, fixture] of [['doc', 'one-page.doc'], ['xls', 'one-sheet.xls'], ['ppt', 'one-slide.ppt'], ['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
     console.log(`Installed ${converter.backend}: ${extension.toUpperCase()} conversion`);
     const formatOutput = resolve(`roundtrip.${extension}.pdf`);
     const converted = await converter.render({ inputPath: resolve('fixtures', fixture), outputPath: formatOutput });

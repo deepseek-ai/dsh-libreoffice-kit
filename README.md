@@ -1,5 +1,5 @@
 ---
-description: "Font-friendly OOXML-to-PDF conversion in Node.js, with prebuilt LibreOffice engines."
+description: "Font-friendly Office-to-PDF conversion in Node.js, with prebuilt LibreOffice engines."
 kind: "package-library"
 ---
 # @deepseek-ai/libreoffice-kit
@@ -8,11 +8,13 @@ English | [中文](README.zh.md)
 
 ## Current goal
 
-**Font-friendly OOXML → PDF conversion in Node.js.** Version `0.0.1` exposes a standalone Node API for converting local `.docx`, `.xlsx`, and `.pptx` files into PDFs using prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
+**Font-friendly Office → PDF conversion in Node.js.** Version `0.0.1` exposes a standalone Node API for converting local `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, and `.pptx` files into PDFs using prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
 
 The priorities are document layout and readable text, explicit control over available fonts and substitutions, and an engine that applications can bundle and run offline. Size reduction serves that goal: retain the import, layout, drawing, and PDF-export machinery these documents need while removing unrelated desktop features and resources.
 
-The current API supports these three OOXML formats and PDF output. Use it in a Node.js service, a desktop application, or a document-processing job. Applications manage their own authorization, storage, and preview interfaces.
+The current API supports these six Office formats and PDF output. Use it in a Node.js service, a desktop application, or a document-processing job. Applications manage their own authorization, storage, and preview interfaces.
+
+Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as Office 97–2003. RTF/HTML files renamed to these suffixes and `.wps` are not accepted. `missingFonts` reports declarations found in OOXML; binary formats return an empty list while LibreOffice performs font matching.
 
 ## Quick start
 
@@ -88,7 +90,7 @@ The authoritative recipes are [native configuration](engine/native/configure.mjs
 
 Windows payload pruning removes unused OpenSSL, MSI installers, Shell extensions, ActiveX/SharePoint integrations, .NET CLI bindings, desktop launchers, Python wizards, and branding images. The conversion helper, scanner/GPG helpers, registered UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
 
-Writer, Calc, Impress, OOXML filters, PDF export, PDFium for embedded PDF/EMF graphics, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
+Writer, Calc, Impress, binary Office and OOXML filters, PDF export, PDFium for embedded PDF/EMF graphics, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
 
 ### Recorded size and fidelity checks
 

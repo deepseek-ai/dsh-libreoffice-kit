@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
-  "description": "Convert on-disk OOXML documents to PDF with prebuilt LibreOffice",
+  "description": "Convert on-disk Office documents to PDF with prebuilt LibreOffice",
   "version": "0.0.1",
   "publishConfig": {
     "access": "public"

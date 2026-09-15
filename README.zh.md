@@ -1,5 +1,5 @@
 ---
-description: "使用预编译 LibreOffice 引擎，在 Node.js 中实现字体友好的 OOXML → PDF 转换。"
+description: "使用预编译 LibreOffice 引擎，在 Node.js 中实现字体友好的 Office → PDF 转换。"
 kind: "package-library"
 ---
 # @deepseek-ai/libreoffice-kit
@@ -8,11 +8,13 @@ kind: "package-library"
 
 ## 当前目标
 
-**在 Node.js 中实现字体友好的 OOXML → PDF 转换。** `0.0.1` 提供独立的 Node API，使用预编译 LibreOffice 引擎，将本地 `.docx`、`.xlsx`、`.pptx` 文件转换为 PDF。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
+**在 Node.js 中实现字体友好的 Office → PDF 转换。** `0.0.1` 提供独立的 Node API，使用预编译 LibreOffice 引擎，将本地 `.doc`、`.docx`、`.xls`、`.xlsx`、`.ppt`、`.pptx` 文件转换为 PDF。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
 
 当前优先保证文档排版和文字可读，让调用方能明确控制可用字体与替换策略，并让应用可以打包引擎、离线运行。精简也服务于这个目标：保留文档导入、排版、绘图和 PDF 导出所需的能力，移除与转换无关的桌面功能和资源。
 
-当前 API 支持这三种 OOXML 输入和 PDF 输出，可用于 Node.js 服务、桌面应用和文档处理任务。应用自行管理授权、存储和预览界面。
+当前 API 支持这六种 Office 输入和 PDF 输出，可用于 Node.js 服务、桌面应用和文档处理任务。应用自行管理授权、存储和预览界面。
+
+二进制 `.doc`、`.xls`、`.ppt` 支持 Office 97–2003 等 OLE 复合文档，不接受改成这些后缀的 RTF/HTML 文件或 `.wps`。`missingFonts` 仅报告 OOXML 中识别到的字体声明；二进制格式返回空列表，字体匹配由 LibreOffice 完成。
 
 ## 快速开始
 

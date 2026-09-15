@@ -2,7 +2,9 @@
 
 [English](README.md) | 中文
 
-使用预编译 LibreOffice 引擎，在 Node.js 中将本地 DOCX、XLSX 和 PPTX 文件转换为 PDF。通过同一套 API，为服务端、桌面应用和文档处理任务提供可配置字体、取消和资源限制。
+使用预编译 LibreOffice 引擎，在 Node.js 中将本地 DOC、DOCX、XLS、XLSX、PPT 和 PPTX 文件转换为 PDF。通过同一套 API，为服务端、桌面应用和文档处理任务提供可配置字体、取消和资源限制。
+
+二进制 `.doc`、`.xls`、`.ppt` 输入必须是 OLE 复合文档，例如 Office 97–2003 文件。不支持改后缀的 RTF/HTML 和 `.wps`。二进制输入的 `missingFonts` 为空，因为其字体表由 LibreOffice 读取，而不是由 OOXML 检查器读取。
 
 ## 安装与使用
 
@@ -37,7 +39,7 @@ try {
 
 在 Linux 上，原生子进程会先在所选引擎的 program 目录中查找共享库，然后才查找系统路径。调用方提供的 `LD_LIBRARY_PATH` 和 `LD_PRELOAD` 不会被继承。
 
-调用方负责授权输入访问并拥有私有输入/输出目录；路径必须是绝对路径，并在转换期间保持不变。输入文件必须是常规 OOXML 文件，且在配置的 ZIP 和字节限制之内。输出创建使用独占模式和 `0600` 权限；已存在的输出绝不会被覆盖。失败或取消的渲染会删除新建的输出。`maxOutputBytes` 限制返回的 PDF 及其读取缓冲区；原生临时磁盘文件在导出完成前可能继续增长，随后过大的 PDF 会在 Node 读取之前被拒绝并删除。成功的 PDF 归调用方所有，调用方可以将其字节发送给浏览器 PDF 阅读器。
+调用方负责授权输入访问并拥有私有输入/输出目录；路径必须是绝对路径，并在转换期间保持不变。输入文件必须是常规 Office 文件，且在配置的字节限制之内。ZIP 条目数和解压大小限制适用于 OOXML；二进制 DOC/XLS/PPT 使用 OLE 复合容器，内部结构由 LibreOffice 导入器验证。二进制格式仍遵守相同的转换超时和输入/输出限制。输出创建使用独占模式和 `0600` 权限；已存在的输出绝不会被覆盖。失败或取消的渲染会删除新建的输出。`maxOutputBytes` 限制返回的 PDF 及其读取缓冲区；原生临时磁盘文件在导出完成前可能继续增长，随后过大的 PDF 会在 Node 读取之前被拒绝并删除。成功的 PDF 归调用方所有，调用方可以将其字节发送给浏览器 PDF 阅读器。
 
 `ConversionError.code` 区分 `invalid-document`、`unsupported-format`、`input-too-large`、`output-too-large`、`invalid-output`、`timeout`、`unavailable` 和 `failed`。这些 code 会原样穿过 worker 和原生传输层。无效的安装资源会让创建以 `unavailable` 拒绝；它们绝不会启用回退。`EEXIST` 等文件系统错误、无效配置错误和调用方取消原因保持原样。
 

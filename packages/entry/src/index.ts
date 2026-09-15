@@ -9,6 +9,7 @@ import { runNative } from './native.ts'
 import { resolveOptions } from './options.ts'
 import { resolveEngine } from './engine.ts'
 import { ConversionError, failureCode } from './errors.ts'
+import { DOCUMENT_EXTENSIONS } from './document.ts'
 import type { Engine, NativeEngine } from './engine.ts'
 import type { FontFace } from './fonts.ts'
 import type { FontSubstitution } from './font-loader.ts'
@@ -50,7 +51,7 @@ export interface ConverterOptions {
 /** Result of one conversion. */
 export interface RenderResult {
   readonly backend: 'native' | 'wasm'
-  /** Declared document families no installed font provides. */
+  /** Declared OOXML families no installed font provides; binary formats return an empty list. */
   readonly missingFonts: string[]
 }
 
@@ -58,10 +59,10 @@ export interface RenderResult {
 export interface Converter {
   readonly backend: 'native' | 'wasm'
   /**
-   * Convert a private, caller-authorized regular OOXML file to a fresh exclusive PDF path.
+   * Convert a private, caller-authorized regular Office file to a fresh exclusive PDF path.
    * The caller owns both directories and must prevent concurrent path changes.
    * Rejects existing output paths; removes a newly created output on failure or cancellation.
-   * @param request - Absolute input and output paths. Input extension is docx, xlsx, or pptx.
+   * @param request - Absolute paths. Input suffix: doc, docx, xls, xlsx, ppt, or pptx.
    * @param signal - Optional cancellation, including while queued.
    * @returns Engine choice and missing declared font families.
    */
@@ -187,7 +188,7 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       || !isAbsolute(request.inputPath) || !isAbsolute(request.outputPath) || request.inputPath.includes('\0') || request.outputPath.includes('\0')) throw new TypeError('inputPath and outputPath must be absolute filesystem paths.')
     if (resolve(request.inputPath) === resolve(request.outputPath)) throw new Error('Input and output paths must differ.')
     const extension = extname(request.inputPath).slice(1).toLowerCase()
-    if (!['docx', 'xlsx', 'pptx'].includes(extension)) throw new ConversionError('unsupported-format', 'Input extension must be docx, xlsx, or pptx.')
+    if (!(DOCUMENT_EXTENSIONS as readonly string[]).includes(extension)) throw new ConversionError('unsupported-format', `Input extension must be ${DOCUMENT_EXTENSIONS.join(', ')}.`)
     await acquire(signal)
     const deadline = new AbortController()
     const stopped = AbortSignal.any([signal, deadline.signal])

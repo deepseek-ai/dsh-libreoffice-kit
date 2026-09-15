@@ -78,7 +78,7 @@ A built manifest has `source: { repository, revision, version, files }`: `reposi
 
 The workspace resolves the Core URL from `.gitmodules` and the commit from the `engine/core` gitlink. Both engine packages export those values in hashed `sources/core-source.json`; the packaged pin reader uses this receipt when Git metadata is absent. Build scripts, including the WASM recipe under `sources/engine/wasm-source/`, preserve repository-relative paths. Consumers can fetch the exact upstream commit with the packaged checkout scripts without needing the superproject's `.git` directory.
 
-Format/header unit fixtures are never release evidence. Release verification also requires a real OOXML-to-PDF smoke through a relocated offline installation on the corresponding host. No flag promotes fake headers or an `unbuilt` target into a release artifact.
+Format/header unit fixtures are never release evidence. Release verification also requires real DOC, DOCX, XLS, XLSX, PPT and PPTX conversion smokes through a relocated offline installation on the corresponding host. No flag promotes fake headers or an `unbuilt` target into a release artifact.
 
 ## Native worker
 
