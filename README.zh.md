@@ -64,11 +64,11 @@ try {
 | `@deepseek-ai/libreoffice-kit-darwin-x64` | Intel macOS 的原生 helper。 |
 | `@deepseek-ai/libreoffice-kit-win32-arm64` | Windows ARM64 原生 helper；需要 ARM64 Node.js 和 Microsoft Visual C++ v14 ARM64 Redistributable。 |
 | `@deepseek-ai/libreoffice-kit-win32-x64` | Windows x64 原生 helper；需要 Microsoft Visual C++ v14 x64 Redistributable。 |
-| `@deepseek-ai/libreoffice-kit-wasm` | 未选中兼容原生包时使用的共享 Node WASM 引擎。 |
+| `@deepseek-ai/libreoffice-kit-wasm` | 供 Linux 使用的共享 Node WASM 引擎。 |
 
-其他原生目录保留为开发构建配方，不代表额外的已发布目标。共享 WASM 包没有 npm OS/CPU/libc 限制，但这项声明本身不代表每个宿主都已验证。原生与 WASM 引擎的排版和 PDF 序列化均由 CPU 完成。
+其他原生目录保留为开发构建配方，不代表额外的已发布目标。共享 WASM 包的 npm OS 限制为 Linux，不限制 CPU 或 libc；这项声明本身不代表每个 Linux 宿主都已验证。原生与 WASM 引擎的排版和 PDF 序列化均由 CPU 完成。
 
-引擎选择依据已安装的 OS/CPU/libc 包。缺少匹配原生包、Linux libc 未知，或宿主 glibc 低于已安装原生包记录的最低版本时，选择已安装 WASM。需要 WASM 却未安装时，`createConverter` 以 `unavailable` 拒绝。已安装引擎损坏或不可用会报错；转换失败不会切换引擎。
+npm 在 macOS/Windows ARM64 或 x64 上仅安装匹配的原生包，在 Linux 上安装 WASM。macOS 和 Windows 必须具有对应原生包，绝不回退到 WASM。Linux 使用 WASM，除非显式安装的原生开发包支持其 glibc 版本。必需引擎缺失或已安装引擎损坏时，`createConverter` 以 `unavailable` 拒绝；转换失败不会切换引擎。
 
 Node API 与引擎共享 kit 版本。安装使用预先构建的包；安装钩子和转换过程均不会编译 LibreOffice、额外下载引擎，或查找用户的 LibreOffice 安装。npm 分发标准 `.tgz` 包；GitHub Release 引擎下载使用经校验的 XZ 传输包，供应用构建时准备并打包。两种分发路径及安装后转换验证见[打包指南](docs/packaging.md)和[发布流程](docs/building.md)。
 

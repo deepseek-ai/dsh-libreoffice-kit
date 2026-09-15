@@ -12,7 +12,7 @@ Install with Node.js 22.19.0 or newer:
 npm install @deepseek-ai/libreoffice-kit@0.0.1
 ```
 
-The package optionally installs the shared WASM engine, macOS engines for ARM64 and x64, and Windows engines for ARM64 and x64. `createConverter` selects an installed OS/architecture/libc engine; an absent matching native package or a known host glibc below the installed engine’s minimum selects WASM. Invalid installed engines and conversion failures reject the request.
+npm installs the matching native engine on macOS/Windows ARM64 or x64, and the shared WASM engine on Linux. macOS and Windows require their native package; a missing or invalid package rejects `createConverter` with `unavailable`, without switching to WASM. Linux uses WASM unless a compatible development native package was installed explicitly. Conversion failures never switch engines.
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -29,7 +29,7 @@ try {
 }
 ```
 
-Native and WASM engines are optional dependencies. A usable native engine does not require WASM. When native selection is unavailable or incompatible, conversion requires an installed WASM package; otherwise `createConverter()` rejects with `unavailable`. Application builders choose and verify the engines they distribute.
+Native and WASM engines are platform-filtered optional dependencies. Application builders must verify the required engine is installed: native on macOS/Windows, WASM on Linux. A missing required engine rejects `createConverter()` with `unavailable`.
 
 Each converter serializes renders. A render creates a separate native process or Node worker and private profile, so fonts, document state, and failures do not leak into later renders. The deadline begins after acquiring its conversion slot. An `AbortSignal` cancels queued or active work; cancellation and `dispose()` await process or worker exit and scratch cleanup. Disposed converters reject further work.
 
@@ -55,7 +55,7 @@ Native conversion writes missing-family choices into its private LibreOffice pro
 
 Node WASM image downscaling uses LibreOffice's CPU image filter. Text layout, font matching, and PDF serialization are CPU work as well.
 
-For reproducible comparisons, use identical documents, fonts, DPI, and limits in separate installations with and without the optional native package. Report engine startup together with conversion time; every render starts a fresh engine. The WASM assets and platform payloads carry their source, license, and integrity manifests.
+For reproducible comparisons, use identical documents, fonts, DPI, and limits; WASM installations run on Linux. Report engine startup together with conversion time; every render starts a fresh engine. The WASM assets and platform payloads carry their source, license, and integrity manifests.
 
 ## Source and license
 

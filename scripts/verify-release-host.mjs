@@ -1,4 +1,4 @@
-/** A receipt is emitted only after the corresponding installed native and WASM engines convert. */
+/** A receipt is emitted only after the host's installed engine converts. */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { verifyPackedInstall } from './verify-packed-install.mjs';
@@ -10,11 +10,10 @@ const platform = process.argv.includes('--wasm-only') ? 'wasm' : hostTarget();
 assert(platform, 'This host has no declared native target');
 const sourceCommit = process.env.GITHUB_SHA;
 assert(/^[a-f0-9]{40}$/.test(sourceCommit ?? ''), 'GITHUB_SHA must identify the candidate source commit');
-const wasm = verifyPackedInstall(directory, { wasmOnly: true });
-const native = platform === 'wasm' ? undefined : verifyPackedInstall(directory);
-assert(native === undefined || native.adapter.sha256 === wasm.adapter.sha256, 'Native and WASM rehearsals used different adapters');
+const wasm = platform === 'wasm' ? verifyPackedInstall(directory, { wasmOnly: true }) : undefined;
+const native = platform === 'wasm' ? undefined : verifyPackedInstall(directory, { nativeOnly: true, wasmOnly: false });
 const result = { platform, sourceCommit, releaseManifestSha256: sha256(join(directory, 'release.json')),
-  nativeInstalled: Boolean(native), wasmInstalled: true, passed: true, native, wasm };
+  nativeInstalled: Boolean(native), wasmInstalled: Boolean(wasm), passed: true, native, wasm };
 mkdirSync(join(directory, 'evidence'), { recursive: true });
 writeFileSync(join(directory, 'evidence', `${platform}.json`), `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify(result));

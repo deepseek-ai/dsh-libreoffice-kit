@@ -37,11 +37,12 @@ export function validatePublication(directory, env = process.env, { target = 'gi
   const adapterSha256 = sha256(join(directory, tarballName(kitManifest())));
   for (const platform of release.platforms) {
     const record = evidence.platforms.find((entry) => entry.platform === platform);
-    assert(record?.nativeInstalled === (platform !== 'wasm') && record?.wasmInstalled === true && record?.passed === true,
+    assert(record?.nativeInstalled === (platform !== 'wasm') && record?.wasmInstalled === (platform === 'wasm') && record?.passed === true,
       `Missing native/WASM installed conversion evidence: ${platform}`);
-    assert(record.wasm?.adapter?.sha256 === adapterSha256 && (platform === 'wasm' || record.native?.adapter?.sha256 === adapterSha256),
+    const conversion = record[platform === 'wasm' ? 'wasm' : 'native'];
+    assert(conversion?.adapter?.sha256 === adapterSha256,
       `Verification belongs to different adapter bytes: ${platform}`);
-    assert(record.wasm?.embeddedGraphics?.pdfInEmf === true && (platform === 'wasm' || record.native?.embeddedGraphics?.pdfInEmf === true),
+    assert(conversion?.embeddedGraphics?.pdfInEmf === true,
       `Missing embedded PDF graphic conversion evidence: ${platform}`);
   }
   auditReleaseCandidate(directory, release, undefined, { target });
@@ -94,7 +95,7 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Standalone OOXML-to-PDF conversion for Node.js, with prebuilt macOS and Windows engines for ARM64 and x64, plus a shared WASM engine.',
+    'Standalone OOXML-to-PDF conversion for Node.js, with required native engines for macOS and Windows on ARM64 and x64, and a WASM engine for Linux. macOS and Windows do not fall back to WASM.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',

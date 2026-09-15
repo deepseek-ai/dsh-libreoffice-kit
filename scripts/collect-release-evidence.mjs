@@ -13,8 +13,8 @@ assert(/^[a-f0-9]{40}$/.test(sourceCommit ?? ''), 'GITHUB_SHA must identify the 
 const platforms = release.platforms.map((platform) => {
   const receipt = readJson(join(directory, 'evidence', `${platform}.json`));
   assert(receipt.platform === platform && receipt.sourceCommit === sourceCommit && receipt.releaseManifestSha256 === releaseManifestSha256
-    && receipt.passed === true && receipt.wasmInstalled === true && receipt.nativeInstalled === (platform !== 'wasm'), `Invalid host receipt: ${platform}`);
-  assert(receipt.wasm?.adapter?.sha256 === adapterSha256 && (platform === 'wasm' || receipt.native?.adapter?.sha256 === adapterSha256),
+    && receipt.passed === true && receipt.wasmInstalled === (platform === 'wasm') && receipt.nativeInstalled === (platform !== 'wasm'), `Invalid host receipt: ${platform}`);
+  assert(receipt[platform === 'wasm' ? 'wasm' : 'native']?.adapter?.sha256 === adapterSha256,
     `Host receipt used different adapter bytes: ${platform}`);
   return receipt;
 });

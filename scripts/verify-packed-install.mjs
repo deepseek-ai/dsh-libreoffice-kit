@@ -34,9 +34,12 @@ export function packAdapter(directory, work) {
   return { manifest, file };
 }
 
-/** Qualify both installed engines or an explicit single-engine installation. */
-export function verifyPackedInstall(directory, { wasmOnly = false, nativeOnly = false, expectedBackend = wasmOnly ? 'wasm' : 'native', keep } = {}) {
+/** Qualify the host engine; Linux development rehearsals may explicitly retain both engines. */
+export function verifyPackedInstall(directory, options = {}) {
+  const wasmOnly = options.wasmOnly ?? (!options.nativeOnly && process.platform === 'linux');
+  const { nativeOnly = !wasmOnly, expectedBackend = wasmOnly ? 'wasm' : 'native', keep } = options;
   assert(!(wasmOnly && nativeOnly), 'wasmOnly and nativeOnly are mutually exclusive');
+  assert(!wasmOnly || process.platform === 'linux', 'WASM installation is supported only on Linux');
   if (keep) assert(!existsSync(keep), `Retained installation destination already exists: ${keep}`);
   const release = readJson(join(directory, 'release.json'));
   assert(release.schemaVersion === 1, 'Unsupported release manifest');
@@ -97,5 +100,8 @@ if (isMain(import.meta.url)) {
   const directory = resolve(process.argv[2] ?? join(root, '.release/npm'));
   const keepIndex = process.argv.indexOf('--keep');
   if (keepIndex !== -1) assert(process.argv[keepIndex + 1] && !process.argv[keepIndex + 1].startsWith('--'), '--keep requires a destination path');
-  console.log(JSON.stringify(verifyPackedInstall(directory, { wasmOnly: process.argv.includes('--wasm-only'), nativeOnly: process.argv.includes('--native-only'), ...(keepIndex === -1 ? {} : { keep: resolve(process.argv[keepIndex + 1]) }) })));
+  const mode = process.argv.includes('--wasm-only') ? { wasmOnly: true, nativeOnly: false }
+    : process.argv.includes('--native-only') ? { nativeOnly: true, wasmOnly: false } : {};
+  assert(!(process.argv.includes('--wasm-only') && process.argv.includes('--native-only')), 'wasmOnly and nativeOnly are mutually exclusive');
+  console.log(JSON.stringify(verifyPackedInstall(directory, { ...mode, ...(keepIndex === -1 ? {} : { keep: resolve(process.argv[keepIndex + 1]) }) })));
 }

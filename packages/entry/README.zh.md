@@ -12,7 +12,7 @@
 npm install @deepseek-ai/libreoffice-kit@0.0.1
 ```
 
-本包将共享 WASM，以及 macOS 和 Windows 的 ARM64、x64 引擎均声明为可选依赖。`createConverter` 选择已安装的 OS/架构/libc 引擎；匹配原生包缺失，或已知宿主 glibc 低于其记录的最低要求时，选择 WASM。无效的已安装资源和转换失败都会拒绝请求。
+npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -29,7 +29,7 @@ try {
 }
 ```
 
-原生和 WASM 引擎都是可选依赖。可用的原生引擎无需 WASM。原生引擎缺失或不兼容时，转换需要已安装的 WASM 包，否则 `createConverter()` 以 `unavailable` 拒绝。应用构建者选择并验证随应用分发的引擎。
+原生与 WASM 引擎是按平台筛选的可选依赖。应用构建方必须验证所需引擎已安装：macOS/Windows 使用原生引擎，Linux 使用 WASM。必需引擎缺失时，`createConverter()` 以 `unavailable` 拒绝。
 
 每个转换器串行执行渲染。一次渲染会创建独立的原生进程或 Node worker 以及私有配置目录，因此字体、文档状态和失败不会泄漏到后续渲染。截止时间在获得转换槽位之后开始计算。`AbortSignal` 可以取消排队中或进行中的工作；取消和 `dispose()` 都会等待进程或 worker 退出并完成临时文件清理。已释放的转换器会拒绝后续工作。
 
@@ -55,7 +55,7 @@ Node API 与引擎包使用相同的 kit 发布版本。`ENGINE_VERSION` 将 WAS
 
 Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本排版、字体匹配和 PDF 序列化同样由 CPU 完成。
 
-为获得可复现的比较结果，请在两个相互独立的安装（一个带可选原生包、一个不带）中使用相同的文档、字体、DPI 和限制。报告时应把引擎启动时间和转换时间一起给出；每次渲染都会启动一个全新的引擎。WASM 资源和平台载荷都带有各自的源码、许可证和完整性清单。
+为获得可复现的比较结果，请使用相同的文档、字体、DPI 和限制；WASM 安装在 Linux 上运行。报告时应把引擎启动时间和转换时间一起给出；每次渲染都会启动一个全新的引擎。WASM 资源和平台载荷都带有各自的源码、许可证和完整性清单。
 
 ## 源码与许可
 

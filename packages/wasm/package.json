@@ -14,7 +14,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Required Node WebAssembly OOXML-to-PDF engine assets",
+  "description": "Linux Node WebAssembly OOXML-to-PDF engine assets",
+  "os": [
+    "linux"
+  ],
   "exports": {
     "./prebuilds.json": "./prebuilds.json",
     "./package.json": "./package.json"

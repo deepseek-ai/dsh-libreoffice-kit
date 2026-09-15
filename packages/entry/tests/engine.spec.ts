@@ -66,7 +66,8 @@ describe('engine discovery', () => {
   })
 
   it('finds an installed engine package on the real resolution path', () => {
-    expect(installedPackageExists('@deepseek-ai/libreoffice-kit-wasm')).toBe(true)
+    const engine = process.platform === 'linux' ? 'wasm' : platformTarget()
+    expect(installedPackageExists(`@deepseek-ai/libreoffice-kit-${engine}`)).toBe(true)
     expect(installedPackageExists('@deepseek-ai/libreoffice-kit-absent')).toBe(false)
     // A builtin name has no resolution paths, which never selects a native installation.
     expect(installedPackageExists('node:fs')).toBe(false)
@@ -81,9 +82,10 @@ describe('engine discovery', () => {
       }
       await expect(resolveEngine(absent, () => false, { platform: 'linux', arch: 'x64' })).resolves.toMatchObject({ backend: 'wasm' })
       // Keep the default package resolver test independent of locally staged payloads.
-      const manifest = createRequire(import.meta.url).resolve('@deepseek-ai/libreoffice-kit-wasm/package.json')
+      const engine = process.platform === 'linux' ? 'wasm' : platformTarget()
+      const manifest = createRequire(import.meta.url).resolve(`@deepseek-ai/libreoffice-kit-${engine}/package.json`)
       metadataProbe.unbuiltPath = join(dirname(manifest), 'prebuilds.json')
-      await expect(resolveEngine(undefined, undefined, { platform: 'freebsd', arch: 'x64' })).rejects.toThrow(/incompatible or incomplete/)
+      await expect(resolveEngine()).rejects.toThrow(/incompatible or incomplete/)
     } finally {
       metadataProbe.unbuiltPath = undefined
       await rm(fixture.directory, { recursive: true, force: true })
@@ -150,6 +152,21 @@ describe('document inspection', () => {
 })
 
 describe('engine resolution', () => {
+  it.each(['darwin', 'win32'])('%s never resolves WASM when its native package is missing', async platform => {
+    const resolve = vi.fn((name: string): never => {
+      throw Object.assign(new Error(`Cannot find module '${name}/package.json'`), { code: 'MODULE_NOT_FOUND' })
+    })
+    await expect(resolveEngine(resolve, () => false, { platform, arch: 'arm64' }))
+      .rejects.toThrow(`Required LibreOfficeKit native package is missing: @deepseek-ai/libreoffice-kit-${platform}-arm64`)
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(`@deepseek-ai/libreoffice-kit-${platform}-arm64`)
+  })
+
+  it.each([['darwin', 'riscv64'], ['win32', 'ia32'], ['freebsd', 'x64']])('rejects unsupported %s/%s without resolving an engine', async (platform, arch) => {
+    const resolve = vi.fn()
+    await expect(resolveEngine(resolve, () => false, { platform, arch })).rejects.toThrow('Unsupported LibreOfficeKit host')
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
   it('selects a resolved native engine and its recorded glibc floor', async () => {
     const fixture = await engineFixture()
     try {
@@ -174,11 +191,11 @@ describe('engine resolution', () => {
       const missing = (name: string): never => {
         throw Object.assign(new Error(`Cannot find module '${name}/package.json'`), { code: 'MODULE_NOT_FOUND' })
       }
-      await expect(resolveEngine(missing, () => false)).rejects.toThrow(/libreoffice-kit-wasm/)
+      await expect(resolveEngine(missing, () => false, { platform: 'linux', arch: 'riscv64' })).rejects.toThrow(/libreoffice-kit-wasm/)
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })
 
-  it('an absent native package selects installed WASM; corrupt installed native never falls back', async () => {
+  it('Linux without a native development package uses WASM; corrupt native packages reject', async () => {
     const fixture = await engineFixture()
     try {
       let wasmResolutions = 0
@@ -186,12 +203,12 @@ describe('engine resolution', () => {
         if (name.endsWith('-wasm')) { wasmResolutions++; return join(fixture.wasm, 'package.json') }
         throw Object.assign(new Error(`Cannot find module '${name}/package.json'`), { code: 'MODULE_NOT_FOUND' })
       }
-      expect((await resolveEngine(absent, () => false)).backend).toBe('wasm')
+      expect((await resolveEngine(absent, () => false, { platform: 'linux', arch: 'x64', report: () => ({ header: { glibcVersionRuntime: '2.39' } }) })).backend).toBe('wasm')
       expect(wasmResolutions).toBe(1)
       await expect(resolveEngine(() => join(fixture.wasm, 'package.json'), () => true,
         { platform: 'linux', arch: 'arm64', report: () => ({ header: { glibcVersionRuntime: '2.39' } }) }))
         .rejects.toThrow(/incompatible or incomplete/)
-      await expect(resolveEngine(absent, () => true)).rejects.toThrow(/package is incomplete/)
+      await expect(resolveEngine(absent, () => true, { platform: 'linux', arch: 'x64', report: () => ({ header: { glibcVersionRuntime: '2.39' } }) })).rejects.toThrow(/package is incomplete/)
       await expect(resolveEngine(() => { throw Object.assign(new Error('Package exports is malformed'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }) }))
         .rejects.toThrow(/malformed/)
       await expect(resolveEngine(() => { throw Object.assign(new Error('Cannot find module elsewhere'), { code: 'MODULE_NOT_FOUND' }) }))
@@ -199,7 +216,7 @@ describe('engine resolution', () => {
       await expect(resolveEngine(() => { throw Object.assign(new Error('no message'), { code: 'MODULE_NOT_FOUND', message: undefined }) }))
         .rejects.toBeInstanceOf(Error)
       await writeFile(join(fixture.wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: familyVersion, platform: 'wasm', status: 'unbuilt', engine: { kind: 'wasm' } }))
-      await expect(resolveEngine(absent, () => false)).rejects.toThrow(/incompatible or incomplete/)
+      await expect(resolveEngine(absent, () => false, { platform: 'linux', arch: 'x64' })).rejects.toThrow(/incompatible or incomplete/)
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })
 

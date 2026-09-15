@@ -23,13 +23,13 @@ function fixture(t, platforms, packages) {
 
 test('expecting WASM retains the matching native installation requirement', { skip: !platform }, t => {
   const absent = fixture(t, ['wasm'], ['wasm']);
-  assert.throws(() => verifyPackedInstall(absent.directory, { expectedBackend: 'wasm' }), /Release lacks host package/);
+  assert.throws(() => verifyPackedInstall(absent.directory, { wasmOnly: false, nativeOnly: false, expectedBackend: 'wasm' }), /Release lacks host package/);
   const incomplete = fixture(t, [platform, 'wasm'], ['wasm']);
-  assert.throws(() => verifyPackedInstall(incomplete.directory, { expectedBackend: 'wasm' }), /omits an installed engine/);
+  assert.throws(() => verifyPackedInstall(incomplete.directory, { wasmOnly: false, nativeOnly: false, expectedBackend: 'wasm' }), /omits an installed engine/);
 });
 
 test('expecting WASM still verifies the installed native tarball checksum', { skip: !platform }, t => {
   const { directory } = fixture(t, [platform, 'wasm'], ['wasm', platform]);
   writeFileSync(join(directory, `${platform}.tgz`), 'modified native archive');
-  assert.throws(() => verifyPackedInstall(directory, { expectedBackend: 'wasm' }), /Tarball checksum mismatch/);
+  assert.throws(() => verifyPackedInstall(directory, { wasmOnly: false, nativeOnly: false, expectedBackend: 'wasm' }), /Tarball checksum mismatch/);
 });

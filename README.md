@@ -64,11 +64,11 @@ The [Node package manifest](packages/entry/package.json) declares the engines fo
 | `@deepseek-ai/libreoffice-kit-darwin-x64` | Native helper for Intel macOS. |
 | `@deepseek-ai/libreoffice-kit-win32-arm64` | Native helper for Windows ARM64; requires ARM64 Node.js and the Microsoft Visual C++ v14 ARM64 Redistributable. |
 | `@deepseek-ai/libreoffice-kit-win32-x64` | Native helper for Windows x64; requires the Microsoft Visual C++ v14 x64 Redistributable. |
-| `@deepseek-ai/libreoffice-kit-wasm` | Shared Node WASM engine when no compatible native package is selected. |
+| `@deepseek-ai/libreoffice-kit-wasm` | Shared Node WASM engine for Linux. |
 
-Other native directories are development recipes, not additional released targets. The shared WASM package has no npm OS/CPU/libc restriction; that declaration alone does not certify every host. Native and WASM engines perform layout and PDF serialization on the CPU.
+Other native directories are development recipes, not additional released targets. The shared WASM package declares Linux as its npm OS, with no CPU or libc restriction; that declaration alone does not certify every Linux host. Native and WASM engines perform layout and PDF serialization on the CPU.
 
-Selection uses installed OS/CPU/libc packages. A missing matching native package, unknown Linux libc, or host glibc below the installed native package's recorded minimum selects installed WASM. If WASM is required but absent, `createConverter` rejects with `unavailable`. A corrupt or unusable installed engine rejects; conversion failures do not switch engines.
+npm installs only the matching native package on macOS/Windows ARM64 or x64, and WASM on Linux. macOS and Windows require their native package and never fall back to WASM. Linux uses WASM unless an explicitly installed development native package supports its glibc version. A missing required engine or a corrupt installed engine rejects `createConverter` with `unavailable`; conversion failures do not switch engines.
 
 The Node API and engines share the kit version. Installation uses prepared packages; no install hook or conversion compiles LibreOffice, downloads extra engines, or discovers the user's LibreOffice installation. npm distributes standard `.tgz` packages. GitHub Release engine downloads use verified XZ transfer archives for application builders to prepare and bundle. See [packaging](docs/packaging.md) and [release procedures](docs/building.md) for these distribution paths and installed-conversion checks.
 

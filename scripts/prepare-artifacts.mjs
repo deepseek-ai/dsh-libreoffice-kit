@@ -24,12 +24,13 @@ const runtimeTargets = {
 };
 const payloadRoots = ['assets', 'bin', 'program', 'sources', 'licenses'];
 
-/** Select only native engines the installed adapter declares; every target requires WASM. */
+/** Select each consumer's engine: declared native packages, or WASM for Linux. */
 export function artifactPlan(selection = '', repo = root) {
   const selected = selection ? selection.split(',').map(value => value.trim()) : Object.keys(runtimeTargets);
   assert(selected.length > 0 && selected.every(value => Object.hasOwn(runtimeTargets, value)), 'Unknown or empty Office runtime target');
   const released = kitNativeTargets(kitManifest(repo));
-  return [...new Set(selected.map(value => runtimeTargets[value]).filter(value => released.includes(value))), 'wasm'];
+  const native = selected.map(value => runtimeTargets[value]).filter(value => released.includes(value));
+  return [...new Set(native), ...(selected.some(value => value.startsWith('node24-linux-')) ? ['wasm'] : [])];
 }
 
 /** Reject different source pins, helpers or patches even when an engine reuses the package version. */

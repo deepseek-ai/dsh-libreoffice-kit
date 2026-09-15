@@ -177,7 +177,7 @@ test('native manifest rejects OS, CPU, libc, path and receipt mismatches', () =>
   const built = unbuilt(); built.status = 'built';
   assert.throws(() => verifyEngineMetadata(row.manifest, built), /requires source/);
   const wasm = packageMatrix().find((entry) => entry.prebuild.platform === 'wasm');
-  assert.throws(() => verifyEngineMetadata({ ...wasm.manifest, os: ['linux'] }, wasm.prebuild), /every host/);
+  assert.throws(() => verifyEngineMetadata({ ...wasm.manifest, os: undefined }, wasm.prebuild), /only on Linux/);
 });
 
 test('glibc minima are optional for old receipts and valid only on glibc targets', () => {

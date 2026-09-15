@@ -11,7 +11,7 @@ const expectedBackend = process.env.EXPECTED_BACKEND;
 assert(['native', 'wasm'].includes(expectedBackend), 'The container requires an expected native or WASM backend');
 const output = resolve(process.env.QUALIFICATION_OUTPUT ?? '/results');
 mkdirSync(output, { recursive: true });
-const result = verifyPackedInstall(resolve(process.argv[2]), { wasmOnly: false, expectedBackend, keep: '/tmp/qualified-consumer' });
+const result = verifyPackedInstall(resolve(process.argv[2]), { wasmOnly: false, nativeOnly: false, expectedBackend, keep: '/tmp/qualified-consumer' });
 const directory = join(result.retainedInstallation, 'node_modules', `${enginePrefix}-${hostTarget()}`);
 const prebuild = JSON.parse(readFileSync(join(directory, 'prebuilds.json'), 'utf8'));
 assert(prebuild.engine.glibcMinimum, 'Native ELF-derived minimum was not staged');

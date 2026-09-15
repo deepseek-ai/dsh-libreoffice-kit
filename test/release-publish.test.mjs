@@ -50,8 +50,8 @@ function fixture(t, platforms = releaseTargets([])) {
   writeFileSync(join(directory, adapterFile), npmFixture(kitManifest(), { 'package/lib/index.js': 'export const fixture = true;' }));
   const adapter = { sha256: sha256(join(directory, adapterFile)) };
   const evidence = { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, platforms: platforms.map(platform => ({
-    platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: true, passed: true,
-    wasm: { adapter, embeddedGraphics: { pdfInEmf: true } }, ...(platform === 'wasm' ? {} : { native: { adapter, embeddedGraphics: { pdfInEmf: true } } }),
+    platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
+    [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true } },
   })) };
   save('verification.json', evidence);
   return { directory, release, evidence, env, save };
@@ -275,7 +275,7 @@ test('publication rechecks archive contents even when all candidate hashes agree
   const file = join(directory, tarballName(kitManifest()));
   writeFileSync(file, npmFixture(kitManifest(), { 'package/lib/index.js': '/Users/private-builder/source' }));
   for (const platform of evidence.platforms) {
-    platform.wasm.adapter.sha256 = sha256(file);
+    if (platform.wasm) platform.wasm.adapter.sha256 = sha256(file);
     if (platform.native) platform.native.adapter.sha256 = sha256(file);
   }
   save('verification.json', evidence);
@@ -341,7 +341,7 @@ test('npm legacy transfer handling still rejects private inner contents and repo
   const adapter = join(directory, tarballName(kitManifest()));
   writeFileSync(adapter, npmFixture(kitManifest(), { 'package/README.md': 'https://github.com/deepseek-harness/deepseek-harness/' }));
   for (const platform of evidence.platforms) {
-    platform.wasm.adapter.sha256 = sha256(adapter);
+    if (platform.wasm) platform.wasm.adapter.sha256 = sha256(adapter);
     if (platform.native) platform.native.adapter.sha256 = sha256(adapter);
   }
   save('verification.json', evidence);
