@@ -57,9 +57,10 @@ test('npm validation binds every prepared archive to the qualified candidate and
   for (const record of validated.packages) {
     assert.equal(record.integrity, `sha512-${createHash('sha512').update(readFileSync(record.path)).digest('base64')}`);
   }
-  const result = await publishNpmRelease(directory, destination, { env, tag: 'latest', validateOnly: true,
+  const tag = kitManifest().version.includes('-') ? 'next' : 'latest';
+  const result = await publishNpmRelease(directory, destination, { env, tag, validateOnly: true,
     run() { assert.fail('validation must not contact npm'); } });
-  assert.deepEqual(result, { validated: publication.packages.length, version: kitManifest().version, tag: 'latest' });
+  assert.deepEqual(result, { validated: publication.packages.length, version: kitManifest().version, tag });
 });
 
 test('npm validation rejects the wrong source, candidate, inventory, order and archive checksum', async t => {
