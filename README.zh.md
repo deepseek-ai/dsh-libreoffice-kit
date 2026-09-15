@@ -99,6 +99,11 @@ Writer、Calc、Impress、OOXML 过滤器、PDF 导出、用于内嵌 PDF/EMF �
 
 已记录的本地 macOS ARM64 验证，以原生和 WASM 两种选择离线安装同一候选包。每个引擎使用六份合成 DOCX/XLSX/PPTX 文档，覆盖中英文、表格、公式和图片；与此前包相比，提取文字、页数和 96 DPI 渲染像素均一致。这些证据只覆盖上述样例与宿主，不代表所有文档保真或其他平台已通过验收。运行时测试还覆盖外部链接抑制、字体替换、限制和取消；[发布验证](docs/building.md)要求提供安装后运行引擎的证据。
 
+## 构建指南
+
+平台依赖、构建路径、并行度及包验证要求见[通用构建指南](docs/building.md)。
+使用当前检出版本固定的源码和工具链，在相应平台上逐个构建、验证目标。
+
 ## 开发
 
 [原生源码](engine/native/)和 [Node WASM 配方](engine/wasm-source/README.zh.md)使用同一个由 `engine/core` submodule 固定的 LibreOffice 修订版。[.gitmodules](.gitmodules) 管理上游 URL，gitlink 管理 commit。检出脚本保持 submodule 干净，并在被忽略的 `.build/` 下创建可丢弃的独立源码树用于应用补丁。本仓库维护组件选择和完整打包配方；匹配的源码与许可材料随引擎一起分发。

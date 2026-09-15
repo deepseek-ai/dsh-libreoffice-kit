@@ -99,6 +99,12 @@ The existing local candidate measurements compare the preceding `0.1.2` gzip pac
 
 The recorded local macOS ARM64 check installed the same candidate offline with native and WASM selection. Six synthetic DOCX/XLSX/PPTX documents per engine, covering Chinese/English text, tables, formulas, and images, retained identical extracted text, page counts, and 96-DPI rendered pixels against the preceding packages. This covers those fixtures and that host; it does not establish universal document fidelity or other-platform qualification. Runtime suites also cover external-link suppression, font substitutions, limits, and cancellation; [release qualification](docs/building.md) requires installed-engine evidence.
 
+## Build guide
+
+See [Building and qualifying engines](docs/building.md) for platform prerequisites,
+caller-selected paths, explicit parallelism, and package qualification. Use the
+source and toolchain versions pinned in the checkout being built.
+
 ## Development
 
 [Native sources](engine/native/) and the [Node WASM recipe](engine/wasm-source/README.md) use the same LibreOffice revision pinned by the `engine/core` submodule. [.gitmodules](.gitmodules) owns its upstream URL and the gitlink owns its commit. Checkout scripts keep that submodule pristine and create disposable, patchable trees under ignored `.build/` directories. This repository owns component selection and the complete packaging recipe; each engine ships the matching source and license materials.
