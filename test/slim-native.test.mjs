@@ -50,6 +50,59 @@ test('Linux rejects a disabled LDAP library that remains in its program service 
   assert.throws(() => pruneNativePayload(directory, 'linux-arm64-glibc', 'program/program'), /remains registered.*reconfigure/);
 });
 
+const windowsLibraries = ['libcrypto-3.dll', 'libssl-3.dll', 'reg_dlls.dll', 'shlxtmsi.dll', 'sellangmsi.dll', 'reg4allmsdoc.dll',
+  'qslnkmsi.dll', 'sdqsmsi.dll', 'instooofiltmsi.dll', 'sn_tools.dll', 'so_activex.dll', 'spsupp_x64.dll', 'spsupp_x86.dll', 'inprocserv.dll',
+  'cli_uno.dll', ...['basetypes', 'cppuhelper', 'oootypes', 'ure', 'uretypes'].flatMap(name => [`cli_${name}.dll`, `policy.1.0.cli_${name}.dll`])];
+
+for (const platform of ['win32-x64', 'win32-arm64']) test(`${platform} prunes desktop integrations and unused OpenSSL while retaining helper dependencies`, t => {
+  const { directory, put } = fixture(t);
+  const program = 'program/program';
+  const architectureFiles = files => files.filter(name => platform === 'win32-x64' || !['spsupp_x64.dll', 'spsupp_x86.dll', 'twain32shim.exe'].includes(name));
+  const discarded = [
+    'program/wizards/common/FileAccess.py', 'program/wizards/ui/WizardDialog.py',
+    ...architectureFiles([...windowsLibraries, 'shlxthdl/shlxthdl.dll', 'shlxthdl/propertyhdl.dll', 'shlxthdl/ooofilt.dll',
+      'shell/about.svg', 'shell/donate1.png', 'shell/donate2.png', 'intro.png', 'intro-highres.png',
+      'soffice.exe', 'unopkg.exe', 'gengal.exe', 'unoinfo.exe', 'xpdfimport.exe',
+      'soffice.com', 'unopkg.com', 'swriter.exe', 'scalc.exe', 'simpress.exe', 'sdraw.exe', 'smath.exe', 'sbase.exe', 'sweb.exe',
+      'soffice_safe.exe', 'quickstart.exe', 'uno.exe', 'senddoc.exe', 'regview.exe', 'spsupp_helper.exe',
+      ...['basetypes', 'cppuhelper', 'oootypes', 'ure', 'uretypes'].map(name => `cli_${name}.config`)]).map(name => `${program}/${name}`),
+  ];
+  const kept = ['bin/libreoffice-kit.exe', 'licenses/LICENSE', 'program/share/fonts/font.ttf', 'program/share/registry/writer.xcd',
+    ...architectureFiles(['twain32shim.exe', 'gpgme-w32spawn.exe', 'scnlo.dll', 'gpgmepp.dll', 'xsec_xmlsec.dll', 'nss3.dll',
+      'directx9canvaslo.dll', 'gdipluscanvaslo.dll', 'emserlo.dll', 'jumplistlo.dll', 'winaccessibility.dll', 'WinUserInfoBelo.dll', 'UAccCOM.dll',
+      'mergedlo.dll', 'pdffilterlo.dll', 'pdfiumlo.dll', 'swlo.dll', 'sclo.dll', 'sdlo.dll', 'unknown.exe', 'unknown.com', 'policy.other.dll',
+      ...['bootstrap', 'fundamental', 'soffice', 'version', 'louno', 'uno', 'setup', 'redirect'].map(name => `${name}.ini`)]).map(name => `${program}/${name}`),
+  ];
+  for (const name of [...discarded, ...kept]) put(name);
+  const services = `${program}/services/services.rdb`;
+  const registry = '<components><component uri="vnd.sun.star.expand:$LO_LIB_DIR/winaccessibility.dll"/></components>';
+  put(services, registry);
+  const result = pruneNativePayload(directory, platform, program);
+  assert.equal(result.removedBytes, discarded.length * Buffer.byteLength('fixture'));
+  for (const name of discarded) assert.equal(existsSync(join(directory, name)), false, name);
+  for (const name of kept) assert.equal(readFileSync(join(directory, name), 'utf8'), 'fixture', name);
+  assert.equal(readFileSync(join(directory, services), 'utf8'), registry);
+  assert.ok(result.removed.includes('program/wizards'));
+  assert.ok(result.removed.includes(`${program}/shlxthdl`));
+  assert.ok(result.removed.includes(`${program}/shell`));
+  assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
+});
+
+for (const library of windowsLibraries) test(`Windows refuses to prune registered ${library}`, t => {
+  const { directory, put } = fixture(t);
+  const program = 'program/program';
+  put(`${program}/${library}`);
+  put(`${program}/services/services.rdb`, `<component uri="vnd.sun.star.expand:$LO_LIB_DIR/${library}"/>`);
+  assert.throws(() => pruneNativePayload(directory, 'win32-x64', program), /remains registered.*reconfigure/);
+  assert.equal(readFileSync(join(directory, program, library), 'utf8'), 'fixture');
+});
+
+test('Windows integration pruning does not select libraries on other platforms', t => {
+  const { directory, put } = fixture(t);
+  for (const name of [...windowsLibraries, 'libcrypto.so.3', 'libssl.so.3', 'libcrypto.3.dylib', 'libssl.3.dylib']) put(`program/program/${name}`);
+  assert.deepEqual(pruneNativePayload(directory, 'linux-x64-glibc', 'program/program'), { removed: [], removedBytes: 0 });
+});
+
 test('macOS removes a byte-identical build alias and rejects an alias with different library bytes', t => {
   const { directory, put } = fixture(t);
   const program = 'program/Office.app/Contents/Frameworks';

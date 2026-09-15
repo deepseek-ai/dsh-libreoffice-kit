@@ -35,6 +35,7 @@ export function pruneNativePayload(directory, platform, programDirectory) {
   for (const name of readdirSync(join(directory, 'program')).sort())
     if (name === 'sdk' || /^LibreOffice(?:Dev)?[0-9.]+_SDK$/.test(name)) remove(`program/${name}`);
   const darwin = platform.startsWith('darwin-');
+  const windows = platform.startsWith('win32-');
   const resources = `${dirname(programDirectory).replaceAll('\\', '/')}/${darwin ? 'Resources' : 'share'}`;
   const programResources = darwin ? resources : programDirectory;
   if (darwin) {
@@ -59,17 +60,27 @@ export function pruneNativePayload(directory, platform, programDirectory) {
   for (const name of ['soffice', 'soffice.bin', 'soffice.exe', 'unopkg', 'unopkg.bin', 'unopkg.exe', 'gengal', 'gengal.bin', 'gengal.exe', 'senddoc', 'unoinfo', 'unoinfo.exe', 'xpdfimport', 'xpdfimport.exe'])
     remove(`${launchers}/${name}`);
   for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport']) remove(`${resources}/${name}`);
+  remove(`${dirname(programDirectory).replaceAll('\\', '/')}/wizards`);
+  if (windows) {
+    for (const name of ['shlxthdl', 'shell', 'soffice.com', 'unopkg.com', 'swriter.exe', 'scalc.exe', 'simpress.exe', 'sdraw.exe',
+      'smath.exe', 'sbase.exe', 'sweb.exe', 'soffice_safe.exe', 'quickstart.exe', 'uno.exe', 'senddoc.exe', 'regview.exe', 'spsupp_helper.exe'])
+      remove(`${programDirectory}/${name}`);
+    for (const name of readdirSync(join(directory, programDirectory)).sort())
+      if (/^cli_.*\.config$/i.test(name)) remove(`${programDirectory}/${name}`);
+  }
   for (const name of ['basic', 'Scripts']) remove(`${resources}/${name}`);
   remove(`${darwin ? resources : dirname(programDirectory).replaceAll('\\', '/')}/presets/basic`);
   for (const name of ['access2base.py', 'scriptforge.py', 'scriptforge.pyi']) remove(`${programResources}/${name}`);
-  if (existsSync(join(directory, resources))) {
-    for (const name of readdirSync(join(directory, resources)).sort())
-      if (/\.icns$|^intro(?:-highres)?\.png$/.test(name)) remove(`${resources}/${name}`);
+  for (const location of new Set([resources, programResources])) {
+    if (!existsSync(join(directory, location))) continue;
+    for (const name of readdirSync(join(directory, location)).sort())
+      if (/\.icns$|^intro(?:-highres)?\.png$/.test(name)) remove(`${location}/${name}`);
   }
   const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|ldapbe2lo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
+  const windowsLibraries = /^(?:libcrypto-3|libssl-3|reg_dlls|shlxtmsi|sellangmsi|reg4allmsdoc|qslnkmsi|sdqsmsi|instooofiltmsi|sn_tools|so_activex|spsupp_x64|spsupp_x86|inprocserv|cli_.*|policy\.1\.0\.cli_.*)\.dll$/i;
   const services = join(directory, programResources, 'services/services.rdb');
   for (const name of readdirSync(join(directory, programDirectory)).sort()) {
-    if (!excludedLibraries.test(name)) continue;
+    if (!excludedLibraries.test(name) && !(windows && windowsLibraries.test(name))) continue;
     assert(!existsSync(services) || !readFileSync(services, 'utf8').includes(`/${name}`),
       `Removed component remains registered: ${name}; reconfigure Core with the current component selection`);
     remove(`${programDirectory}/${name}`);
