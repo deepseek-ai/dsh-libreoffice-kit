@@ -59,10 +59,18 @@ export function pruneNativePayload(directory, platform, programDirectory) {
   const launchers = darwin ? `${dirname(programDirectory).replaceAll('\\', '/')}/MacOS` : programDirectory;
   for (const name of ['soffice', 'soffice.bin', 'soffice.exe', 'unopkg', 'unopkg.bin', 'unopkg.exe', 'gengal', 'gengal.bin', 'gengal.exe', 'senddoc', 'unoinfo', 'unoinfo.exe', 'xpdfimport', 'xpdfimport.exe'])
     remove(`${launchers}/${name}`);
-  for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport']) remove(`${resources}/${name}`);
+  for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport', 'xslt']) remove(`${resources}/${name}`);
+  remove(`${resources}/registry/xsltfilter.xcd`);
   remove(`${dirname(programDirectory).replaceAll('\\', '/')}/wizards`);
+  for (const location of new Set(['program', resources])) {
+    remove(`${location}/CREDITS.fodt`);
+    const license = `${location}/LICENSE.html`;
+    const retainedLicense = join(directory, 'licenses/LibreOffice-third-party.html');
+    if (existsSync(join(directory, license)) && existsSync(retainedLicense)
+      && sha256(join(directory, license)) === sha256(retainedLicense)) remove(license);
+  }
   if (windows) {
-    for (const name of ['shlxthdl', 'shell', 'soffice.com', 'unopkg.com', 'swriter.exe', 'scalc.exe', 'simpress.exe', 'sdraw.exe',
+    for (const name of ['wizards', 'shlxthdl', 'shell', 'soffice.com', 'unopkg.com', 'swriter.exe', 'scalc.exe', 'simpress.exe', 'sdraw.exe',
       'smath.exe', 'sbase.exe', 'sweb.exe', 'soffice_safe.exe', 'quickstart.exe', 'uno.exe', 'senddoc.exe', 'regview.exe', 'spsupp_helper.exe'])
       remove(`${programDirectory}/${name}`);
     for (const name of readdirSync(join(directory, programDirectory)).sort())
@@ -77,7 +85,7 @@ export function pruneNativePayload(directory, platform, programDirectory) {
       if (/\.icns$|^intro(?:-highres)?\.png$/.test(name)) remove(`${location}/${name}`);
   }
   const excludedLibraries = /^(?:lib)?(?:clucene|ucpchelp1|helplinkerlo|ucpdav1|ucpcmis1lo|ucpftp1|LanguageToollo|pdfimportlo|ldapbe2lo|curl)(?:[.\d-].*)?\.(?:dylib|so(?:\..*)?|dll)$/i;
-  const windowsLibraries = /^(?:libcrypto-3|libssl-3|reg_dlls|shlxtmsi|sellangmsi|reg4allmsdoc|qslnkmsi|sdqsmsi|instooofiltmsi|sn_tools|so_activex|spsupp_x64|spsupp_x86|inprocserv|cli_.*|policy\.1\.0\.cli_.*)\.dll$/i;
+  const windowsLibraries = /^(?:libcrypto-3|libssl-3|reg_dlls|shlxtmsi|sellangmsi|reg4allmsdoc|qslnkmsi|sdqsmsi|instooofiltmsi|sn_tools|regactivex|so_activex|spsupp_x64|spsupp_x86|inprocserv|cli_.*|policy\.1\.0\.cli_.*)\.dll$/i;
   const services = join(directory, programResources, 'services/services.rdb');
   for (const name of readdirSync(join(directory, programDirectory)).sort()) {
     if (!excludedLibraries.test(name) && !(windows && windowsLibraries.test(name))) continue;

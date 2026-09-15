@@ -56,6 +56,11 @@ export function stageNative({ platform, core, build, repo = root }) {
   copyInstalled(instdir, join(dir, 'program'));
   copyFileSync(join(build, `libreoffice-kit${targets[platform].os === 'win32' ? '.exe' : ''}`), join(dir, prebuild.engine.executable));
   if (targets[platform].os !== 'win32') chmodSync(join(dir, prebuild.engine.executable), 0o755);
+  copyFileSync(join(core, 'COPYING.MPL'), join(dir, 'licenses/LibreOffice-MPL-2.0.txt'));
+  copyFileSync(join(repo, 'NOTICE'), join(dir, 'licenses/DeepSeek-Harness-MIT.txt'));
+  const combinedLicense = join(build, 'workdir/CustomTarget/readlicense_oo/license/LICENSE.html');
+  assert(existsSync(combinedLicense), 'Core build has not generated its dependency license notices');
+  copyFileSync(combinedLicense, join(dir, 'licenses/LibreOffice-third-party.html'));
   const shaping = {
     resources: pruneNativePayload(dir, platform, `program/${relativeLibrary}`),
     symbols: stripNativePayload(dir, platform),
@@ -84,11 +89,6 @@ export function stageNative({ platform, core, build, repo = root }) {
     configure: publicBuildValue(configured, { workspace: repo, source: core, build, tarballs: configured.find(flag => flag.startsWith('--with-external-tar=')).slice('--with-external-tar='.length) }),
     configureSha256: sha256(join(build, 'autogen.input')), buildIdentity: readJson(join(build, 'dsh-build-identity.json')) }, null, 2)}\n`);
   packagedSource.push('sources/core.json');
-  copyFileSync(join(core, 'COPYING.MPL'), join(dir, 'licenses/LibreOffice-MPL-2.0.txt'));
-  copyFileSync(join(repo, 'NOTICE'), join(dir, 'licenses/DeepSeek-Harness-MIT.txt'));
-  const combinedLicense = join(build, 'workdir/CustomTarget/readlicense_oo/license/LICENSE.html');
-  assert(existsSync(combinedLicense), 'Core build has not generated its dependency license notices');
-  copyFileSync(combinedLicense, join(dir, 'licenses/LibreOffice-third-party.html'));
   function inventory(prefix) {
     return readdirSync(join(dir, prefix), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap((entry) => {
       const file = `${prefix}/${entry.name}`;

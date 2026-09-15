@@ -51,7 +51,7 @@ test('Linux rejects a disabled LDAP library that remains in its program service 
 });
 
 const windowsLibraries = ['libcrypto-3.dll', 'libssl-3.dll', 'reg_dlls.dll', 'shlxtmsi.dll', 'sellangmsi.dll', 'reg4allmsdoc.dll',
-  'qslnkmsi.dll', 'sdqsmsi.dll', 'instooofiltmsi.dll', 'sn_tools.dll', 'so_activex.dll', 'spsupp_x64.dll', 'spsupp_x86.dll', 'inprocserv.dll',
+  'qslnkmsi.dll', 'sdqsmsi.dll', 'instooofiltmsi.dll', 'sn_tools.dll', 'regactivex.dll', 'so_activex.dll', 'spsupp_x64.dll', 'spsupp_x86.dll', 'inprocserv.dll',
   'cli_uno.dll', ...['basetypes', 'cppuhelper', 'oootypes', 'ure', 'uretypes'].flatMap(name => [`cli_${name}.dll`, `policy.1.0.cli_${name}.dll`])];
 
 for (const platform of ['win32-x64', 'win32-arm64']) test(`${platform} prunes desktop integrations and unused OpenSSL while retaining helper dependencies`, t => {
@@ -60,6 +60,7 @@ for (const platform of ['win32-x64', 'win32-arm64']) test(`${platform} prunes de
   const architectureFiles = files => files.filter(name => platform === 'win32-x64' || !['spsupp_x64.dll', 'spsupp_x86.dll', 'twain32shim.exe'].includes(name));
   const discarded = [
     'program/wizards/common/FileAccess.py', 'program/wizards/ui/WizardDialog.py',
+    `${program}/wizards/common/FileAccess.py`, `${program}/wizards/ui/WizardDialog.py`,
     ...architectureFiles([...windowsLibraries, 'shlxthdl/shlxthdl.dll', 'shlxthdl/propertyhdl.dll', 'shlxthdl/ooofilt.dll',
       'shell/about.svg', 'shell/donate1.png', 'shell/donate2.png', 'intro.png', 'intro-highres.png',
       'soffice.exe', 'unopkg.exe', 'gengal.exe', 'unoinfo.exe', 'xpdfimport.exe',
@@ -83,10 +84,56 @@ for (const platform of ['win32-x64', 'win32-arm64']) test(`${platform} prunes de
   for (const name of kept) assert.equal(readFileSync(join(directory, name), 'utf8'), 'fixture', name);
   assert.equal(readFileSync(join(directory, services), 'utf8'), registry);
   assert.ok(result.removed.includes('program/wizards'));
+  assert.ok(result.removed.includes(`${program}/wizards`));
   assert.ok(result.removed.includes(`${program}/shlxthdl`));
   assert.ok(result.removed.includes(`${program}/shell`));
   assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
 });
+
+for (const platform of ['win32-x64', 'win32-arm64', 'darwin-arm64', 'linux-arm64-glibc']) {
+  const darwin = platform.startsWith('darwin-');
+  const program = darwin ? 'program/Office.app/Contents/Frameworks' : 'program/program';
+  const resources = `${dirname(program)}/${darwin ? 'Resources' : 'share'}`;
+  const notices = darwin ? resources : 'program';
+  test(`${platform} removes XSLT registrations and resources while retaining Office filters and unique notices`, t => {
+    const { directory, put } = fixture(t);
+    const discarded = [`${resources}/registry/xsltfilter.xcd`, `${notices}/CREDITS.fodt`,
+      ...['wordml', 'spreadsheetml', 'uof', 'docbook', 'xhtml'].map(name => `${resources}/xslt/import/${name}/filter.xsl`)];
+    const kept = [`${program}/library`, 'licenses/LibreOffice-MPL-2.0.txt', 'licenses/DeepSeek-Harness-MIT.txt',
+      `${resources}/registry/main.xcd`, `${resources}/registry/writer.xcd`, `${resources}/registry/calc.xcd`,
+      `${resources}/registry/impress.xcd`, `${resources}/filter/ooxml.xcu`, `${resources}/filter/msword.xcu`,
+      `${resources}/filter/msexcel.xcu`, `${resources}/filter/mspowerpoint.xcu`, `${resources}/filter/pdf.xcu`];
+    for (const file of [...discarded, ...kept]) put(file);
+    put(`${notices}/LICENSE.html`, 'installation-specific notice');
+    const result = pruneNativePayload(directory, platform, program);
+    assert.equal(result.removedBytes, discarded.length * Buffer.byteLength('fixture'));
+    assert.ok(result.removed.includes(`${resources}/xslt`));
+    assert.ok(result.removed.includes(`${resources}/registry/xsltfilter.xcd`));
+    for (const file of discarded) assert.equal(existsSync(join(directory, file)), false, file);
+    for (const file of kept) assert.equal(readFileSync(join(directory, file), 'utf8'), 'fixture', file);
+    assert.equal(readFileSync(join(directory, notices, 'LICENSE.html'), 'utf8'), 'installation-specific notice');
+    assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
+  });
+
+  test(`${platform} removes LICENSE.html only with an identical retained third-party notice`, t => {
+    const { directory, put } = fixture(t);
+    put(`${program}/library`);
+    const license = `${notices}/LICENSE.html`;
+    const retained = 'licenses/LibreOffice-third-party.html';
+    put(license, 'installation notice');
+    assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
+    put(retained, 'different dependency notice');
+    assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
+    assert.equal(readFileSync(join(directory, license), 'utf8'), 'installation notice');
+    put(retained, 'installation notice');
+    assert.deepEqual(pruneNativePayload(directory, platform, program), {
+      removed: [license], removedBytes: Buffer.byteLength('installation notice'),
+    });
+    assert.equal(existsSync(join(directory, license)), false);
+    assert.equal(readFileSync(join(directory, retained), 'utf8'), 'installation notice');
+    assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
+  });
+}
 
 for (const library of windowsLibraries) test(`Windows refuses to prune registered ${library}`, t => {
   const { directory, put } = fixture(t);

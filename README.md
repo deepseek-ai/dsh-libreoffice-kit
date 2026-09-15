@@ -88,7 +88,9 @@ The `0.0.1` recipes reduce build components, installed resources, and transfer s
 
 The authoritative recipes are [native configuration](engine/native/configure.mjs), [native payload pruning](scripts/slim-native.mjs), [WASM configuration](engine/wasm-source/autogen.input), and [WASM resource pruning](engine/wasm-source/slim.mjs).
 
-Windows payload pruning removes unused OpenSSL, MSI installers, Shell extensions, ActiveX/SharePoint integrations, .NET CLI bindings, desktop launchers, Python wizards, and branding images. The conversion helper, scanner/GPG helpers, registered UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
+Native payload pruning removes XSLT resources and their filter registry, plus `CREDITS.fodt`. Installation `LICENSE.html` copies are removed only when byte-identical third-party notices remain under `licenses/`. The removed XSLT formats include Word 2003 XML, SpreadsheetML, UOF, DocBook, and XHTML; binary Office and OOXML conversion filters remain.
+
+Windows payload pruning removes unused OpenSSL, MSI installers, Shell extensions, ActiveX/SharePoint integrations including `regactivex.dll`, .NET CLI bindings, desktop launchers, Python wizards under both `program/wizards/` and `program/program/wizards/`, and branding images. The conversion helper, scanner/GPG helpers, registered UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
 
 Writer, Calc, Impress, binary Office and OOXML filters, PDF export, PDFium for embedded PDF/EMF graphics, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
 
