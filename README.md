@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Current goal
 
-**Font-friendly Office → PDF conversion in Node.js.** Version `0.0.1` exposes a standalone Node API for converting local `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, and `.pptx` files into PDFs using prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
+**Font-friendly Office → PDF conversion in Node.js.** Version `0.0.2` exposes a standalone Node API for converting local `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, and `.pptx` files into PDFs using prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
 
 The priorities are document layout and readable text, explicit control over available fonts and substitutions, and an engine that applications can bundle and run offline. Size reduction serves that goal: retain the import, layout, drawing, and PDF-export machinery these documents need while removing unrelated desktop features and resources.
 
@@ -18,10 +18,10 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 
 ## Quick start
 
-Requires Node.js **22.19.0 or newer**. Install the `0.0.1` package with its optional engines:
+Requires Node.js **22.19.0 or newer**. Install the `0.0.2` package with its optional engines:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.1
+npm install @deepseek-ai/libreoffice-kit@0.0.2
 ```
 
 ```js
@@ -45,7 +45,7 @@ try {
 
 Supply absolute paths in caller-owned private directories; the output must not already exist. The PDF is written to `outputPath`, and `render` returns the selected backend and missing-font names. Each render owns a fresh native process or Node worker and private profile. Renders on one converter are serialized; cancellation and disposal wait for engine exit and cleanup. See the [Node API](packages/entry/README.md) for cancellation, errors, and resource limits.
 
-## What “font-friendly” means in 0.0.1
+## What “font-friendly” means in 0.0.2
 
 - **Use available fonts.** The API discovers conventional system/user font directories, or indexes the roots supplied through `fontDirectories`. Custom roots replace the default list. `fontkit` reads font metadata and glyph coverage; selected files are passed to the engine as original font bytes.
 - **Preserve requested families when available.** Exact installed families take priority, including handwriting and decorative fonts. WASM font requests also carry weight and italic information so matching installed faces can be selected; the catalog can supply additional fonts for missing glyphs.
@@ -58,7 +58,7 @@ This improves control over font choice, but does not guarantee identical output 
 
 ## Engines and distribution
 
-The [Node package manifest](packages/entry/package.json) declares the engines for `0.0.1`:
+The [Node package manifest](packages/entry/package.json) declares the engines for `0.0.2`:
 
 | Engine | Role |
 | --- | --- |
@@ -76,7 +76,7 @@ The Node API and engines share the kit version. Installation uses prepared packa
 
 ## What was reduced, and why
 
-The `0.0.1` recipes reduce build components, installed resources, and transfer size separately:
+The `0.0.2` recipes reduce build components, installed resources, and transfer size separately:
 
 | Layer | Changes in the code | Reason |
 | --- | --- | --- |
@@ -88,7 +88,9 @@ The `0.0.1` recipes reduce build components, installed resources, and transfer s
 
 The authoritative recipes are [native configuration](engine/native/configure.mjs), [native payload pruning](scripts/slim-native.mjs), [WASM configuration](engine/wasm-source/autogen.input), and [WASM resource pruning](engine/wasm-source/slim.mjs).
 
-Windows payload pruning removes unused OpenSSL, MSI installers, Shell extensions, ActiveX/SharePoint integrations, .NET CLI bindings, desktop launchers, Python wizards, and branding images. The conversion helper, scanner/GPG helpers, registered UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
+Native payload pruning removes XSLT resources and their filter registry, plus `CREDITS.fodt`. Installation `LICENSE.html` copies are removed only when byte-identical third-party notices remain under `licenses/`. The removed XSLT formats include Word 2003 XML, SpreadsheetML, UOF, DocBook, and XHTML; binary Office and OOXML conversion filters remain.
+
+Windows payload pruning removes unused OpenSSL, MSI installers, Shell extensions, ActiveX/SharePoint integrations including `regactivex.dll`, .NET CLI bindings, desktop launchers, Python wizards under both `program/wizards/` and `program/program/wizards/`, and branding images. The conversion helper, scanner/GPG helpers, registered UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
 
 Writer, Calc, Impress, binary Office and OOXML filters, PDF export, PDFium for embedded PDF/EMF graphics, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
 

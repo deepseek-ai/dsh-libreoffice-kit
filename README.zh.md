@@ -8,7 +8,7 @@ kind: "package-library"
 
 ## 当前目标
 
-**在 Node.js 中实现字体友好的 Office → PDF 转换。** `0.0.1` 提供独立的 Node API，使用预编译 LibreOffice 引擎，将本地 `.doc`、`.docx`、`.xls`、`.xlsx`、`.ppt`、`.pptx` 文件转换为 PDF。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
+**在 Node.js 中实现字体友好的 Office → PDF 转换。** `0.0.2` 提供独立的 Node API，使用预编译 LibreOffice 引擎，将本地 `.doc`、`.docx`、`.xls`、`.xlsx`、`.ppt`、`.pptx` 文件转换为 PDF。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
 
 当前优先保证文档排版和文字可读，让调用方能明确控制可用字体与替换策略，并让应用可以打包引擎、离线运行。精简也服务于这个目标：保留文档导入、排版、绘图和 PDF 导出所需的能力，移除与转换无关的桌面功能和资源。
 
@@ -18,10 +18,10 @@ kind: "package-library"
 
 ## 快速开始
 
-需要 **Node.js 22.19.0 或更新版本**。安装 `0.0.1` 及其可选引擎依赖：
+需要 **Node.js 22.19.0 或更新版本**。安装 `0.0.2` 及其可选引擎依赖：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.1
+npm install @deepseek-ai/libreoffice-kit@0.0.2
 ```
 
 ```js
@@ -45,7 +45,7 @@ try {
 
 路径必须是绝对路径，目录由调用方私有管理，输出文件必须尚不存在。PDF 写入 `outputPath`，`render` 返回所选引擎和缺失字体名称。每次转换使用独立的原生进程或 Node Worker 及私有配置；同一转换器串行执行，取消和释放会等待引擎退出与清理完成。取消、错误和资源限制见 [Node API](packages/entry/README.zh.md)。
 
-## 0.0.1 的“字体友好”具体指什么
+## 0.0.2 的“字体友好”具体指什么
 
 - **使用环境中可用的字体。** 默认发现常规系统和用户字体目录，也可通过 `fontDirectories` 指定扫描目录；自定义目录会替换默认列表。`fontkit` 读取字体元数据和字形覆盖，将选中的原始字体文件交给引擎。
 - **优先保留文档指定的字体。** 已安装的同名字体族优先，包括书法和装饰字体。WASM 字体请求还携带字重、斜体信息，以便选择已安装的对应字面；缺字时可以继续从字体目录中选择补充字体。
@@ -58,7 +58,7 @@ try {
 
 ## 引擎与分发
 
-[Node 包清单](packages/entry/package.json)为 `0.0.1` 声明了以下引擎：
+[Node 包清单](packages/entry/package.json)为 `0.0.2` 声明了以下引擎：
 
 | 引擎 | 用途 |
 | --- | --- |
@@ -76,7 +76,7 @@ Node API 与引擎共享 kit 版本。安装使用预先构建的包；安装钩
 
 ## 做了哪些精简，为什么
 
-`0.0.1` 分别在构建组件、安装资源和传输大小三个层面做精简：
+`0.0.2` 分别在构建组件、安装资源和传输大小三个层面做精简：
 
 | 层面 | 代码中的改动 | 原因 |
 | --- | --- | --- |
@@ -88,9 +88,11 @@ Node API 与引擎共享 kit 版本。安装使用预先构建的包；安装钩
 
 具体规则由[原生构建配置](engine/native/configure.mjs)、[原生资源裁剪](scripts/slim-native.mjs)、[WASM 构建配置](engine/wasm-source/autogen.input)和 [WASM 资源裁剪](engine/wasm-source/slim.mjs)维护。
 
-Windows 资源裁剪移除未使用的 OpenSSL、MSI 安装器、Shell 扩展、ActiveX/SharePoint 集成、.NET CLI 绑定、桌面启动器、Python 向导和品牌图片。转换 helper、扫描仪/GPG helper、已注册 UNO 组件和运行时 `.ini` 文件仍然保留，详见[打包说明](docs/packaging.md)。
+原生资源裁剪移除 XSLT 资源及其过滤器注册、`CREDITS.fodt`，并且只在 `licenses/` 保留逐字节相同的第三方声明时移除安装目录中的 `LICENSE.html` 副本。移除的 XSLT 格式包括 Word 2003 XML、SpreadsheetML、UOF、DocBook 和 XHTML；二进制 Office 与 OOXML 转换过滤器仍然保留。
 
-Writer、Calc、Impress、OOXML 过滤器、PDF 导出、用于内嵌 PDF/EMF 图形的 PDFium、共享排版与绘图库、图表、ICU 和语言资源仍然保留。原生构建的 `en-US` 选择的是界面资源，并不限制文档只能包含英文。必要的运行时配置和部分 UI 资源也会保留，因为文档服务仍依赖它们。每个引擎包还保留匹配的源码配方、补丁、哈希和许可声明。这些依赖也解释了为什么精简后的文档引擎仍有一定体积。
+Windows 资源裁剪移除未使用的 OpenSSL、MSI 安装器、Shell 扩展、包括 `regactivex.dll` 的 ActiveX/SharePoint 集成、.NET CLI 绑定、桌面启动器、`program/wizards/` 和 `program/program/wizards/` 下的 Python 向导及品牌图片。转换 helper、扫描仪/GPG helper、已注册 UNO 组件和运行时 `.ini` 文件仍然保留，详见[打包说明](docs/packaging.md)。
+
+Writer、Calc、Impress、二进制 Office 与 OOXML 过滤器、PDF 导出、用于内嵌 PDF/EMF 图形的 PDFium、共享排版与绘图库、图表、ICU 和语言资源仍然保留。原生构建的 `en-US` 选择的是界面资源，并不限制文档只能包含英文。必要的运行时配置和部分 UI 资源也会保留，因为文档服务仍依赖它们。每个引擎包还保留匹配的源码配方、补丁、哈希和许可声明。这些依赖也解释了为什么精简后的文档引擎仍有一定体积。
 
 ### 已记录的体积与保真度验证
 
