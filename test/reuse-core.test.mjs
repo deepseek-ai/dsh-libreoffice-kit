@@ -18,7 +18,7 @@ function git(core, args) {
 function fixture(t, platform) {
   const directory = mkdtempSync(join(tmpdir(), 'libreoffice-core-reuse-'));
   t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
-  const files = ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()];
+  const files = ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles()];
   for (const file of files) {
     mkdirSync(join(directory, 'sources', file, '..'), { recursive: true });
     copyFileSync(join(root, file), join(directory, 'sources', file));
@@ -62,10 +62,10 @@ test('Core reuse rejects a changed source pin, patch set, or recorded configure 
   assert.throws(() => verifyCoreReuse(directory, core), /source receipt changed/);
 });
 
-test('Core reuse refuses a payload produced by another pruning or symbol recipe', t => {
+for (const recipe of ['slim-native.mjs', 'native-resource-policy.mjs']) test(`Core reuse refuses a payload produced by another ${recipe} recipe`, t => {
   const { directory, core } = fixture(t, 'darwin-arm64');
-  writeFileSync(join(directory, 'sources/scripts/slim-native.mjs'), 'outdated shaping recipe');
-  assert.throws(() => verifyCoreReuse(directory, core), /source receipt changed: scripts\/slim-native.mjs/);
+  writeFileSync(join(directory, 'sources/scripts', recipe), 'outdated shaping recipe');
+  assert.throws(() => verifyCoreReuse(directory, core), error => error.message.includes(`source receipt changed: scripts/${recipe}`));
 });
 
 for (const name of ['0001-disable-external-updates.patch', '0002-macos-main-thread-init.patch']) test(`Core reuse refuses missing ${name} receipts and incorrect declared or actual hashes`, t => {
