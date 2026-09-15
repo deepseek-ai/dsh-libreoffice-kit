@@ -3,7 +3,8 @@ import { readCoreSource } from '../core-source.mjs';
 import { buildVendor } from '../build-identity.mjs';
 export const source = readCoreSource();
 
-export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022', crossCompile = false) {
+export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022', crossCompile = false, compilerCache = 'none') {
+  if (!['none', 'ccache'].includes(compilerCache)) throw new Error('Compiler cache must be none or ccache');
   const flags = [
     `--with-vendor=${buildVendor}`,
     '--disable-debug', '--disable-dbgutil', '--disable-symbols', '--disable-werror',
@@ -18,7 +19,7 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
     '--with-galleries=no', '--with-templates=no', '--with-theme=no',
     '--disable-gstreamer-1-0', '--disable-firebird-sdbc', '--disable-postgresql-sdbc',
     '--disable-mariadb-sdbc', '--disable-report-builder', '--disable-ext-nlpsolver',
-    '--disable-coinmp', '--disable-ccache', '--with-lang=en-US',
+    '--disable-coinmp', compilerCache === 'ccache' ? '--enable-ccache' : '--disable-ccache', '--with-lang=en-US',
     `--with-external-tar=${tarballs}`, `--with-parallelism=${parallelism}`,
   ];
   if (platform.startsWith('linux-')) flags.push('--disable-skia');
@@ -50,7 +51,10 @@ export function verifyConfigureInput(platform, flags) {
   if (!Array.isArray(flags) || !flags.every(flag => typeof flag === 'string')) throw new Error('Core configure receipt must contain argument strings');
   const visualStudio = flags.find(flag => flag.startsWith('--with-visual-studio='))?.split('=')[1];
   const crossCompile = platform === 'darwin-x64' && flags.includes('--build=aarch64-apple-darwin');
-  const expected = configureFlags(platform, '', '', visualStudio, crossCompile);
+  // Caching changes how objects are produced, not the selected runtime components.
+  // Require one of our exact recipes; arbitrary cache flags still fail comparison.
+  const compilerCache = flags.includes('--enable-ccache') ? 'ccache' : 'none';
+  const expected = configureFlags(platform, '', '', visualStudio, crossCompile, compilerCache);
   const components = values => values.filter(flag => !/^--with-(external-tar|parallelism)=/.test(flag));
   if (JSON.stringify(components(flags)) !== JSON.stringify(components(expected)))
     throw new Error('Core configure input differs from the current recipe; rebuild Core without --resume');

@@ -11,7 +11,7 @@
   "scripts": {
     "build:adapter": "node scripts/build-kit.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:packaging": "node --test test/packaging.test.mjs test/selection.test.mjs test/release-publish.test.mjs",
+    "test:packaging": "node --test test/packaging.test.mjs test/selection.test.mjs test/release-publish.test.mjs test/publish-npm-release.test.mjs test/npm-oidc.test.mjs",
     "verify:metadata": "node scripts/verify-release.mjs --metadata-only",
     "gha:matrix": "node scripts/github-matrix.mjs",
     "release:verify": "node scripts/verify-release.mjs",
@@ -19,6 +19,7 @@
     "release:verify-packed-install": "node scripts/verify-packed-install.mjs",
     "release:audit": "node scripts/release-privacy.mjs",
     "release:prepare-npm": "node scripts/prepare-npm-release.mjs",
+    "release:publish-npm": "node scripts/publish-npm-release.mjs",
     "release:publish": "node scripts/release-publish.mjs",
     "test:adapter": "vitest run",
     "test:coverage": "vitest run --coverage",
