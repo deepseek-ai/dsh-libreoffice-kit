@@ -1,4 +1,4 @@
-/** Publish the exact public npm archives derived from a conversion-qualified candidate. */
+/** Stage qualified npm archives for a maintainer to review and approve on npm. */
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, lstatSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -15,10 +15,9 @@ import { isMain, kitManifest, readJson, sourceRepository, tarballName } from './
 import { assert, sha256 } from './verify-artifacts.mjs';
 
 export const npmRegistry = 'https://registry.npmjs.org/';
-const transientCodes = new Set(['E409', 'E429', 'E500', 'E502', 'E503', 'E504', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN']);
-const diagnosticCodes = new Set([...transientCodes, 'E400', 'E401', 'E403', 'E404', 'E413', 'E422', 'EOTP', 'ENEEDAUTH',
+const diagnosticCodes = new Set(['E409', 'E429', 'E500', 'E502', 'E503', 'E504', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN',
+  'E400', 'E401', 'E403', 'E404', 'E413', 'E422', 'EOTP', 'ENEEDAUTH',
   'EUSAGE', 'EPUBLISHCONFLICT', 'EPRIVATE', 'EINVALIDPACKAGENAME', 'EVALIDATION', 'ENOENT', 'ENOTFOUND', 'EPIPE']);
-const attempts = 4;
 const spacingMs = 2_000;
 
 /** Hash streaming bytes so large engine archives do not add a second in-memory tar. */
@@ -182,49 +181,46 @@ export function validateDistTag(version, tag) {
   assert(tag !== 'latest' || !version.includes('-'), 'A prerelease cannot publish under the latest dist-tag');
 }
 
-/** Publish a fully validated family; the runner and delay are injectable for offline tests. */
+/**
+ * Stage a fully validated family. Staging does not publish a version or change
+ * registry dist-tags; a maintainer must review and approve each returned stage.
+ * A public-registry lookup cannot tell whether an earlier staging POST landed,
+ * so each package is attempted once and uncertain failures require inspection.
+ */
 export async function publishNpmPackages(publication, { tag, run = npm, download = downloadRegistryArchive, sleep = delay, log = console.log } = {}) {
   validateDistTag(publication.version, tag);
-  // Preflight the complete family before the first write, so a conflict late in
-  // the sequence cannot leave earlier absent packages partially published.
+  // Preflight the complete family before the first staging POST, so a conflict
+  // late in the sequence does not leave unnecessary pending stages behind.
   const states = [];
   for (const record of publication.packages) {
     const state = npmVersionState(record, run);
     await assertMatching(record, state, { run, download });
     states.push(state);
   }
-  let published = 0;
-  let skipped = 0;
-  let writes = 0;
+  const stages = [];
+  let skippedPublished = 0;
   for (const [index, record] of publication.packages.entries()) {
     if (states[index].kind === 'present') {
-      log(`npm publish: ${record.name}@${record.version} already has ${states[index].equivalentEngineTar ? 'the identical qualified engine tar (gzip differs)' : 'identical bytes'}; skipped`);
-      skipped++;
+      log(`npm stage: ${record.name}@${record.version} is already published with ${states[index].equivalentEngineTar ? 'the identical qualified engine tar (gzip differs)' : 'identical bytes'}; skipped`);
+      skippedPublished++;
       continue;
     }
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      if (writes > 0) await sleep(attempt === 1 ? spacingMs : spacingMs * 2 ** (attempt - 2));
-      if (attempt > 1) {
-        const state = npmVersionState(record, run);
-        await assertMatching(record, state, { run, download });
-        if (state.kind === 'present') break;
-      }
-      writes++;
-      const result = run(['publish', record.path, '--ignore-scripts', '--access', 'public', '--tag', tag,
-        '--registry', npmRegistry, '--provenance=false', '--json']);
-      if (result.status === 0) break;
-      const state = npmVersionState(record, run);
-      await assertMatching(record, state, { run, download });
-      if (state.kind === 'present') break;
-      const code = errorCode(result);
-      assert(attempt < attempts && transientCodes.has(code),
-        `npm publish failed for ${record.name}@${record.version} (${code}); registry details redacted`);
-      log(`npm publish: ${record.name}@${record.version} encountered ${code}; retry ${attempt + 1}/${attempts}`);
-    }
-    log(`npm publish: ${record.name}@${record.version} published`);
-    published++;
+    if (stages.length > 0) await sleep(spacingMs);
+    const result = run(['stage', 'publish', record.path, '--ignore-scripts', '--access', 'public', '--tag', tag,
+      '--registry', npmRegistry, '--provenance=false', '--json']);
+    assert(result.status === 0,
+      `npm stage publish did not confirm success for ${record.name}@${record.version} (${errorCode(result)}); `
+      + 'inspect npm staged packages before retrying because the upload may have landed; registry details redacted');
+    let receipt;
+    try { receipt = JSON.parse(result.stdout)?.[record.name]; } catch { /* Never echo npm output containing untrusted metadata. */ }
+    assert(receipt?.name === record.name && receipt?.version === record.version
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(receipt?.stageId ?? ''),
+    `npm stage publish reported success for ${record.name}@${record.version} without a valid stage receipt; inspect npm staged packages before retrying`);
+    const stage = { name: record.name, version: record.version, stageId: receipt.stageId };
+    stages.push(stage);
+    log(`npm stage: ${record.name}@${record.version} staged as ${stage.stageId}; awaiting maintainer review and approval on npm`);
   }
-  return { published, skipped };
+  return { staged: stages.length, skippedPublished, stages };
 }
 
 export async function publishNpmRelease(candidateDirectory, npmDirectory, options = {}) {

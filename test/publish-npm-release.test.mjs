@@ -126,37 +126,55 @@ const absent = () => ({ status: 1, stdout: JSON.stringify({ error: { code: 'E404
 const present = (value = integrity) => ({ status: 0, stdout: JSON.stringify(value), stderr: '' });
 const failure = code => ({ status: 1, stdout: JSON.stringify({ error: { code, summary: 'diagnostic-redacted-value' } }), stderr: '' });
 const quiet = { sleep: async () => {}, log() {} };
+const stageRecord = record => ({ name: record.name, version: record.version,
+  stageId: `00000000-0000-4000-8000-${createHash('sha256').update(record.name).digest('hex').slice(0, 12)}` });
+function stageSuccess(args, publication = family()) {
+  assert.deepEqual(args.slice(0, 2), ['stage', 'publish']);
+  const record = publication.packages.find(record => record.path === args[2]);
+  assert.ok(record);
+  return { status: 0, stdout: JSON.stringify({ [record.name]: stageRecord(record) }) };
+}
 
-test('the entire registry family is preflighted before any publish, in engine-first order', async () => {
+test('the complete family is preflighted, then staged once in engine-first order with approval receipts', async () => {
   const calls = [];
   const publication = family();
   const result = await publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
     calls.push(args);
-    return args[0] === 'view' ? absent() : { status: 0 };
+    return args[0] === 'view' ? absent() : stageSuccess(args, publication);
   } });
   assert.deepEqual(calls.slice(0, 3).map(args => args[0]), ['view', 'view', 'view']);
-  assert.deepEqual(calls.slice(3), publication.packages.map(record => ['publish', record.path, '--ignore-scripts', '--access', 'public',
+  assert.deepEqual(calls.slice(3), publication.packages.map(record => ['stage', 'publish', record.path, '--ignore-scripts', '--access', 'public',
     '--tag', 'latest', '--registry', npmRegistry, '--provenance=false', '--json']));
-  assert.deepEqual(result, { published: 3, skipped: 0 });
+  assert.deepEqual(result, { staged: 3, skippedPublished: 0, stages: publication.packages.map(stageRecord) });
 });
 
 test('a conflict on the last version rejects before writing any package', async () => {
   let writes = 0;
   await assert.rejects(publishNpmPackages(family(), { ...quiet, tag: 'latest', run(args) {
-    if (args[0] === 'publish') writes++;
+    if (args[0] === 'stage') writes++;
     return args[1].startsWith('@deepseek-ai/entry@') ? present(otherIntegrity) : absent();
   } }), /already exists with different bytes/);
   assert.equal(writes, 0);
 });
 
-test('identical versions are skipped so a partially published artifact can be retried', async () => {
+test('already published identical versions are skipped without modifying their dist-tags', async () => {
   const calls = [];
   const result = await publishNpmPackages(family(), { ...quiet, tag: 'latest', run(args) {
     calls.push(args);
-    return args[0] === 'view' ? (args[1].includes('engine-a@') ? present() : absent()) : { status: 0 };
+    return args[0] === 'view' ? (args[1].includes('engine-a@') ? present() : absent()) : stageSuccess(args);
   } });
-  assert.deepEqual(result, { published: 2, skipped: 1 });
-  assert.deepEqual(calls.filter(args => args[0] === 'publish').map(args => args[1]), ['/temporary/engine-b.tgz', '/temporary/entry.tgz']);
+  assert.deepEqual(result, { staged: 2, skippedPublished: 1, stages: family().packages.slice(1).map(stageRecord) });
+  assert.deepEqual(calls.filter(args => args[0] === 'stage').map(args => args[2]), ['/temporary/engine-b.tgz', '/temporary/entry.tgz']);
+  assert.ok(calls.every(args => ['view', 'stage'].includes(args[0])));
+});
+
+test('a fully published family produces zero pending stages and no registry writes', async () => {
+  const result = await publishNpmPackages(family(), { ...quiet, tag: 'next', run(args) {
+    assert.equal(args[0], 'view');
+    assert.equal(args[2], 'dist.integrity');
+    return present();
+  } });
+  assert.deepEqual(result, { staged: 0, skippedPublished: 3, stages: [] });
 });
 
 test('only an explicit npm 404 establishes absence; authentication and transport failures stop', () => {
@@ -169,60 +187,70 @@ test('only an explicit npm 404 establishes absence; authentication and transport
   assert.throws(() => npmVersionState(record, () => ({ status: 0, stdout: '""' })), /invalid integrity/);
 });
 
-test('a failed response after a landed write is accepted only when the registry integrity matches', async () => {
+test('successful staging is pending approval and never inferred from a public registry read', async () => {
   const publication = family();
-  publication.packages = publication.packages.slice(0, 1);
-  let writes = 0;
-  const result = await publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
-    if (args[0] === 'view') return writes ? present() : absent();
-    writes++;
-    return failure('E409');
-  } });
-  assert.equal(writes, 1);
-  assert.deepEqual(result, { published: 1, skipped: 0 });
-});
-
-test('transient failures retry with bounded backoff and registry rechecks', async () => {
-  const publication = family();
-  publication.packages = publication.packages.slice(0, 1);
   const sleeps = [];
+  const logs = [];
   let writes = 0;
   let reads = 0;
-  const result = await publishNpmPackages(publication, { log() {}, tag: 'next', sleep: async ms => { sleeps.push(ms); }, run(args) {
-    if (args[0] === 'view') { reads++; return absent(); }
+  const result = await publishNpmPackages(publication, { log: line => logs.push(line), tag: 'next', sleep: async ms => { sleeps.push(ms); }, run(args) {
+    if (args[0] === 'view') { assert.equal(writes, 0); reads++; return absent(); }
     writes++;
-    return writes < 3 ? failure('E503') : { status: 0 };
+    return stageSuccess(args, publication);
   } });
   assert.equal(writes, 3);
-  assert.equal(reads, 5);
-  assert.deepEqual(sleeps, [2_000, 4_000]);
-  assert.deepEqual(result, { published: 1, skipped: 0 });
+  assert.equal(reads, 3);
+  assert.deepEqual(sleeps, [2_000, 2_000]);
+  assert.deepEqual(result, { staged: 3, skippedPublished: 0, stages: publication.packages.map(stageRecord) });
+  assert.ok(logs.every(line => line.includes('awaiting maintainer review and approval')));
 });
 
-test('permanent failures are not retried and transient retries stop after four writes', async () => {
-  for (const [code, expectedWrites] of [['E403', 1], ['E409', 4]]) {
+test('stage failures never retry or use public absence as evidence that the upload did not land', async () => {
+  for (const code of ['E403', 'E409', 'E503', 'ETIMEDOUT', 'ECONNRESET']) {
     const publication = family();
     publication.packages = publication.packages.slice(0, 1);
     let writes = 0;
     await assert.rejects(publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
-      if (args[0] === 'view') return absent();
+      if (args[0] === 'view') { assert.equal(writes, 0); return absent(); }
+      assert.deepEqual(args.slice(0, 2), ['stage', 'publish']);
       writes++;
       return failure(code);
-    } }), error => error.message.includes(code) && !error.message.includes('diagnostic-redacted-value'));
-    assert.equal(writes, expectedWrites);
+    } }), error => error.message.includes(code) && error.message.includes('inspect npm staged packages before retrying')
+      && !error.message.includes('diagnostic-redacted-value'));
+    assert.equal(writes, 1);
   }
 });
 
-test('a raced conflicting write fails immediately without retry', async () => {
+test('a successful stage response requires a package-specific UUID receipt and never prints raw diagnostics', async () => {
   const publication = family();
   publication.packages = publication.packages.slice(0, 1);
+  const record = publication.packages[0];
+  for (const stdout of ['diagnostic-redacted-value', JSON.stringify({ stageId: stageRecord(record).stageId }),
+    JSON.stringify({ [record.name]: { ...stageRecord(record), stageId: 'diagnostic-redacted-value' } }),
+    JSON.stringify({ [record.name]: { ...stageRecord(record), version: '2.0.0' } })]) {
+    let writes = 0;
+    await assert.rejects(publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
+      if (args[0] === 'view') { assert.equal(writes, 0); return absent(); }
+      writes++;
+      return { status: 0, stdout };
+    } }), error => error.message.includes('without a valid stage receipt') && !error.message.includes('diagnostic-redacted-value'));
+    assert.equal(writes, 1);
+  }
+});
+
+test('a partial staging failure preserves earlier stage IDs in logs and stops before the remaining packages', async () => {
+  const publication = family();
+  const logs = [];
   let writes = 0;
-  await assert.rejects(publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
-    if (args[0] === 'view') return writes ? present(otherIntegrity) : absent();
+  await assert.rejects(publishNpmPackages(publication, { ...quiet, log: line => logs.push(line), tag: 'latest', run(args) {
+    if (args[0] === 'view') { assert.equal(writes, 0); return absent(); }
     writes++;
-    return failure('E409');
-  } }), /already exists with different bytes/);
-  assert.equal(writes, 1);
+    return writes === 1 ? stageSuccess(args, publication) : failure('E409');
+  } }), /inspect npm staged packages before retrying/);
+  assert.equal(writes, 2);
+  assert.equal(logs.length, 1);
+  assert.ok(logs[0].includes(stageRecord(publication.packages[0]).stageId));
+  assert.ok(logs[0].includes('awaiting maintainer review and approval'));
 });
 
 test('dist-tags are explicit and prereleases never advance latest', () => {
@@ -253,7 +281,7 @@ test('gzip-only engine differences are skipped after the registry digest and qua
   let downloaded = false;
   const result = await publishNpmPackages(publication, { ...quiet, tag: 'latest', log: line => logs.push(line), run(args) {
     calls.push(args);
-    if (args[0] === 'publish') { assert.equal(downloaded, true); return { status: 0 }; }
+    if (args[0] === 'stage') { assert.equal(downloaded, true); return stageSuccess(args, publication); }
     if (!args[1].startsWith(`${record.name}@`)) return absent();
     return args[2] === 'dist.tarball' ? { status: 0, stdout: JSON.stringify(`${npmRegistry}engine.tgz`) } : present(integrityOf(remote));
   }, download: async (url, file, maximumBytes) => {
@@ -263,9 +291,9 @@ test('gzip-only engine differences are skipped after the registry digest and qua
     writeFileSync(file, remote);
     downloaded = true;
   } });
-  assert.deepEqual(result, { published: 2, skipped: 1 });
+  assert.deepEqual(result, { staged: 2, skippedPublished: 1, stages: [publication.packages[0], publication.packages[2]].map(stageRecord) });
   assert.equal(existsSync(temporary), false);
-  assert.equal(calls.filter(args => args[0] === 'publish').length, 2);
+  assert.equal(calls.filter(args => args[0] === 'stage').length, 2);
   assert.ok(logs.some(line => line.includes('identical qualified engine tar (gzip differs)')));
 });
 
@@ -286,7 +314,7 @@ test('registry digest and exact inner-tar conflicts are rejected before any writ
     let writes = 0;
     let temporary;
     await assert.rejects(publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
-      if (args[0] === 'publish') { writes++; return { status: 0 }; }
+      if (args[0] === 'stage') { writes++; return stageSuccess(args, publication); }
       if (!args[1].startsWith(`${record.name}@`)) return absent();
       return args[2] === 'dist.tarball' ? { status: 0, stdout: JSON.stringify(`${npmRegistry}engine.tgz`) }
         : present(failureKind === 'registry' ? otherIntegrity : integrityOf(bytes));
