@@ -14,7 +14,7 @@ import { verifyPreparedEngine } from './prepare-artifacts.mjs';
 import { reversionEngineTar } from './reversion-engine.mjs';
 import { readCoreSource } from '../engine/core-source.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
-import { isMain, kitDirectory, kitManifest, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
+import { isMain, kitDirectory, kitManifest, kitNativeTargets, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
 
 /** Newly promoted targets must match one source snapshot saved in this checkout or its ancestry. */
 export function verifyPromotedRecipe(tar, repo = root, platform = 'native') {
@@ -72,11 +72,12 @@ export function supplementalEngine(receipt, platform, version) {
   return record;
 }
 
-export function assemblePrebuiltRelease(input, destination, preparedPlatforms = [], { repackageFromVersion = '' } = {}) {
+export function assemblePrebuiltRelease(input, destination, preparedPlatforms = [], { repackageFromVersion = '', repo = root } = {}) {
   const previous = readJson(join(input, 'release.json'));
   const remote = readJson(join(input, 'github-assets.json'));
-  const platforms = releaseTargets([]);
-  const version = kitManifest().version;
+  const manifest = kitManifest(repo);
+  const platforms = releaseTargets([], kitNativeTargets(manifest));
+  const version = manifest.version;
   const repack = repackageFromVersion !== '';
   assert(repack ? previous.version === repackageFromVersion && previous.version !== version && preparedPlatforms.length === 0
     : previous.version === version, 'Existing release has a different version; version-only repacking must be explicit');
@@ -96,21 +97,21 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
     if (!platforms.includes(platform) || preparedPlatforms.includes(platform) || records.some(record => record.platform === platform)) continue;
     verifyDownload(file);
     auditBytes(readFileSync(join(input, file)), file);
-    records.push(supplementalEngine(readJson(join(input, file)), platform, version));
+    records.push(supplementalEngine(readJson(join(input, file)), platform, previous.version));
   }
   mkdirSync(destination);
   const work = mkdtempSync(join(tmpdir(), 'kit-prebuilt-candidate-'));
   try {
     const packages = platforms.map(platform => {
       if (preparedPlatforms.includes(platform)) {
-        const directory = join(root, 'packages', platform);
-        verifyPreparedEngine(platform, directory);
+        const directory = join(repo, 'packages', platform);
+        verifyPreparedEngine(platform, directory, repo);
         const manifest = readJson(join(directory, 'package.json'));
         const staged = join(work, platform);
         stagePackage(directory, staged, manifest, workflowRepositoryUrl());
         npm(['pack', '--json', '--ignore-scripts', '--pack-destination', work], staged, work);
         const gzip = join(work, tarballName(manifest));
-        verifyPromotedRecipe(gzip);
+        verifyPromotedRecipe(gzip, repo);
         const record = { name: manifest.name, version, platform, ...packEngineArchive(gzip, destination, manifest) };
         rmSync(gzip);
         return record;
@@ -124,9 +125,9 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
       const checked = auditNpmArchive(tar);
       assert(checked.manifest.name === record.name && checked.manifest.version === previous.version, 'Inner package identity differs from its record');
       if (repack) {
-        verifyPromotedRecipe(tar, root, platform === 'wasm' ? 'wasm' : 'native');
+        verifyPromotedRecipe(tar, repo, platform === 'wasm' ? 'wasm' : 'native');
         const bytes = readFileSync(tar);
-        const pinned = readCoreSource();
+        const pinned = readCoreSource(repo);
         let source;
         visitTar(bytes, ({ name, data }) => { if (name === 'package/prebuilds.json') source = JSON.parse(data.toString()).source; });
         assert(source?.repository === pinned.repository && source?.revision === pinned.revision, 'Repackaged engine upstream pin differs');
@@ -138,12 +139,12 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
         rmSync(gzip); rmSync(tar);
         return result;
       }
-      if (!previous.platforms.includes(platform)) verifyPromotedRecipe(tar);
+      if (!previous.platforms.includes(platform)) verifyPromotedRecipe(tar, repo);
       copyFileSync(join(input, record.file), join(destination, record.file));
       rmSync(tar);
       return record;
     });
-    const dependencies = packDependencies(kitDirectory(), join(destination, 'dependencies'), work);
+    const dependencies = packDependencies(kitDirectory(repo), join(destination, 'dependencies'), work);
     const result = { schemaVersion: 1, version, platforms, packages, dependencies,
       ...(repack ? { repackagedFrom: { version: previous.version, releaseManifestSha256: sha256(join(input, 'release.json')) } } : {}) };
     writeFileSync(join(destination, 'release.json'), `${JSON.stringify(result, null, 2)}\n`);
