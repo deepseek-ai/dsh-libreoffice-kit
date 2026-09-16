@@ -18,7 +18,7 @@ function git(core, args) {
 function fixture(t, platform) {
   const directory = mkdtempSync(join(tmpdir(), 'libreoffice-core-reuse-'));
   t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
-  const files = ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles()];
+  const files = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles()];
   for (const file of files) {
     mkdirSync(join(directory, 'sources', file, '..'), { recursive: true });
     copyFileSync(join(root, file), join(directory, 'sources', file));
@@ -94,4 +94,10 @@ test('Core reuse rejects old component selection despite matching recipe source 
   writeFileSync(join(directory, file), JSON.stringify({ configure: configureFlags('darwin-arm64', '/cache', 8).filter(flag => flag !== '--disable-scripting') }));
   prebuild.files[file] = sha256(join(directory, file)); write();
   assert.throws(() => verifyCoreReuse(directory, core), /rebuild Core/);
+});
+
+test('Core reuse rejects a changed shared UI allowlist receipt', t => {
+  const { directory, core } = fixture(t, 'darwin-arm64');
+  writeFileSync(join(directory, 'sources/engine/ui-resource-policy.mjs'), 'outdated allowlist');
+  assert.throws(() => verifyCoreReuse(directory, core), /source receipt changed: engine\/ui-resource-policy/);
 });

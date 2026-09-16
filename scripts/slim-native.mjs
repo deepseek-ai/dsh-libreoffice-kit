@@ -4,7 +4,8 @@ import { basename, dirname, join } from 'node:path';
 import { readJson } from './platform-matrix.mjs';
 import { run } from './pack-utils.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
-import { nativeUiResources, darwinUiResources, nativeDesktopResources, darwinDesktopResources } from './native-resource-policy.mjs';
+import { nativeDesktopResources, darwinDesktopResources } from './native-resource-policy.mjs';
+import { assertRequiredUiResources, unusedUiResource } from '../engine/ui-resource-policy.mjs';
 
 function files(directory, prefix = '') {
   return readdirSync(join(directory, prefix)).sort().flatMap(name => {
@@ -126,9 +127,10 @@ export function pruneNativePayload(directory, platform, programDirectory, inspec
       if (/^images(?:_[a-z0-9_]+)?\.zip$/.test(name)) remove(`${config}/${name}`);
     const ui = `${config}/soffice.cfg`;
     if (existsSync(join(directory, ui))) {
-      for (const file of [...nativeUiResources, ...(darwin ? darwinUiResources : [])]) remove(`${ui}/${file}`);
-      for (const file of files(join(directory, ui)))
-        if (basename(file).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(file)) remove(`${ui}/${file}`);
+      const inventory = files(join(directory, ui));
+      assertRequiredUiResources(inventory);
+      for (const file of inventory)
+        if (unusedUiResource(file) || basename(file).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(file)) remove(`${ui}/${file}`);
     }
   }
   return { removed, removedBytes };

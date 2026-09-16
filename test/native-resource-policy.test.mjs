@@ -4,19 +4,21 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { pruneNativePayload } from '../scripts/slim-native.mjs';
-import { darwinDesktopResources, darwinUiResources, nativeDesktopResources, nativeUiResources } from '../scripts/native-resource-policy.mjs';
+import { darwinDesktopResources, nativeDesktopResources } from '../scripts/native-resource-policy.mjs';
+
+import { requiredUiResources, assertUiCoreRevision, assertRequiredUiResources } from '../engine/ui-resource-policy.mjs';
+import { readCoreSource } from '../engine/core-source.mjs';
 
 test('the reviewed native resource inventory has no duplicate or overlapping exclusions', () => {
-  assert.equal(nativeUiResources.length, 59);
-  assert.equal(darwinUiResources.length, 5);
+  assert.equal(requiredUiResources.length, 5);
+  assert.equal(new Set(requiredUiResources).size, 5);
   assert.equal(nativeDesktopResources.length, 5);
   assert.equal(darwinDesktopResources.length, 3);
-  assert.equal(new Set([...nativeUiResources, ...darwinUiResources]).size, 64);
   assert.equal(new Set([...nativeDesktopResources, ...darwinDesktopResources]).size, 8);
 });
 
 for (const platform of ['darwin-arm64', 'darwin-x64', 'linux-arm64-glibc', 'linux-x64-glibc', 'win32-arm64', 'win32-x64']) {
-  test(`${platform} prunes reviewed resources without broadening names or crossing platform boundaries`, t => {
+  test(`${platform} prunes unlisted UI layouts and preserves platform-specific desktop rules`, t => {
     const directory = mkdtempSync(join(tmpdir(), 'office-resource-policy-'));
     t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 3 }));
     const darwin = platform.startsWith('darwin-');
@@ -33,7 +35,9 @@ for (const platform of ['darwin-arm64', 'darwin-x64', 'linux-arm64-glibc', 'linu
       contents.set(path, bytes);
     };
 
-    for (const path of [...nativeUiResources, ...darwinUiResources]) put(`${ui}/${path}`);
+    const excludedUi = ['modules/swriter/ui/unknown.ui', 'modules/scalc/ui/unused.ui',
+      'custom/ui/inputbar.ui', 'modules/simpress/ui/tabbuttons.ui', 'svt/ui/new-dialog.ui'];
+    for (const path of excludedUi) put(`${ui}/${path}`);
     for (const path of [...nativeDesktopResources, ...darwinDesktopResources]) {
       if (path === 'config/wizard/form/styles' || path === 'theme_definitions/ios') {
         put(`${resources}/${path}/resource.xml`);
@@ -44,11 +48,9 @@ for (const platform of ['darwin-arm64', 'darwin-x64', 'linux-arm64-glibc', 'linu
     // Adjacent conversion data and similarly named resources must survive exact-path exclusions.
     const retained = [
       'bin/libreoffice-kit', `${program}/types.rdb`, `${program}/library`,
-      ...['unknown.ui', 'formatobjectdialog.ui', 'alreadyexistsdialog-custom.ui', 'alreadyexistsdialog.ui.backup']
-        .map(name => `${ui}/modules/swriter/ui/${name}`),
-      `${ui}/modules/schart/ui/charttypedialog.ui`, `${ui}/modules/sabpilot/ui/abspilot.ui`,
-      `${ui}/cui/ui/querydialog.ui`, `${ui}/cui/ui/combobox.ui`,
-      `${ui}/custom/ui/alreadyexistsdialog.ui`, `${ui}/custom/ui/printerpropertiesdialog.ui`,
+      ...requiredUiResources.map(path => `${ui}/${path}`),
+      `${ui}/modules/swriter/ui/dialog.ui.backup`,
+      `${resources}/elsewhere/keep.ui`,
       ...[
         'config/soffice.cfg/settings.xml', 'config/wizard/form/stylesheets/retained.css',
         'palette/standard.soc', 'fonts/font.ttf', 'liblangtag/language.xml',
@@ -64,15 +66,14 @@ for (const platform of ['darwin-arm64', 'darwin-x64', 'linux-arm64-glibc', 'linu
     for (const name of ['regview', 'uri-encode']) put(`${launchers}/${name}`);
 
     const result = pruneNativePayload(directory, platform, program);
-    for (const path of nativeUiResources) assert.equal(existsSync(join(directory, ui, path)), false, path);
+    for (const path of excludedUi) assert.equal(existsSync(join(directory, ui, path)), false, path);
     for (const path of nativeDesktopResources) assert.equal(existsSync(join(directory, resources, path)), false, path);
-    for (const path of darwinUiResources) assert.equal(existsSync(join(directory, ui, path)), !darwin, `${platform}: ${path}`);
     for (const path of darwinDesktopResources) assert.equal(existsSync(join(directory, resources, path)), !darwin, `${platform}: ${path}`);
     for (const name of ['regview', 'uri-encode'])
       assert.equal(existsSync(join(directory, launchers, name)), !darwin, `${platform}: ${name}`);
     for (const path of retained) assert.equal(readFileSync(join(directory, path), 'utf8'), contents.get(path), path);
     if (!darwin) {
-      for (const path of [...darwinUiResources.map(name => `${ui}/${name}`), ...darwinDesktopResources.map(name => `${resources}/${name}`),
+      for (const path of [...darwinDesktopResources.map(name => `${resources}/${name}`),
         `${launchers}/regview`, `${launchers}/uri-encode`])
         assert.equal(readFileSync(join(directory, path), 'utf8'), contents.get(path), `${platform}: ${path}`);
     }
@@ -82,3 +83,27 @@ for (const platform of ['darwin-arm64', 'darwin-x64', 'linux-arm64-glibc', 'linu
     assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
   });
 }
+
+test('UI policy requires requalification after a Core upgrade and all five shell layouts', () => {
+  assertUiCoreRevision(readCoreSource().revision);
+  assert.throws(() => assertUiCoreRevision('0'.repeat(40)), /rerun.*minimize-ui/);
+  assertRequiredUiResources(requiredUiResources);
+  for (const missing of requiredUiResources)
+    assert.throws(() => assertRequiredUiResources(requiredUiResources.filter(file => file !== missing)),
+      error => error.message.includes(missing));
+});
+
+test('native pruning refuses a missing shell before deleting any UI layouts', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'office-missing-ui-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(join(directory, 'program/program'), { recursive: true });
+  const ui = join(directory, 'program/share/config/soffice.cfg');
+  for (const name of [...requiredUiResources, 'modules/scalc/ui/unused.ui']) {
+    mkdirSync(dirname(join(ui, name)), { recursive: true });
+    writeFileSync(join(ui, name), 'layout');
+  }
+  rmSync(join(ui, requiredUiResources[0]));
+  assert.throws(() => pruneNativePayload(directory, 'linux-x64-glibc', 'program/program'), /Missing required headless UI/);
+  assert.equal(readFileSync(join(ui, 'modules/scalc/ui/unused.ui'), 'utf8'), 'layout');
+  for (const name of requiredUiResources.slice(1)) assert.equal(readFileSync(join(ui, name), 'utf8'), 'layout');
+});

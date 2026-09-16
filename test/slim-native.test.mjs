@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { requiredUiResources } from '../engine/ui-resource-policy.mjs';
 import { pruneNativePayload, stripNativePayload } from '../scripts/slim-native.mjs';
 
 function fixture(t) {
@@ -22,9 +23,10 @@ for (const platform of ['darwin-arm64', 'linux-arm64-glibc']) test(`${platform} 
   const resources = `${dirname(program)}/${platform.startsWith('darwin-') ? 'Resources' : 'share'}`;
   const desktop = ['gallery/picture.svg', 'template/blank.ott', 'wizards/index.py', 'tipoftheday/tips.txt', 'config/images_colibre.zip', 'config/images.zip', 'main.icns', 'intro-highres.png',
     'basic/Standard/script.xlb', 'Scripts/python/ScriptForgeHelper.py',
+    'config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui', 'config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
     'config/soffice.cfg/modules/swriter/ui/notebookbar.ui', 'config/soffice.cfg/modules/scalc/ui/notebookbar_compact.ui',
     'config/soffice.cfg/modules/swriter/toolbar/standardbar.xml', 'config/soffice.cfg/modules/simpress/menubar/menubar.xml'];
-  const runtime = ['config/soffice.cfg/settings.xml', 'config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui', 'config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
+  const runtime = ['config/soffice.cfg/settings.xml', ...requiredUiResources.map(file => `config/soffice.cfg/${file}`),
     'registry/writer.xcd', 'filter/ooxml.xcu', 'fonts/font.ttf', 'liblangtag/language.xml', 'LICENSE', 'NOTICE'];
   const programResources = platform.startsWith('darwin-') ? resources : program;
   const presets = `${platform.startsWith('darwin-') ? resources : dirname(program)}/presets`;

@@ -7,7 +7,7 @@ import { isMain, root, targets } from './platform-matrix.mjs';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const commonRecipes = [
-  'engine/build-identity.mjs', 'engine/core-source.mjs', 'scripts/core-checkout.mjs',
+  'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'engine/core-source.mjs', 'scripts/core-checkout.mjs',
   'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
   'scripts/prepare-artifacts.mjs', 'scripts/archive-engine.mjs', 'scripts/engine-archive.mjs',
   'scripts/ci-build-cache.mjs', 'NOTICE',
