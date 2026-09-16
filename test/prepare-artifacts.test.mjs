@@ -59,7 +59,7 @@ function fixture(t, platform = 'darwin-arm64') {
     filter: file => file !== join(root, 'engine/core') && !file.includes('/reference/') });
   writeFileSync(join(repo, 'core-source.json'), JSON.stringify(source));
   mkdirSync(join(repo, 'scripts'));
-  for (const file of ['stage-native.mjs', 'slim-native.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
+  for (const file of ['stage-native.mjs', 'slim-native.mjs', 'native-resource-policy.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
   writeFileSync(join(repo, 'package.json'), JSON.stringify(readJson(join(root, 'package.json'))));
   const manifest = readJson(join(root, 'packages', platform, 'package.json'));
   const target = join(repo, 'packages', platform);
@@ -94,7 +94,7 @@ function fixture(t, platform = 'darwin-arm64') {
   const wasm = platform === 'wasm';
   const files = ['engine/build-identity.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
-    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()])];
+    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles()])];
   for (const file of files) put(`sources/${file}`, readFileSync(join(root, file)));
   put('sources/core-source.json', JSON.stringify(source));
   if (!wasm) {
@@ -158,6 +158,16 @@ test('a changed patch or wrong package version rejects an otherwise valid engine
   const manifest = readJson(join(f.directory, 'package.json'));
   writeFileSync(join(f.directory, 'package.json'), JSON.stringify({ ...manifest, version: '0.0.0' }));
   assert.throws(() => verifyPreparedEngine('darwin-arm64', f.directory, f.repo), /package\/version mismatch/);
+});
+
+test('native prepared engines reject a resource-policy change without changes to the staging scripts', async t => {
+  const f = fixture(t);
+  assert.equal(verifyPreparedEngine('darwin-arm64', f.directory, f.repo).platform, 'darwin-arm64');
+  const policy = join(f.repo, 'scripts/native-resource-policy.mjs');
+  writeFileSync(policy, readFileSync(policy, 'utf8').replace('alreadyexistsdialog.ui', 'anotherdialog.ui'));
+  const mismatch = /Prepared engine source differs: scripts\/native-resource-policy\.mjs/;
+  assert.throws(() => verifyPreparedEngine('darwin-arm64', f.directory, f.repo), mismatch);
+  await assert.rejects(fetchPrebuilt('darwin-arm64', f), mismatch);
 });
 
 for (const platform of ['wasm', 'darwin-arm64']) test(`${platform} prepared engines reject removed source patches`, t => {
