@@ -1,0 +1,147 @@
+diff --git a/vcl/source/font/PhysicalFontCollection.cxx b/vcl/source/font/PhysicalFontCollection.cxx
+--- a/vcl/source/font/PhysicalFontCollection.cxx
++++ b/vcl/source/font/PhysicalFontCollection.cxx
+@@ -862,17 +862,18 @@
+         }
+         else if( nTestMatch == nBestMatch )
+         {
+-            // some fonts are more suitable defaults
+-            if( nMatchType & ImplFontAttrs::Default )
+-            {
+-                pFoundData  = pData;
+-                nBestType   = nMatchType;
+-            }
+-            else if( (nMatchType & ImplFontAttrs::Standard) &&
+-                    !(nBestType & ImplFontAttrs::Default) )
+-            {
+-                 pFoundData  = pData;
+-                 nBestType   = nMatchType;
++            // Preserve Default > Standard > other families, then break equal
++            // scores by normalized family name, never by hash-table order.
++            const auto priority = [](ImplFontAttrs nType) {
++                return (nType & ImplFontAttrs::Default) ? 2
++                     : (nType & ImplFontAttrs::Standard) ? 1 : 0;
++            };
++            if (priority(nMatchType) > priority(nBestType)
++                || (pFoundData && priority(nMatchType) == priority(nBestType)
++                    && pData->GetSearchName() < pFoundData->GetSearchName()))
++            {
++                pFoundData = pData;
++                nBestType = nMatchType;
+             }
+         }
+     }
+diff --git a/vcl/quartz/SystemFontList.cxx b/vcl/quartz/SystemFontList.cxx
+--- a/vcl/quartz/SystemFontList.cxx
++++ b/vcl/quartz/SystemFontList.cxx
+@@ -21,6 +21,10 @@
+ #include <sal/log.hxx>
+ 
+ #include <tools/long.hxx>
++
++#include <algorithm>
++#include <tuple>
++#include <vector>
+ 
+ 
+ #include <quartz/SystemFontList.hxx>
+@@ -299,10 +303,33 @@
+ 
+ void SystemFontList::AnnounceFonts( vcl::font::PhysicalFontCollection& rFontCollection ) const
+ {
+-    for(const auto& rEntry : maFontContainer )
+-    {
+-        rFontCollection.Add( rEntry.second.get() );
+-    }
++    // Font ids are descriptor addresses. Their hash-table order changes between
++    // processes, but PhysicalFontCollection uses the first face of a family for
++    // aliases and keeps the first equal-quality duplicate. Use font identity,
++    // not allocation order, to make those choices repeatable.
++    std::vector<std::tuple<OUString, OUString, CoreTextFontFace*>> aFonts;
++    aFonts.reserve(maFontContainer.size());
++    for (const auto& rEntry : maFontContainer)
++    {
++        auto* pFace = rEntry.second.get();
++        auto pDescriptor = pFace->GetFontDescriptorRef();
++        auto pName = static_cast<CFStringRef>(
++            CTFontDescriptorCopyAttribute(pDescriptor, kCTFontNameAttribute));
++        auto pUrl = static_cast<CFURLRef>(
++            CTFontDescriptorCopyAttribute(pDescriptor, kCTFontURLAttribute));
++        aFonts.emplace_back(GetOUString(pName),
++                            pUrl ? GetOUString(CFURLGetString(pUrl)) : OUString(), pFace);
++        if (pName)
++            CFRelease(pName);
++        if (pUrl)
++            CFRelease(pUrl);
++    }
++    std::sort(aFonts.begin(), aFonts.end(), [](const auto& rLeft, const auto& rRight) {
++        return std::tie(std::get<0>(rLeft), std::get<1>(rLeft))
++             < std::tie(std::get<0>(rRight), std::get<1>(rRight));
++    });
++    for (const auto& rFont : aFonts)
++        rFontCollection.Add(std::get<2>(rFont));
+ }
+ 
+ CoreTextFontFace* SystemFontList::GetFontDataFromId( sal_IntPtr nFontId ) const
+diff --git a/vcl/qa/cppunit/physicalfontcollection.cxx b/vcl/qa/cppunit/physicalfontcollection.cxx
+--- a/vcl/qa/cppunit/physicalfontcollection.cxx
++++ b/vcl/qa/cppunit/physicalfontcollection.cxx
+@@ -8,6 +8,9 @@
+  */
+ 
+ #include <sal/config.h>
++
++#include <algorithm>
++#include <array>
+ 
+ #include <test/bootstrapfixture.hxx>
+ #include <cppunit/TestAssert.h>
+@@ -58,6 +61,7 @@
+     void testShouldNotFindOtherStyleFamily();
+     void testShouldFindSchoolbookFamily();
+     void testFontFamilyAliases();
++    void testAttributeMatchIsIndependentOfInsertionOrder();
+ 
+     CPPUNIT_TEST_SUITE(VclPhysicalFontCollectionTest);
+     CPPUNIT_TEST(testShouldCreateAndAddFontFamilyToCollection);
+@@ -90,6 +94,7 @@
+     CPPUNIT_TEST(testShouldNotFindOtherStyleFamily);
+     CPPUNIT_TEST(testShouldFindSchoolbookFamily);
+     CPPUNIT_TEST(testFontFamilyAliases);
++    CPPUNIT_TEST(testAttributeMatchIsIndependentOfInsertionOrder);
+     CPPUNIT_TEST_SUITE_END();
+ };
+ 
+@@ -165,6 +170,32 @@
+     pFontFamily->AddFontFace(new TestFontFace(aFontAttr, FONTID));
+ }
+ 
++void VclPhysicalFontCollectionTest::testAttributeMatchIsIndependentOfInsertionOrder()
++{
++    // These unknown families have identical attributes and no configured
++    // preference. Reversing hash-table insertion must not change the winner.
++    std::array<OUString, 3> aNames{ u"Tie Alpha"_ustr, u"Tie Beta"_ustr, u"Tie Gamma"_ustr };
++    do
++    {
++        vcl::font::PhysicalFontCollection aFontCollection;
++        for (const auto& rName : aNames)
++        {
++            auto* pFamily = std::get<0>(aFontCollection.FindOrCreateFontFamily(
++                GetEnglishSearchFontName(rName)));
++            FontAttributes aAttributes;
++            aAttributes.SetFamilyName(rName);
++            aAttributes.SetFamilyType(FAMILY_SWISS);
++            aAttributes.SetWeight(WEIGHT_NORMAL);
++            pFamily->AddFontFace(new TestFontFace(aAttributes, FONTID));
++        }
++        auto* pSelected = aFontCollection.FindFontFamilyByAttributes(
++            ImplFontAttrs::SansSerif, WEIGHT_NORMAL, WIDTH_NORMAL, ITALIC_NONE, u"");
++        CPPUNIT_ASSERT(pSelected);
++        CPPUNIT_ASSERT_EQUAL(u"tiealpha"_ustr, pSelected->GetSearchName());
++    }
++    while (std::next_permutation(aNames.begin(), aNames.end()));
++}
++
+ void VclPhysicalFontCollectionTest::testShouldFindNoFamilyWithWorthlessAttributes()
+ {
+     // note: you must normalize the search family name (first parameter of PhysicalFontFamily constructor)

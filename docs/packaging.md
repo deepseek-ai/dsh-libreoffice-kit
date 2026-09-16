@@ -96,4 +96,6 @@ Font registration uses process-local CoreText on macOS, private GDI fonts on Win
 
 The entry records selected alternatives for missing document families in the conversion's private `user/registrymodifications.xcu` VCL table. Installed original and metric-compatible families are resolved by LibreOffice before that table. Native preloading requests regular faces; weight and italic selection depend on the native engine and discoverable fonts. Font priorities are defined by the entry's `fontFallbacks` option.
 
+Native Core patches also stabilize equal-score font matching and macOS font enumeration. This prevents allocation-dependent font and word-coordinate changes between conversions on the same host; see [font determinism and qualification](native-font-determinism.md). It requires recompiling Core, and does not make different host font installations equivalent.
+
 The owned Core patch passes `UpdateDocMode::NO_UPDATE` to document loading. The worker uses LOKit's supported `Batch=true,EnableMacrosExecution=false` options and sets an empty matching host allowlist. These controls suppress document updates, macro execution, and LOK network host access; they do not establish an operating-system sandbox around native code.
