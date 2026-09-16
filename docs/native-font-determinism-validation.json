@@ -1,0 +1,196 @@
+{
+  "platform": "darwin-arm64",
+  "os": "26.6.2",
+  "coreRevision": "bce0998afefdbc355585ca324285661a2170ba77",
+  "poppler": "pdftotext version 26.08.0",
+  "buildMethod": "Isolated incremental rebuild of VCL and macOS VCL backend; same helper and other engine resources. Not a release package.",
+  "patchSha256": "96db59f0d738eafc143a5cb0a36aa5fad9f4d2623b83fe38d1bf9fcaddd8997a",
+  "libraries": {
+    "libvcllo.dylib": {
+      "original": "78c82cd4becca0ebf2e6e0011529549a3cb3f09c602272e8c441b826c924b77f",
+      "patched": "92aba1afa439ce9d23ce65489a3d3735e339e368a9779715b88cafd75a2a98d6"
+    },
+    "libvclplug_osxlo.dylib": {
+      "original": "0c00fac7ae56eb72effc2b3b5dab4662fe4f18b989c3b6e2a549a33d13e6d08a",
+      "patched": "326598c2aacfb88c0b64d330f2f2478bb5f771eaef34ebf2c946e14c519cc86c"
+    }
+  },
+  "samples": [
+    {
+      "file": "chinese.docx",
+      "sha256": "5be73177d599f1820912cd2db0718d55792b5ab7c30e5cb4f4328e9da02e6ff7",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 2,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "bfd597152739055ce1bdfaf8a2aa278158d532000428a5b7c75d9d28454ffc5e",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "HiraMinProN-W3 Type 1 Builtin yes yes yes",
+        "STSongti-SC-Regular TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "japanese.docx",
+      "sha256": "e9d3a6ff90cc36f9a33e679fb09f3f6e06664637573bf0217cfabc1938dfbb34",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 2,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "1bbc48fdc1220ed4df0f70908b0ed3f208585655e3f632a0cb69fa81d7dd4267",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "HiraMinProN-W3 Type 1 Builtin yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "large-report.docx",
+      "sha256": "e750de5004df60b57ccd96ffa8cc5297c6dd11beb53ee9ab206882bdce04a755",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 2,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "c27b32556fe3fa5ccfe632166ae91025cbb92abece62da17e704545643aaa490",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "TimesNewRomanPSMT TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "large-report.xlsx",
+      "sha256": "8f8a38bf1bdccdf4f7446bda8e2618de78b2f047ce1fab40de8255ea08277b91",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 2,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "6d6ac05d6987cf630a6027fed4c643e1d5f0d86c3dfddf6ebbb2a6cc865890d2",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "ArialUnicodeMS TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "one-page.doc",
+      "sha256": "2483a8cafde92910a0ea857cce49c07e6fa6bf58ab4a4f0852dfd2f488dedba1",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 4,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "10ad9f3320e0ea39947fa7a30188107d0245afd363dc0c7c8a85250813a7ec79",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "HiraginoSansGB-W3 Type 1 Builtin yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "one-sheet.xls",
+      "sha256": "311df8fcb797cfeffb552f254a054976ab61611d4a2cf68cd11f3ae7e2a73d37",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 3,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "bdef4911dc798397a2233fc7d6220b58398fdf97e440adb6c331f5461cbf90ca",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "HiraginoSansGB-W3 Type 1 Builtin yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "one-sheet.xlsx",
+      "sha256": "2c234c8591a88a0118916d4e4e06faf5e1303d5ef1db8978eb1135deacc0b6da",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 1,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "5ba1dd244c665bc1289c56789f19dd306da4bd305417594f118551e408f917e9",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "ArialUnicodeMS TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "one-slide.ppt",
+      "sha256": "1f0eb633897433cbc7cf05e7ee99f43424205dddc180aff4c58c4b18964816ce",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 1,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "4a3bc028d96119d71a6ffdefe7b69d0103e3895bcc69acfc7ca629473101d856",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "ArialUnicodeMS TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "one-slide.pptx",
+      "sha256": "e0cade001720bc43a5aa01c4043a33e83365c3b624d75a01e739d38a9db9ce5b",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 1,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "0ac9994d7b24e080c36103c4156591d2861c99ac22ceb010e3aae0ec54db4290",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "ArialUnicodeMS TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    },
+    {
+      "file": "thai.docx",
+      "sha256": "8c71e5975dc3cfe31fce5d3243d8409b148ac043485bea394ed303f87e8f961c",
+      "originalRuns": 6,
+      "originalDistinctLayouts": 2,
+      "patchedRuns": 6,
+      "patchedDistinctLayouts": 1,
+      "patchedDistinctFontReports": 1,
+      "patchedLayoutSha256": "acd50a23c60b4d62981e6220adf89b5edcbdd646037fbb819221c5edffd506f9",
+      "patchedFonts": [
+        "ArialMT TrueType WinAnsi yes yes yes",
+        "ArialUnicodeMS TrueType WinAnsi yes yes yes"
+      ],
+      "fiveUiRuns": 2,
+      "fiveUiMatchesPatched": true
+    }
+  ],
+  "layoutHashDefinition": "SHA256 of JSON-serialized ordered page attributes and ordered (word attributes, text), sorted JSON keys, UTF-8, excluding PDF metadata; pdftotext -bbox.",
+  "checks": {
+    "corePhysicalFontCollection": {
+      "passed": 31,
+      "oldLibraryNewTest": "fails: expected tiealpha, actual tiegamma"
+    },
+    "publicApiRepeatedConversions": {
+      "formats": 6,
+      "repetitions": 6,
+      "passed": true,
+      "oldEngine": "fails: DOCX run 3 swaps Helvetica for ArialMT"
+    },
+    "publicApiConfiguredSubstitutionsAndInstalledOriginals": "passed",
+    "publicApiConversionAndLifecycle": "passed"
+  }
+}
