@@ -18,10 +18,10 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 
 ## Quick start
 
-Requires Node.js **22.19.0 or newer**. Install the `0.0.2-rc1` candidate package with its optional engines:
+Requires Node.js **22.19.0 or newer**. Install the `0.0.2-rc2` candidate package with its optional engines:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc1
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
 ```
 
 ```js

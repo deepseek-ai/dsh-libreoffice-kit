@@ -18,10 +18,10 @@ API 支持二进制 Office、OOXML 和 OpenDocument 格式转换，以及保留�
 
 ## 快速开始
 
-需要 **Node.js 22.19.0 或更新版本**。安装 `0.0.2-rc1` 候选包及其可选引擎依赖：
+需要 **Node.js 22.19.0 或更新版本**。安装 `0.0.2-rc2` 候选包及其可选引擎依赖：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc1
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
 ```
 
 ```js

@@ -11,7 +11,7 @@ Binary `.doc`, `.xls`, and `.ppt` inputs must be OLE compound documents, such as
 Install with Node.js 22.19.0 or newer:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc1
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
 ```
 
 npm installs the matching native engine on macOS/Windows ARM64 or x64, and the shared WASM engine on Linux. macOS and Windows require their native package; a missing or invalid package rejects `createConverter` with `unavailable`, without switching to WASM. Linux uses WASM unless a compatible development native package was installed explicitly. Conversion failures never switch engines.

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-darwin-x64",
-  "version": "0.0.2-rc1",
+  "version": "0.0.2-rc2",
   "type": "module",
   "license": "MPL-2.0",
   "engines": {
