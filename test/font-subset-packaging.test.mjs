@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { verifyFontSubset } from '../scripts/build-font-subset.mjs';
 import { root } from '../scripts/platform-matrix.mjs';
+import { run } from '../scripts/pack-utils.mjs';
+import { sha256 } from '../scripts/verify-artifacts.mjs';
 
 function fixture(t) {
   const target = mkdtempSync(join(tmpdir(), 'kit-font-subset-package-'));
@@ -31,4 +33,22 @@ test('font subset packing refuses absent notices and obsolete source recipes', t
   writeFileSync(path, JSON.stringify(receipt));
   rmSync(join(target, 'licenses/font-subset/harfbuzz-COPYING'));
   assert.throws(() => verifyFontSubset(target), /Missing package artifact/);
+});
+
+test('Windows Git checkout preserves the font subset recipe bytes hashed by Linux', t => {
+  const target = mkdtempSync(join(tmpdir(), 'kit-font-recipe-checkout-'));
+  t.after(() => rmSync(target, { recursive: true, force: true }));
+  const recipe = 'scripts/build-font-subset.mjs';
+  mkdirSync(join(target, 'scripts'));
+  cpSync(join(root, '.gitattributes'), join(target, '.gitattributes'));
+  cpSync(join(root, recipe), join(target, recipe));
+  writeFileSync(join(target, 'control.mjs'), 'export const control = true;\n');
+  run('git', ['init', '--quiet'], { cwd: target });
+  run('git', ['-c', 'core.autocrlf=false', 'add', '.gitattributes', recipe, 'control.mjs'], { cwd: target });
+  rmSync(join(target, recipe));
+  rmSync(join(target, 'control.mjs'));
+  run('git', ['-c', 'core.autocrlf=true', 'checkout-index', '--all', '--force'], { cwd: target });
+  assert.equal(readFileSync(join(target, 'control.mjs'), 'utf8'), 'export const control = true;\r\n');
+  assert.equal(readFileSync(join(target, recipe), 'utf8').includes('\r\n'), false);
+  assert.equal(sha256(join(target, recipe)), sha256(join(root, recipe)));
 });
