@@ -42,7 +42,7 @@ try {
   for (const name of ['LICENSE', 'NOTICE']) copyFileSync(join(paths.build, 'instdir', name), join(destination, 'licenses', name));
   copyFileSync(join(root, 'NOTICE'), join(destination, 'licenses/DeepSeek-Harness-MIT.txt'));
   // Preserve repository-relative imports in the corresponding-source recipe.
-  const sourceFiles = ['engine/build-identity.mjs', 'engine/core-source.mjs',
+  const sourceFiles = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'scripts/minimize-ui-resources.py', 'docs/ui-resources.md', 'engine/core-source.mjs',
     ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs',
       ...readdirSync(join(owner, 'patches')).map(name => `patches/${name}`)].map(name => `engine/wasm-source/${name}`),
     'scripts/checkout-wasm.mjs', 'scripts/core-checkout.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs'];

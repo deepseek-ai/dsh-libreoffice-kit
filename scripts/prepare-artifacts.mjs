@@ -47,7 +47,7 @@ export function verifyPreparedEngine(platform, directory = join(root, 'packages'
   assert(prebuild.source.repository === pinned.repository && prebuild.source.revision === pinned.revision, 'Prepared engine upstream revision mismatch');
   const receipt = readJson(regularFile(directory, 'sources/core-source.json'));
   assert(receipt.repository === pinned.repository && receipt.revision === pinned.revision, 'Prepared engine Core source receipt mismatch');
-  const files = ['engine/build-identity.mjs', ...(wasm
+  const files = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(repo, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
     : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles(repo)])];
   const patchPrefix = wasm ? 'engine/wasm-source/patches/' : 'engine/native/patches/';

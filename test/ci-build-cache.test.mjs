@@ -12,7 +12,7 @@ function fixture(t) {
   t.after(() => rmSync(repo, { recursive: true, force: true, maxRetries: 3 }));
   for (const directory of ['scripts', 'engine/native', 'engine/wasm-source'])
     cpSync(join(root, directory), join(repo, directory), { recursive: true });
-  for (const file of ['package.json', 'NOTICE', 'engine/core-source.mjs', 'engine/build-identity.mjs']) {
+  for (const file of ['package.json', 'NOTICE', 'engine/core-source.mjs', 'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs']) {
     mkdirSync(dirname(join(repo, file)), { recursive: true });
     copyFileSync(join(root, file), join(repo, file));
   }
@@ -88,4 +88,15 @@ test('versions, SDKs and package metadata invalidate caches while adapter edits 
   writeFileSync(join(repo, 'packages/wasm/README.md'), 'updated package documentation');
   assert.notEqual(keys('wasm')['engine-key'], beforeReadme);
   assert.throws(() => keys('unknown'), /Unknown build platform/);
+});
+
+test('shared UI policy invalidates both engine caches without changing compiler downloads', t => {
+  const { repo, keys } = fixture(t);
+  const before = Object.fromEntries(['wasm', 'darwin-arm64'].map(platform => [platform, keys(platform)]));
+  appendFileSync(join(repo, 'engine/ui-resource-policy.mjs'), '\n// requalified allowlist\n');
+  for (const platform of Object.keys(before)) {
+    assert.notEqual(keys(platform)['engine-key'], before[platform]['engine-key']);
+    assert.equal(keys(platform)['download-key'], before[platform]['download-key']);
+  }
+  assert.equal(keys('wasm')['toolchain-key'], before.wasm['toolchain-key']);
 });

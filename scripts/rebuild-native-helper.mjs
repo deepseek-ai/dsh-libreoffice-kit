@@ -20,7 +20,7 @@ export function verifyCoreReuse(directory, core, repo = root) {
   assert(JSON.stringify(receipts) === JSON.stringify(patches.map(file => `sources/${file}`)), 'Reusable Core patch receipt set differs from the current recipe');
   assert(sha256(join(directory, 'sources/core.json')) === prebuild.files['sources/core.json'], 'Reusable Core configure receipt hash changed');
   verifyConfigureInput(prebuild.platform, readJson(join(directory, 'sources/core.json')).configure);
-  for (const file of ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...patches]) {
+  for (const file of ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...patches]) {
     const hash = sha256(join(directory, 'sources', file));
     assert(hash === prebuild.files[`sources/${file}`] && hash === sha256(join(repo, file)), `Reusable Core source receipt changed: ${file}`);
   }

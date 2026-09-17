@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { requiredUiResources } from '../engine/ui-resource-policy.mjs';
 import { slimWasmData } from '../engine/wasm-source/slim.mjs';
 
 function fixture(paths) {
@@ -17,6 +18,10 @@ test('WASM repacking removes desktop files and preserves every retained byte and
   const desktop = [
     '/android/default-document/example.odt', '/android/default-document/example_test.ods',
     '/core/android/default-document/example.odt', '/core/android/default-document/example_test.ods',
+    '/instdir/share/config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
+    '/instdir/share/config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui',
+    '/instdir/share/config/soffice.cfg/modules/simpress/ui/pmintropage.ui',
+    '/instdir/share/config/soffice.cfg/custom/ui/inputbar.ui',
     '/instdir/share/config/soffice.cfg/modules/swriter/ui/notebookbar.ui',
     '/instdir/share/config/soffice.cfg/modules/scalc/ui/notebookbar_compact.ui',
     '/instdir/share/config/soffice.cfg/modules/swriter/toolbar/standardbar.xml',
@@ -26,9 +31,8 @@ test('WASM repacking removes desktop files and preserves every retained byte and
   ];
   const retained = [
     '/instdir/program/services/services.rdb', '/instdir/program/types.rdb',
-    '/instdir/share/config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
-    '/instdir/share/config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui',
-    '/instdir/share/config/soffice.cfg/modules/simpress/ui/pmintropage.ui',
+    ...requiredUiResources.map(file => `/instdir/share/config/soffice.cfg/${file}`),
+    '/instdir/share/config/soffice.cfg/settings.xml', '/instdir/share/elsewhere/keep.ui',
     '/instdir/share/registry/main.xcd', '/instdir/share/registry/writer.xcd',
     '/instdir/share/fonts/font.ttf', '/instdir/share/liblangtag/language.xml',
     '/instdir/LICENSE', '/instdir/NOTICE',
@@ -82,5 +86,13 @@ test('WASM repacking refuses invalid ranges, missing bytes and ambiguous resourc
   }
   assert.throws(() => slimWasmData(Buffer.from('data'), null), /metadata/);
   const discarded = fixture(['/android/default-document/example.odt']);
-  assert.throws(() => slimWasmData(discarded.data, discarded.metadata), /complete filesystem/);
+  assert.throws(() => slimWasmData(discarded.data, discarded.metadata), /Missing required headless UI resource/);
+});
+
+test('WASM packaging rejects every missing mandatory shell before repacking', () => {
+  for (const missing of requiredUiResources) {
+    const { data, metadata } = fixture(requiredUiResources.filter(file => file !== missing)
+      .map(file => `/instdir/share/config/soffice.cfg/${file}`));
+    assert.throws(() => slimWasmData(data, metadata), error => error.message.includes(missing));
+  }
 });

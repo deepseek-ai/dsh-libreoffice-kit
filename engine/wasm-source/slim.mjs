@@ -1,10 +1,13 @@
 /** Deterministic removal of desktop resources from the Node WASM filesystem image. */
 
+import { assertRequiredUiResources, unusedUiResource } from '../ui-resource-policy.mjs';
+
+const ui = '/instdir/share/config/soffice.cfg/';
+
 function desktopResource(filename) {
-  const ui = '/instdir/share/config/soffice.cfg/';
   if (filename.startsWith(ui)) {
     const relative = filename.slice(ui.length);
-    return relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
+    return unusedUiResource(relative) || relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
   }
   return /^\/instdir\/share\/config\/images(?:_[a-z0-9_]+)?\.zip$/.test(filename)
     || /^\/(?:core\/)?android\/default-document\//.test(filename)
@@ -37,6 +40,7 @@ export function slimWasmData(data, metadata) {
     cursor = file.end;
   }
   if (cursor !== data.length) throw new Error('WASM resource inventory does not cover the complete data');
+  assertRequiredUiResources([...names].filter(name => name.startsWith(ui)).map(name => name.slice(ui.length)));
   const chunks = [];
   const files = [];
   const removed = [];

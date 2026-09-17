@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { slimWasmData } from './slim.mjs';
+import { assertUiCoreRevision } from '../ui-resource-policy.mjs';
 import { buildEnvironment, buildIdentity, publicBuildValue } from '../build-identity.mjs';
 import { readWasmSource } from './source.mjs';
 
@@ -192,6 +193,7 @@ function compile() {
 }
 
 function packageArtifacts() {
+  assertUiCoreRevision(pinned.libreoffice.commit);
   if (!existsSync(receiptPath)) throw new Error('No successful LibreOffice build receipt exists; run the compile stage');
   const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
   const compiledInputs = buildInputs();
@@ -215,7 +217,7 @@ function packageArtifacts() {
     'soffice.data.js.metadata': Buffer.from(`${JSON.stringify(slimmed.metadata)}\n`),
   };
   const inputs = { ...compiledInputs, packaging: {
-    recipes: Object.fromEntries(['build.mjs', 'slim.mjs', '../build-identity.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
+    recipes: Object.fromEntries(['build.mjs', 'slim.mjs', '../build-identity.mjs', '../ui-resource-policy.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
     compiledFiles,
   } };
   const files = { ...compiledFiles, ...Object.fromEntries(Object.entries(repacked).map(([name, bytes]) => [name, sha256(bytes)])) };

@@ -10,8 +10,10 @@ import { isMain, readJson, root, targets } from './platform-matrix.mjs';
 import { assert, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { stageLinuxRuntime } from './stage-linux-runtime.mjs';
 import { pruneNativePayload, stripNativePayload } from './slim-native.mjs';
+import { assertUiCoreRevision, assertRequiredUiResources, requiredUiResources } from '../engine/ui-resource-policy.mjs';
 
 export function stageNative({ platform, core, build, repo = root }) {
+  assertUiCoreRevision(source.revision);
   assert(targets[platform], `Unknown native platform: ${platform}`);
   const configured = readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n');
   verifyConfigureInput(platform, configured);
@@ -61,11 +63,14 @@ export function stageNative({ platform, core, build, repo = root }) {
   const combinedLicense = join(build, 'workdir/CustomTarget/readlicense_oo/license/LICENSE.html');
   assert(existsSync(combinedLicense), 'Core build has not generated its dependency license notices');
   copyFileSync(combinedLicense, join(dir, 'licenses/LibreOffice-third-party.html'));
+  const resourceDirectory = targets[platform].os === 'darwin' ? 'Resources' : 'share';
+  const ui = join(dir, 'program', relativeLibrary, '..', resourceDirectory, 'config/soffice.cfg');
+  assertRequiredUiResources(requiredUiResources.filter(file => existsSync(join(ui, file)) && lstatSync(join(ui, file)).isFile()));
   const shaping = {
     resources: pruneNativePayload(dir, platform, `program/${relativeLibrary}`),
     symbols: stripNativePayload(dir, platform),
   };
-  const sourceFiles = ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
+  const sourceFiles = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'scripts/minimize-ui-resources.py', 'docs/ui-resources.md', 'engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
     'scripts/checkout-core.mjs', 'scripts/core-checkout.mjs',
     'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
     ...corePatchFiles(repo)];
