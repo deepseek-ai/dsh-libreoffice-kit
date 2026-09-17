@@ -3,11 +3,14 @@ import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { createFontLoader, memoryFontConfig, preloadFonts } from './font-loader.ts'
+import { profileXml } from './profile.ts'
 import { ConversionError } from './errors.ts'
 import type { FontFace, FontMatchRequest } from './fonts.ts'
 import type { FontLoader } from './font-loader.ts'
 import type { DocumentFontMetadata } from './ooxml.ts'
 import type { ResolvedOptions } from './options.ts'
+import { validateOutput } from './operations.ts'
+import type { ConversionSpec } from './operations.ts'
 import type { WasmEngine } from './engine.ts'
 
 const require = createRequire(import.meta.url)
@@ -98,6 +101,7 @@ export interface WasmConversionRequest {
   readonly engine: WasmEngine
   readonly bytes: Uint8Array
   readonly extension: string
+  readonly operation: Pick<ConversionSpec, 'format' | 'recalculate' | 'sheet'>
   readonly options: ResolvedOptions
   readonly document: DocumentFontMetadata
   readonly faces: readonly FontFace[]
@@ -105,7 +109,7 @@ export interface WasmConversionRequest {
 
 /** Owned PDF bytes and declared families the installed catalog could not provide. */
 export interface WasmConversionResult {
-  readonly pdf: Uint8Array
+  readonly output: Uint8Array
   readonly missingFonts: string[]
 }
 
@@ -133,7 +137,7 @@ function requiredFontLoader(loader: FontLoader | undefined): FontLoader {
  * @returns the generated PDF bytes and the declared families the catalog could not provide.
  */
 export async function convertWithWasm(request: WasmConversionRequest): Promise<WasmConversionResult> {
-  const { engine, bytes, extension, options, document: metadata, faces } = request
+  const { engine, bytes, extension, operation, options, document: metadata, faces } = request
   const factory = require(engine.loader) as EmscriptenFactory
   const raw = readFileSync(engine.data)
   const data = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)
@@ -158,7 +162,8 @@ export async function convertWithWasm(request: WasmConversionRequest): Promise<W
         return fontLoader.resolve(request)
       },
       preRun: [(loadedModule) => {
-        for (const path of ['/dsh/profile', '/dsh/font-cache', '/dsh-fonts']) loadedModule.FS.mkdirTree(path)
+        for (const path of ['/dsh/profile/user', '/dsh/font-cache', '/dsh-fonts']) loadedModule.FS.mkdirTree(path)
+        loadedModule.FS.writeFile('/dsh/profile/user/registrymodifications.xcu', new TextEncoder().encode(profileXml()))
         loadedModule.FS.writeFile('/dsh/fonts.conf', new TextEncoder().encode(memoryFontConfig(options.fontFallbacks, metadata.families.values())))
         Object.assign(loadedModule.ENV, { HOME: '/dsh/profile', TMPDIR: '/tmp', FONTCONFIG_FILE: '/dsh/fonts.conf', LOK_HOST_ALLOWLIST: '^$' })
         fontLoader = createFontLoader(options, metadata, (name, bytes) => {
@@ -173,24 +178,27 @@ export async function convertWithWasm(request: WasmConversionRequest): Promise<W
     })
     const instance = module
     const input = `/dsh/document.${extension}`
-    const output = '/dsh/document.pdf'
+    const output = `/dsh/output.${operation.format}`
     instance.FS.writeFile(input, bytes)
     office = instance.ccall('dsh_lok_initialize', 'number', ['string', 'string'], [engine.programDirectory, 'file:///dsh/profile'])
     if (!office) throw engineError(instance, 0)
     document = instance.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, 'Batch=true,EnableMacrosExecution=false'])
     if (!document) throw engineError(instance, office)
-    const succeeded = instance.ccall('dsh_lok_document_save_pdf', 'number', ['number', 'string', 'string'], [document, `file://${output}`, JSON.stringify({
+    const filterOptions = operation.format === 'pdf' ? JSON.stringify({
       ExportBookmarks: { type: 'boolean', value: 'true' }, ReduceImageResolution: { type: 'boolean', value: 'true' },
       MaxImageResolution: { type: 'long', value: String(options.maxImageResolution) },
-    })])
+    }) : operation.format === 'txt' ? 'UTF8,LF' : ''
+    const succeeded = instance.ccall('dsh_lok_document_export', 'number',
+      ['number', 'number', 'string', 'string', 'string', 'number', 'string'],
+      [office, document, `file://${output}`, operation.format, filterOptions, Number(operation.recalculate), operation.sheet ?? ''])
     if (!succeeded) throw engineError(instance, office)
-    if (!instance.FS.analyzePath(output).exists) throw new ConversionError('invalid-output', 'LibreOffice did not create its PDF output.')
+    if (!instance.FS.analyzePath(output).exists) throw new ConversionError('invalid-output', 'LibreOffice did not create its output.')
     const status = instance.FS.stat(output)
-    if (!instance.FS.isFile(status.mode)) throw new ConversionError('invalid-output', 'Generated PDF is not a regular file.')
-    if (status.size > options.maxOutputBytes) throw new ConversionError('output-too-large', 'Generated PDF exceeds its output byte limit.')
-    const pdf = instance.FS.readFile(output)
-    if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') throw new ConversionError('invalid-output', 'LibreOffice did not produce a PDF.')
-    return { pdf, missingFonts: requiredFontLoader(fontLoader).missingFonts }
+    if (!instance.FS.isFile(status.mode)) throw new ConversionError('invalid-output', 'Generated output is not a regular file.')
+    if (status.size > options.maxOutputBytes) throw new ConversionError('output-too-large', 'Generated output exceeds its output byte limit.')
+    const result = instance.FS.readFile(output)
+    validateOutput(result, operation.format)
+    return { output: result, missingFonts: requiredFontLoader(fontLoader).missingFonts }
   } catch (error) {
     fatal ||= error instanceof WebAssembly.RuntimeError
     failure = error

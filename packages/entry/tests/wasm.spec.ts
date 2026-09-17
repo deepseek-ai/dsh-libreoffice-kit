@@ -11,6 +11,8 @@ import type { FontFace } from '../src/fonts.ts'
 
 /** Outcomes the fake Emscripten factory reproduces for one conversion. */
 interface LoaderBehavior {
+  expectedFormat?: string
+  expectedSheet?: string
   initialize?: number
   load?: number
   save?: number
@@ -56,11 +58,14 @@ module.exports = async function factory(overrides) {
     ccall(name, returnType, argTypes, args) {
       if (name === 'dsh_lok_initialize') return behavior.initialize === undefined ? 1 : behavior.initialize
       if (name === 'dsh_lok_document_load') return behavior.load === undefined ? 2 : behavior.load
-      if (name === 'dsh_lok_document_save_pdf') {
+      if (name === 'dsh_lok_document_export') {
+        if (behavior.expectedFormat && args[3] !== behavior.expectedFormat) throw new Error('Wrong export format')
+        if (behavior.expectedSheet && args[6] !== behavior.expectedSheet) throw new Error('Wrong worksheet')
+        if (behavior.expectedFormat === 'txt' && args[4] !== 'UTF8,LF') throw new Error('Wrong text encoding')
         if (behavior.runtimeErrorDuringSave) throw new WebAssembly.RuntimeError('save failed')
         if (!behavior.outputMissing) {
-          const body = (behavior.notPdf ? 'not-a-pdf' : '%PDF-1.7 fixture').repeat(behavior.oversize ? 4000 : 1)
-          files.set(String(args[1]).replace('file://', ''), new TextEncoder().encode(body))
+          const body = (behavior.expectedFormat === 'ods' ? 'PK\\x03\\x04fixture' : behavior.notPdf ? 'not-a-pdf' : '%PDF-1.7 fixture').repeat(behavior.oversize ? 4000 : 1)
+          files.set(String(args[2]).replace('file://', ''), new TextEncoder().encode(body))
         }
         return behavior.save === undefined ? 1 : behavior.save
       }
@@ -113,12 +118,12 @@ async function wasmFixture(root: string, behavior: LoaderBehavior) {
 }
 
 /** Convert one request through the fake engine inside a private directory. */
-async function convert(behavior: LoaderBehavior, limits: { maxOutputBytes?: number } = {}):
+async function convert(behavior: LoaderBehavior, limits: { maxOutputBytes?: number } = {}, operation: WasmConversionRequest['operation'] = { format: 'pdf', recalculate: false }):
 Promise<Awaited<ReturnType<typeof convertWithWasm>>> {
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-kit-wasm-'))
   try {
     const { engine, face } = await wasmFixture(root, behavior)
-    const request: WasmConversionRequest = { engine, bytes: new Uint8Array([1, 2, 3]), extension: 'docx',
+    const request: WasmConversionRequest = { engine, bytes: new Uint8Array([1, 2, 3]), extension: 'docx', operation,
       options: resolveOptions({ fontDirectories: [], initialFontFamilies: ['Fixture Face'], ...limits }),
       document: { families: new Map([['fixtureface', 'Fixture Face']]), codePoints: [65] }, faces: [face] }
     return await convertWithWasm(request)
@@ -126,9 +131,16 @@ Promise<Awaited<ReturnType<typeof convertWithWasm>>> {
 }
 
 describe('Node WASM conversion', () => {
+  it('forwards generic exports, CSV selection, and synchronous recalculation', async () => {
+    for (const format of ['txt', 'csv', 'ods']) {
+      const sheet = format === 'csv' ? 'Summary 中文' : undefined
+      await convert({ expectedFormat: format, ...(sheet ? { expectedSheet: sheet } : {}) }, {},
+        { format, recalculate: format === 'ods', ...(sheet ? { sheet } : {}) })
+    }
+  })
   it('returns owned PDF bytes and the catalog diagnostics', async () => {
     const result = await convert({ resolveAfterPreRun: true })
-    expect(new TextDecoder().decode(result.pdf.subarray(0, 5))).toBe('%PDF-')
+    expect(new TextDecoder().decode(result.output.subarray(0, 5))).toBe('%PDF-')
     expect(result.missingFonts).toEqual([])
   })
 
@@ -140,7 +152,7 @@ describe('Node WASM conversion', () => {
   })
 
   it('rejects missing, irregular, oversized, and non-PDF engine output', async () => {
-    await expect(convert({ outputMissing: true })).rejects.toThrow(/did not create its PDF output/)
+    await expect(convert({ outputMissing: true })).rejects.toThrow(/did not create its output/)
     await expect(convert({ directoryOutput: true })).rejects.toThrow(/not a regular file/)
     await expect(convert({ oversize: true }, { maxOutputBytes: 16 })).rejects.toThrow(/output byte limit/)
     await expect(convert({ notPdf: true })).rejects.toThrow(/did not produce a PDF/)

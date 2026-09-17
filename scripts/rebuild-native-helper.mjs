@@ -52,7 +52,7 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   if (!platform.startsWith('win32-')) chmodSync(join(directory, prebuild.engine.executable), 0o755);
   const symbols = stripNativePayload(directory, platform);
   for (const file of symbols.stripped) prebuild.files[file] = sha256(join(directory, file));
-  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
+  const updated = ['engine/native/worker.cxx', 'engine/document-operations.hxx', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
   for (const file of updated) {
     const destination = `sources/${file}`;
     mkdirSync(join(directory, destination, '..'), { recursive: true });

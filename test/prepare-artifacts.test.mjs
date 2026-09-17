@@ -75,7 +75,7 @@ function fixture(t, platform = 'darwin-arm64') {
   };
   if (platform === 'wasm') {
     // Stub exports validate packaging without executing an Office conversion.
-    put(prebuild.engine.wasm, Buffer.from('AGFzbQEAAAABBAFgAAADCQgAAAAAAAAAAAeXAQgSZHNoX2xva19pbml0aWFsaXplAAAVZHNoX2xva19kb2N1bWVudF9sb2FkAAEZZHNoX2xva19kb2N1bWVudF9zYXZlX3BkZgACGGRzaF9sb2tfZG9jdW1lbnRfZGVzdHJveQADD2RzaF9sb2tfZGVzdHJveQAEDWRzaF9sb2tfZXJyb3IABQZtYWxsb2MABgRmcmVlAAcKGQgCAAsCAAsCAAsCAAsCAAsCAAsCAAsCAAs=', 'base64'));
+    put(prebuild.engine.wasm, Buffer.from('AGFzbQEAAAABBAFgAAADCQgAAAAAAAAAAAexAQkSZHNoX2xva19pbml0aWFsaXplAAAVZHNoX2xva19kb2N1bWVudF9sb2FkAAEZZHNoX2xva19kb2N1bWVudF9zYXZlX3BkZgACGGRzaF9sb2tfZG9jdW1lbnRfZGVzdHJveQADD2RzaF9sb2tfZGVzdHJveQAEDWRzaF9sb2tfZXJyb3IABQZtYWxsb2MABgRmcmVlAAcXZHNoX2xva19kb2N1bWVudF9leHBvcnQAAAoZCAIACwIACwIACwIACwIACwIACwIACwIACw==', 'base64'));
     put(prebuild.engine.loader, 'module.exports = () => {};');
     put(prebuild.engine.data, 'fixture');
     put(prebuild.engine.metadata, JSON.stringify({ remote_package_size: 7, files: [{ filename: '/instdir/program/resource', start: 0, end: 7 }] }));
@@ -92,7 +92,7 @@ function fixture(t, platform = 'darwin-arm64') {
   put('licenses/MPL.txt', 'MPL-2.0 fixture');
   prebuild.licenses = [{ component: 'LibreOffice', spdx: 'MPL-2.0', path: 'licenses/MPL.txt' }];
   const wasm = platform === 'wasm';
-  const files = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', ...(wasm
+  const files = ['engine/document-operations.hxx', 'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
     : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles()])];
   for (const file of files) put(`sources/${file}`, readFileSync(join(root, file)));

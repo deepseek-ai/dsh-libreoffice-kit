@@ -1,0 +1,64 @@
+--- a/include/LibreOfficeKit/LibreOfficeKit.h
++++ b/include/LibreOfficeKit/LibreOfficeKit.h
+@@ -570,6 +570,9 @@
+     /// @see lok::Document::setColorPreviewState().
+     void (*setColorPreviewState) (LibreOfficeKitDocument* pThis, int nId, bool nEnabled);
+ 
++    // DeepSeek Kit: synchronously calculate every formula; return zero on failure.
++    int (*calculateAll)(LibreOfficeKitDocument* pThis);
++
+ #endif // defined LOK_USE_UNSTABLE_API || defined LIBO_INTERNAL_ONLY
+ };
+ 
+--- a/desktop/source/lib/init.cxx
++++ b/desktop/source/lib/init.cxx
+@@ -107,6 +107,7 @@
+ #include <com/sun/star/frame/DispatchResultState.hpp>
+ #include <com/sun/star/frame/XDispatchProvider.hpp>
+ #include <com/sun/star/frame/XDispatchResultListener.hpp>
++#include <com/sun/star/sheet/XCalculatable.hpp>
+ #include <com/sun/star/frame/XSynchronousDispatch.hpp>
+ #include <com/sun/star/frame/XStorable.hpp>
+ #include <com/sun/star/lang/Locale.hpp>
+@@ -1216,6 +1217,7 @@
+                                   int nX,
+                                   int nY);
+ static void doc_resetSelection (LibreOfficeKitDocument* pThis);
++static int doc_calculateAll(LibreOfficeKitDocument* pThis);
+ static char* doc_getCommandValues(LibreOfficeKitDocument* pThis, const char* pCommand);
+ static void doc_setClientZoom(LibreOfficeKitDocument* pThis,
+                                     int nTilePixelWidth,
+@@ -1536,6 +1538,7 @@
+         m_pDocumentClass->renderNextSlideLayer = doc_renderNextSlideLayer;
+         m_pDocumentClass->setViewOption = doc_setViewOption;
+         m_pDocumentClass->setColorPreviewState = doc_setColorPreviewState;
++        m_pDocumentClass->calculateAll = doc_calculateAll;
+ 
+         gDocumentClass = m_pDocumentClass;
+     }
+@@ -5290,6 +5293,25 @@
+     return std::find(std::begin(denyList), std::end(denyList), command) == std::end(denyList);
+ }
+ 
++// Calculation through the model does not require an interactive dispatcher or event loop.
++static int doc_calculateAll(LibreOfficeKitDocument* pThis)
++{
++    SolarMutexGuard aGuard;
++    SetLastExceptionMsg();
++    try
++    {
++        auto* pDocument = static_cast<LibLODocument_Impl*>(pThis);
++        uno::Reference<sheet::XCalculatable> xCalculatable(pDocument->mxComponent, uno::UNO_QUERY_THROW);
++        xCalculatable->calculateAll();
++        return 1;
++    }
++    catch (const uno::Exception& exception)
++    {
++        SetLastExceptionMsg("exception: " + exception.Message);
++    }
++    return 0;
++}
++
+ static void doc_postUnoCommand(LibreOfficeKitDocument* pThis, const char* pCommand, const char* pArguments, bool bNotifyWhenFinished)
+ {
+     comphelper::ProfileZone aZone("doc_postUnoCommand");

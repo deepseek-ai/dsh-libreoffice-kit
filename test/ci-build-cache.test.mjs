@@ -12,7 +12,7 @@ function fixture(t) {
   t.after(() => rmSync(repo, { recursive: true, force: true, maxRetries: 3 }));
   for (const directory of ['scripts', 'engine/native', 'engine/wasm-source'])
     cpSync(join(root, directory), join(repo, directory), { recursive: true });
-  for (const file of ['package.json', 'NOTICE', 'engine/core-source.mjs', 'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs']) {
+  for (const file of ['package.json', 'NOTICE', 'engine/core-source.mjs', 'engine/document-operations.hxx', 'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs']) {
     mkdirSync(dirname(join(repo, file)), { recursive: true });
     copyFileSync(join(root, file), join(repo, file));
   }

@@ -70,7 +70,7 @@ export function stageNative({ platform, core, build, repo = root }) {
     resources: pruneNativePayload(dir, platform, `program/${relativeLibrary}`),
     symbols: stripNativePayload(dir, platform),
   };
-  const sourceFiles = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'scripts/minimize-ui-resources.py', 'docs/ui-resources.md', 'engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
+  const sourceFiles = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'scripts/minimize-ui-resources.py', 'docs/ui-resources.md', 'engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/document-operations.hxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'engine/native/bootstrap-windows.ps1', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/glibc-minimum.mjs',
     'scripts/checkout-core.mjs', 'scripts/core-checkout.mjs',
     'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', 'scripts/platform-matrix.mjs', 'scripts/verify-artifacts.mjs',
     ...corePatchFiles(repo)];

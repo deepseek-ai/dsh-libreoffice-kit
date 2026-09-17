@@ -22,3 +22,5 @@
 | `one-page.doc` | 9216 | `2483a8cafde92910a0ea857cce49c07e6fa6bf58ab4a4f0852dfd2f488dedba1` |
 | `one-sheet.xls` | 5632 | `311df8fcb797cfeffb552f254a054976ab61611d4a2cf68cd11f3ae7e2a73d37` |
 | `one-slide.ppt` | 606720 | `1f0eb633897433cbc7cf05e7ee99f43424205dddc180aff4c58c4b18964816ce` |
+
+`cross-sheet-formulas.xlsx` 是仓库自制的双表工作簿。`Inputs!A1:A2` 为 7 和 9；`Summary 中文!A1` 对它们求和，`A2` 将该和乘以 3。两个公式缓存特意设为 -999。运行时测试要求重算后保留公式并将缓存保存为 16 和 48，同时检查精确的 CSV 工作表选择。
