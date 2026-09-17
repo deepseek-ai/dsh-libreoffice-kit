@@ -111,6 +111,96 @@ function supportedEditor(): void {
 }
 
 describe('browser editor ownership', () => {
+  it('returns clipboard and tile data while acknowledging editing controls through the same Worker', async () => {
+    supportedEditor()
+    const editor = await openEditor({ ...options(), extension: 'docx' })
+    const worker = ControlledWorker.instances[0]!
+    const acknowledge = (): void => { worker.receive({ type: 'edited', id: worker.messages.at(-1)!.id }) }
+    try {
+      const bold = editor.dispatch('.uno:Bold')
+      acknowledge(); await bold
+      const arguments_ = { State: { type: 'boolean' as const, value: true } }
+      const italic = editor.dispatch('.uno:Italic', arguments_)
+      expect(worker.messages.at(-1)).toMatchObject({ operation: { type: 'command', command: '.uno:Italic', arguments: arguments_ } })
+      acknowledge(); await italic
+      const paste = editor.paste('中文')
+      acknowledge(); await paste
+      const part = editor.setPart(0)
+      acknowledge(); await part
+      const viewport = editor.setViewport({ x: 0, y: 0, width: 100, height: 100 }, 2)
+      acknowledge(); await viewport
+      const empty = editor.copy()
+      acknowledge()
+      expect(await empty).toBe('')
+      const copied = editor.copy()
+      worker.receive({ type: 'edited', id: worker.messages.at(-1)!.id, text: '中文' })
+      expect(await copied).toBe('中文')
+      const tile = { width: 1, height: 1, rgba: new Uint8ClampedArray([1, 2, 3, 255]) }
+      const rendering = editor.renderTile({ part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 })
+      worker.receive({ type: 'tile', id: worker.messages.at(-1)!.id, tile })
+      expect(await rendering).toBe(tile)
+    } finally { await editor.dispose() }
+  })
+
+  it('rejects responses that cannot acknowledge the requested edit, tile or save', async () => {
+    supportedEditor()
+    const editor = await openEditor({ ...options(), extension: 'docx' })
+    const worker = ControlledWorker.instances[0]!
+    try {
+      const edit = editor.paste('x')
+      const failedEdit = expect(edit).rejects.toMatchObject({ code: 'render-failed' })
+      worker.receive({ type: 'disposed', id: worker.messages.at(-1)!.id })
+      await failedEdit
+      const tile = editor.renderTile({ part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 })
+      const failedTile = expect(tile).rejects.toMatchObject({ code: 'render-failed' })
+      worker.receive({ type: 'edited', id: worker.messages.at(-1)!.id })
+      await failedTile
+      const save = editor.save()
+      const failedSave = expect(save).rejects.toMatchObject({ code: 'render-failed' })
+      worker.receive({ type: 'edited', id: worker.messages.at(-1)!.id })
+      await failedSave
+      const cancelled = new AbortController(); cancelled.abort()
+      const count = worker.messages.length
+      await expect(editor.renderTile({ part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 }, cancelled.signal)).rejects.toMatchObject({ name: 'AbortError' })
+      expect(worker.messages).toHaveLength(count)
+    } finally { await editor.dispose() }
+  })
+
+  it('closes on a terminal editing event and ignores notifications that arrive during shutdown', async () => {
+    supportedEditor()
+    const editor = await openEditor({ ...options(), extension: 'docx' })
+    const worker = ControlledWorker.instances[0]!
+    const events = vi.fn()
+    editor.subscribe(events)
+    const pending = expect(editor.paste('x')).rejects.toMatchObject({ code: 'disposed' })
+    const error = { type: 'error' as const, code: 'render-failed' as const, message: 'Document engine stopped' }
+    worker.receive({ type: 'editor-event', event: error })
+    worker.receive({ type: 'editor-event', event: { type: 'state', state: { ...editingState, revision: 10 } } })
+    await pending
+    await editor.dispose()
+    expect(events).toHaveBeenCalledExactlyOnceWith(error)
+    expect(editor.state.revision).toBe(0)
+    expect(worker.terminated).toBe(true)
+  })
+
+  it.each(['error', 'messageerror', 'timeout'] as const)('notifies editor observers of a Worker %s failure', async kind => {
+    supportedEditor()
+    vi.useFakeTimers()
+    const editor = await openEditor({ ...options(), extension: 'docx', timeoutMs: 10 })
+    const worker = ControlledWorker.instances[0]!
+    const events = vi.fn()
+    editor.subscribe(events)
+    const failure = expect(editor.paste('x')).rejects.toMatchObject({ code: kind === 'timeout' ? 'timeout' : 'render-failed' })
+    if (kind === 'error') worker.onerror?.({ message: 'Worker crashed' } as ErrorEvent)
+    else if (kind === 'messageerror') worker.onmessageerror?.()
+    else await vi.advanceTimersByTimeAsync(10)
+    await failure
+    await editor.dispose()
+    expect(events).toHaveBeenCalledWith(expect.objectContaining({ type: 'error', code: kind === 'timeout' ? 'timeout' : 'render-failed' }))
+    expect(worker.terminated).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('keeps input order and confirms the exported revision despite later state notifications', async () => {
     supportedEditor()
     const source = { ...options(), extension: 'docx' as const }
@@ -178,6 +268,14 @@ async function dispatched(worker: ControlledWorker): Promise<Extract<OwnerMessag
 }
 
 describe('browser transport failures and cancellation', () => {
+  it('ignores editor-only notifications when a preview has no editing observer', async () => {
+    supported()
+    const document = await openDocument(options())
+    const worker = ControlledWorker.instances[0]!
+    worker.receive({ type: 'editor-event', event: { type: 'state', state: editingState } })
+    await document.dispose()
+    expect(worker.terminated).toBe(true)
+  })
   it('rejects invalid limits, an empty source and already aborted loads before creating Workers', async () => {
     supported()
     for (const change of [{ timeoutMs: 0 }, { timeoutMs: 0x80000000 }, { maxLoadedFontBytes: -1 }]) await expect(openDocument({ ...options(), ...change })).rejects.toBeInstanceOf(TypeError)
