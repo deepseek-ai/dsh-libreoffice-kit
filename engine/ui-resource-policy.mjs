@@ -1,8 +1,9 @@
-/** Headless InterimItemWindow layouts, relative to share/config/soffice.cfg. */
+/** Layouts required by headless conversion, relative to share/config/soffice.cfg. */
 export const requiredUiResources = Object.freeze([
   'modules/scalc/ui/inputbar.ui',
   'modules/scalc/ui/posbox.ui',
   'modules/simpress/ui/tabviewbar.ui',
+  'modules/swriter/ui/annotation.ui',
   'svt/ui/scrollbars.ui',
   'svt/ui/tabbuttons.ui',
 ]);

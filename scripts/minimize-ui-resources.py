@@ -95,7 +95,7 @@ def main():
         'const m = await import(process.argv[1]); console.log(JSON.stringify(m.requiredUiResources));',
         policy.as_uri()], text=True))
     if len(layouts) <= len(expected) or (args.mode == 'verify' and not set(expected) < set(layouts)):
-        parser.error('--ui-source must include the five shells and the unpruned layouts')
+        parser.error('--ui-source must include the required layouts and the unpruned layouts')
     fonts = [path.resolve(strict=True) for path in args.font_file]
     # Keep only OS execution settings; do not pass credentials or loader overrides.
     env = {key: value for key, value in os.environ.items() if key in {

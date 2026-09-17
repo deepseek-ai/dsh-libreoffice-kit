@@ -8,52 +8,68 @@ under `share/config/soffice.cfg` (`Contents/Resources/config/soffice.cfg` on mac
 | `modules/scalc/ui/inputbar.ui` | Calc formula bar |
 | `modules/scalc/ui/posbox.ui` | Calc name box |
 | `modules/simpress/ui/tabviewbar.ui` | Impress slide view tabs |
+| `modules/swriter/ui/annotation.ui` | Writer comments in WASM |
 | `svt/ui/scrollbars.ui` | Scrollbar adaptor |
 | `svt/ui/tabbuttons.ui` | Tab bar buttons |
 
-These are `InterimItemWindow` shell views. Headless conversion still constructs
-them; `VclBuilder` can abort the process when a required layout is missing. The
+Headless conversion still constructs the Calc/Impress and shared `InterimItemWindow`
+shell views. Writer also loads `annotation.ui` for DOCX comments in WASM. Missing
+required layouts can fail document loading or make `VclBuilder` abort. The
 shared [policy](../engine/ui-resource-policy.mjs) checks their presence and removes
 every other `.ui` file below this root. It does not remove other file types or
 layouts outside this root. Existing toolbar, menubar and image policies still apply.
 
-The initial investigation reported 1,021 layouts reduced to five (about 9 KB),
-removing 1,016 files / 13.58 MiB from the native installation and about 13.7 MiB
-from WASM data. The reported xz saving was only about 1.4 MiB: the main benefit is
-installed size. Ten DOC/DOCX/XLS/XLSX/PPT/PPTX samples, including Thai, Chinese,
-Japanese and large reports, had identical text and word coordinates. Counts and
-sizes depend on the input build and earlier packaging exclusions; the minimizer
-records exact bytes for each run instead of enforcing those historical totals.
+The initial five-layout policy omitted Writer comments. A real-engine test on
+2026-09-17 confirmed that a standard commented DOCX loaded with the baseline WASM
+image, failed with the five-layout image, and loaded again after restoring only
+`annotation.ui` (11,021 bytes). The baseline and restored PDF rendered identically.
+The shared policy therefore retains six layouts, the union required by native and
+WASM conversion. `test/runtime-engine.test.mjs` includes a generated commented DOCX
+in installed-engine checks; it runs when `LIBREOFFICE_RUNTIME_ENTRY` is set.
 
-The implementation was checked locally on 2026-09-16 against existing Core
-`bce0998afefdbc355585ca324285661a2170ba77` builds:
+The six-layout policy was checked locally on 2026-09-17 against existing Core
+`bce0998afefdbc355585ca324285661a2170ba77` builds. Counts and sizes depend on the
+input build and earlier packaging exclusions; the minimizer records exact bytes
+for each run instead of enforcing these totals.
 
 | Measurement | Result |
 | --- | --- |
-| Native, incremental to the existing `main` exclusions | 1,021 → 5 layouts; 14,244,013 bytes removed (13.58 MiB) |
-| WASM, incremental to the existing repacked data image | 1,030 → 5 layouts; 14,370,796 bytes removed (13.71 MiB) |
-| WASM data image | 24,073,052 → 9,702,256 bytes |
-| Five retained layouts in these builds | 15,076 bytes; retained bytes unchanged |
-| WASM conversion comparison | All ten samples had identical ordered word text, word coordinates and page sizes |
-| macOS native conversion smoke | All ten samples converted with only the five layouts present |
+| Native, incremental to the existing `main` exclusions | 1,021 → 6 layouts; 14,232,992 bytes removed |
+| WASM, incremental to the existing repacked data image | 1,030 → 6 layouts; 14,359,775 bytes removed |
+| WASM data image | 24,073,052 → 9,713,277 bytes |
+| Six retained layouts in these builds | 26,097 bytes; retained bytes unchanged |
+| Annotation restoration relative to the five-layout image | One file, 11,021 bytes; all other payload bytes unchanged |
+| WASM conversion | 127/128 inputs converted, including the commented DOCX |
+| macOS ARM64 native smoke across all six formats | 9/10 representative inputs converted, including the commented DOCX |
 
-The local corpus combined the five checked-in binary/OOXML fixtures with generated
-Chinese, Japanese and Thai DOCX files, a 150-paragraph DOCX and a 1,000-row XLSX.
-WASM ran both data images through the same `convertWithWasm` implementation, module,
-host font catalog and 192-DPI export setting. Native coordinate equivalence was
-**not requalified** on this host: untouched baseline runs changed font metrics and
-occasionally word segmentation. The strict minimizer correctly rejected that
-baseline before trying deletions. The earlier investigation's equivalence result
-must not be confused with this local smoke check; matching-host native release
-qualification remains required.
+The WASM corpus contained 126 distinct user inputs and two supplementary fixtures
+(commented DOCX and XLS). The sole failing input in both backends also failed with
+the unpruned baseline: its ZIP container uses unencrypted STORED entries with data
+descriptors, rejected by the pinned Core. Restoring annotation.ui introduced no new
+conversion failure. User documents and diagnostic outputs remain outside tracked
+source and release payloads.
+
+WASM used the same `convertWithWasm` implementation, module, host font catalog and
+192-DPI export setting. Of 127 successful results, 126 matched the earlier baseline's
+ordered word text, coordinates and page sizes. One legacy DOC differed on one line;
+two alternating repeats of the unchanged baseline and restored image all matched
+the new result, including the 93-page count. The commented DOCX also produced an
+identical rendered PNG to baseline.
+
+Native coordinate equivalence was **not requalified**: untouched baseline runs
+changed font metrics, word segmentation and sometimes pagination. The strict
+minimizer correctly rejected that unstable baseline before trying deletions.
+These macOS ARM64 native and direct-WASM tests do not replace matching-host native
+release qualification or Linux installation checks.
 
 ## Requalify after every Core upgrade
 
 Use a complete installation from the new Core build and a matching-host native
 engine package. A previously pruned package alone cannot reveal new dependencies.
 The package's helper, installation and `--ui-source` must come from the same build.
-Use text-bearing fixtures covering all six formats, multilingual text and large
-reports. Install Python 3, Node and Poppler (`pdftotext`) on the qualification host.
+Use text-bearing fixtures covering all six formats, standard DOCX comments,
+multilingual text and large reports. Install Python 3, Node and Poppler (`pdftotext`)
+on the qualification host.
 
 ```sh
 python3 scripts/minimize-ui-resources.py \
@@ -86,6 +102,9 @@ XML and failure logs remain local for diagnosis. The candidate copy has a change
 payload and is not a releasable package; stage it again with the normal recipe.
 
 Review the result and update `requiredUiResources` and `reviewedUiCoreRevision`.
+The shared allowlist must cover both backends: a resource removable by native
+minimization may still be required by WASM. A smaller native result does not justify
+removing Writer's annotation layout without a WASM comment conversion check.
 The reviewed revision is evidence scope; `engine/core` remains the only source
 pin. Stage freshly qualified native packages on each release host and repackage
 WASM from its verified compilation. Use `--mode verify` with another new output

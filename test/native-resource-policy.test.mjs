@@ -10,8 +10,8 @@ import { requiredUiResources, assertUiCoreRevision, assertRequiredUiResources } 
 import { readCoreSource } from '../engine/core-source.mjs';
 
 test('the reviewed native resource inventory has no duplicate or overlapping exclusions', () => {
-  assert.equal(requiredUiResources.length, 5);
-  assert.equal(new Set(requiredUiResources).size, 5);
+  assert.equal(requiredUiResources.length, 6);
+  assert.equal(new Set(requiredUiResources).size, 6);
   assert.equal(nativeDesktopResources.length, 5);
   assert.equal(darwinDesktopResources.length, 3);
   assert.equal(new Set([...nativeDesktopResources, ...darwinDesktopResources]).size, 8);
@@ -84,7 +84,7 @@ for (const platform of ['darwin-arm64', 'darwin-x64', 'linux-arm64-glibc', 'linu
   });
 }
 
-test('UI policy requires requalification after a Core upgrade and all five shell layouts', () => {
+test('UI policy requires requalification after a Core upgrade and all required layouts', () => {
   assertUiCoreRevision(readCoreSource().revision);
   assert.throws(() => assertUiCoreRevision('0'.repeat(40)), /rerun.*minimize-ui/);
   assertRequiredUiResources(requiredUiResources);
