@@ -1,0 +1,38 @@
+{
+  "name": "@deepseek-ai/libreoffice-kit-browser",
+  "version": "0.0.1-1",
+  "type": "module",
+  "license": "MPL-2.0",
+  "description": "Browser Worker LibreOffice page and tile rendering",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",
+    "directory": "packages/browser"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./assets.json": "./assets.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/worker.js",
+    "lib/types/**/*.d.ts",
+    "assets.json",
+    "assets/",
+    "sources/",
+    "licenses/"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/build-browser.mjs --verify"
+  },
+  "devDependencies": {
+    "@deepseek-ai/libreoffice-kit": "workspace:*"
+  }
+}

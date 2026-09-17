@@ -22,6 +22,9 @@ export function prepareNpmRelease(directory, destination, env = process.env) {
       writeFileSync(join(destination, file), gzipSync(readFileSync(tar), { level: 9 }), { flag: 'wx' });
       packages.push({ name: record.name, version: record.version, file });
     }
+    const browser = release.browser;
+    copyFileSync(join(directory, browser.file), join(destination, browser.file));
+    packages.push({ name: browser.name, version: browser.version, file: browser.file });
     const adapter = kitManifest();
     const adapterFile = tarballName(adapter);
     copyFileSync(join(directory, adapterFile), join(destination, adapterFile));

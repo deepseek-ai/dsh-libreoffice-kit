@@ -1,25 +1,13 @@
 import { defineConfig } from 'tsdown'
 
-/** Independent ESM bundles keep the private Worker beside the adapter without shared chunks. */
-export default defineConfig([
-  {
-    entry: ['lib/types/index.js'],
-    outDir: 'lib',
-    format: ['esm'],
-    platform: 'node',
-    target: 'es2024',
-    fixedExtension: false,
-    dts: false,
-    clean: false,
-  },
-  {
-    entry: ['lib/types/worker.js'],
-    outDir: 'lib',
-    format: ['esm'],
-    platform: 'node',
-    target: 'es2024',
-    fixedExtension: false,
-    dts: false,
-    clean: false,
-  },
-])
+/** Independent bundles keep every published entry and worker free of unlisted shared chunks. */
+export default defineConfig(['index', 'font-source', 'font-config', 'document', 'worker', 'font-worker'].map(name => ({
+  entry: [`lib/types/${name}.js`],
+  outDir: 'lib',
+  format: ['esm'],
+  platform: 'node',
+  target: 'es2024',
+  fixedExtension: false,
+  dts: false,
+  clean: false,
+})))

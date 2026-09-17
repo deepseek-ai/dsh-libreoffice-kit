@@ -159,6 +159,8 @@ test('an unbuilt target cannot be packed even with valid metadata', (t) => {
   mkdirSync(join(repo, 'packages/entry'), { recursive: true });
   writeFileSync(join(repo, 'package.json'), JSON.stringify(readJson(join(root, 'package.json'))));
   writeFileSync(join(repo, 'packages/entry/package.json'), JSON.stringify(kitManifest()));
+  mkdirSync(join(repo, 'packages/browser'));
+  writeFileSync(join(repo, 'packages/browser/package.json'), JSON.stringify(readJson(join(root, 'packages/browser/package.json'))));
   for (const entry of packageMatrix()) {
     const directory = join(repo, 'packages', entry.prebuild.platform);
     mkdirSync(directory);
@@ -273,4 +275,17 @@ test('configure receipts reject stale or overridden components while allowing bu
   assert.throws(() => verifyConfigureInput('darwin-x64', cross.filter(flag => !flag.startsWith('--host='))), /rebuild Core/);
   assert.throws(() => verifyConfigureInput('darwin-arm64', cross), /rebuild Core/);
   assert.throws(() => configureFlags('darwin-arm64', '/cache', 15, undefined, true), /only ARM64 to x64/);
+});
+
+test('staging expands declaration globs without including sibling build artifacts', t => {
+  const dir = scratch(t);
+  mkdirSync(join(dir, 'lib/types'), { recursive: true });
+  writeFileSync(join(dir, 'lib/index.js'), 'export const browser = true;');
+  writeFileSync(join(dir, 'lib/types/index.d.ts'), 'export declare const browser: boolean;');
+  writeFileSync(join(dir, 'lib/types/index.js.map'), 'unpublished source map');
+  const destination = join(dir, 'staged');
+  stagePackage(dir, destination, { name: 'browser', files: ['lib/index.js', 'lib/types/**/*.d.ts'] });
+  assert.equal(readFileSync(join(destination, 'lib/types/index.d.ts'), 'utf8'), 'export declare const browser: boolean;');
+  assert.throws(() => readFileSync(join(destination, 'lib/types/index.js.map')), /ENOENT/);
+  assert.throws(() => stagePackage(dir, join(dir, 'missing'), { files: ['absent/*.js'] }), /No package payload/);
 });

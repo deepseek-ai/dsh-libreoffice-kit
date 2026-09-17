@@ -7,6 +7,7 @@ import { assert, sha256 } from './verify-artifacts.mjs';
 import { auditReleaseCandidate } from './release-privacy.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
 import { enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
+import { verifyBrowserReceipt } from './verify-browser-receipt.mjs';
 import { verifyEngineArchiveRecord } from './engine-archive.mjs';
 
 /**
@@ -31,6 +32,11 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     verifyEngineArchiveRecord(record);
     assert(record.version === release.version && statSync(join(directory, record.file)).size === record.bytes && sha256(join(directory, record.file)) === record.sha256, `Invalid release tarball: ${record.file}`);
   }
+  const browser = release.browser;
+  assert(browser?.name === '@deepseek-ai/libreoffice-kit-browser' && browser.version === release.version
+    && browser.file === tarballName(browser), 'Missing or noncanonical browser package');
+  assert(Number.isSafeInteger(browser.bytes) && browser.bytes > 0 && statSync(join(directory, browser.file)).size === browser.bytes
+    && /^[a-f0-9]{64}$/.test(browser.sha256) && sha256(join(directory, browser.file)) === browser.sha256, 'Invalid browser tarball');
   const evidence = readJson(join(directory, 'verification.json'));
   assert(evidence.sourceCommit === env.GITHUB_SHA && /^[a-f0-9]{40}$/.test(evidence.sourceCommit), 'Verification is not for this release commit');
   assert(evidence.releaseManifestSha256 === sha256(join(directory, 'release.json')), 'Verification belongs to different release bytes');
@@ -47,6 +53,7 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     assert(conversion?.embeddedGraphics?.pdfInEmf === true,
       `Missing embedded PDF graphic conversion evidence: ${platform}`);
   }
+  verifyBrowserReceipt(evidence.browser, { browserSha256: browser.sha256, adapterSha256, sourceCommit: evidence.sourceCommit });
   auditReleaseCandidate(directory, release, undefined, { target });
   return release;
 }
@@ -58,7 +65,7 @@ export function validatePublication(directory, env = process.env, { target = 'gi
  * @returns every asset name in upload order.
  */
 export function publicationAssets(release) {
-  return [...release.packages.map((record) => record.file), tarballName(kitManifest()), 'artifact-manifest.json', 'SHA256SUMS', 'release.json', 'verification.json'];
+  return [...release.packages.map((record) => record.file), release.browser.file, tarballName(kitManifest()), 'artifact-manifest.json', 'SHA256SUMS', 'release.json', 'verification.json'];
 }
 
 /**
@@ -80,9 +87,9 @@ export function writePublicationIndex(directory, release, repository) {
   const adapterManifest = kitManifest();
   const adapterFile = tarballName(adapterManifest);
   const adapter = { name: adapterManifest.name, version: adapterManifest.version, file: adapterFile, sha256: sha256(join(directory, adapterFile)), bytes: statSync(join(directory, adapterFile)).size };
-  const manifest = { adapter, repository, tag: releaseTag(release.version), version: release.version, source, packages };
+  const manifest = { adapter, browser: release.browser, repository, tag: releaseTag(release.version), version: release.version, source, packages };
   writeFileSync(join(directory, 'artifact-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  writeFileSync(join(directory, 'SHA256SUMS'), `${[...packages, adapter].map((record) => `${record.sha256}  ${record.file}`).join('\n')}\n`);
+  writeFileSync(join(directory, 'SHA256SUMS'), `${[...packages, release.browser, adapter].map((record) => `${record.sha256}  ${record.file}`).join('\n')}\n`);
   return manifest;
 }
 
@@ -93,11 +100,11 @@ export function writePublicationIndex(directory, release, repository) {
  * @returns the notes file path.
  */
 export function writeReleaseNotes(work, manifest) {
-  const rows = [...manifest.packages, { ...manifest.adapter, platform: 'Node API' }].map((record) =>
+  const rows = [...manifest.packages, { ...manifest.browser, platform: 'Browser API' }, { ...manifest.adapter, platform: 'Node API' }].map((record) =>
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Standalone Office-to-PDF conversion for Node.js: DOC, DOCX, XLS, XLSX, PPT and PPTX. Required native engines serve macOS and Windows on ARM64 and x64; Linux uses WASM. macOS and Windows do not fall back to WASM.',
+    'Direct browser rendering of DOC, DOCX, PPT and PPTX, with on-demand Host font subsets. Standalone Office-to-PDF conversion for Node.js: DOC, DOCX, XLS, XLSX, PPT and PPTX. Required native engines serve macOS and Windows on ARM64 and x64; Linux uses WASM. macOS and Windows do not fall back to WASM.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',
@@ -105,7 +112,7 @@ export function writeReleaseNotes(work, manifest) {
     '| --- | --- | ---: | --- |',
     ...rows,
     '',
-    '`artifact-manifest.json` records every published asset and `SHA256SUMS` verifies a download. The Node API and all declared prebuilt engines belong to this verified candidate. Engine archives retain their matching source recipes and license notices.',
+    '`artifact-manifest.json` records every published asset and `SHA256SUMS` verifies a download. The browser API, Node API and all declared prebuilt engines belong to this verified candidate. Engine archives retain their matching source recipes and license notices.',
     '',
   ].join('\n'));
   return file;

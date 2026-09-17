@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "types": [], "lib": ["ES2024", "DOM", "WebWorker"] },
+  "include": ["src"]
+}

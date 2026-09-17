@@ -5,9 +5,10 @@ import { isMain, kitDirectory, kitManifest, root, tarballName } from './platform
 import { npmEnvironment, pnpm } from './pack-utils.mjs';
 import { auditNpmArchive } from './publication-privacy.mjs';
 import { assert } from './verify-artifacts.mjs';
+import { verifyFontSubset } from './build-font-subset.mjs';
 
 /** Runtime entries every adapter build must produce; `files` publishes exactly these bundles. */
-const BUILT_ENTRIES = ['lib/index.js', 'lib/worker.js'];
+const BUILT_ENTRIES = ['lib/index.js', 'lib/worker.js', 'lib/font-source.js', 'lib/font-worker.js', 'lib/font-config.js', 'lib/document.js'];
 
 /**
  * Compile the adapter's leaf TypeScript project and bundle its two ESM entries.
@@ -33,6 +34,7 @@ export function buildKitSources() {
  */
 export function packKit(destination, work) {
   const { directory, manifest } = buildKitSources();
+  verifyFontSubset(directory);
   const target = resolve(destination);
   mkdirSync(target, { recursive: true });
   pnpm(['--dir', directory, 'pack', '--pack-destination', target],

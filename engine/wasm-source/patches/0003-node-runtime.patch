@@ -7,7 +7,7 @@
 +$(eval $(call gb_Executable_add_ldflags,soffice_bin, \
 +    -sMODULARIZE=1 \
 +    -sEXPORT_NAME=createLibreOfficeModule \
-+    -sENVIRONMENT=node$(COMMA)worker \
++    -sENVIRONMENT=web$(COMMA)node$(COMMA)worker \
 +    -sSTACK_SIZE=1048576 \
 +    -sSTACK_OVERFLOW_CHECK=2 \
 +    -sALLOW_MEMORY_GROWTH=1 \
@@ -44,7 +44,7 @@
  
 --- a/desktop/util/Executable_soffice_bin-emscripten-exports
 +++ b/desktop/util/Executable_soffice_bin-emscripten-exports
-@@ -12,3 +12,9 @@
+@@ -12,3 +12,16 @@
  _lok_preinit_2
  _malloc
  _free
@@ -54,6 +54,13 @@
 +_dsh_lok_document_destroy
 +_dsh_lok_error
 +_dsh_lok_destroy
++_dsh_lok_document_initialize_rendering
++_dsh_lok_document_type
++_dsh_lok_document_parts
++_dsh_lok_document_page_rectangles
++_dsh_lok_document_size
++_dsh_lok_document_tile_mode
++_dsh_lok_document_paint
 --- a/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 +++ b/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 @@ -27,7 +27,7 @@

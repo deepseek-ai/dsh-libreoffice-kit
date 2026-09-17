@@ -59,6 +59,18 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 
 为获得可复现的比较结果，请使用相同的文档、字体、DPI 和限制；WASM 安装在 Linux 上运行。报告时应把引擎启动时间和转换时间一起给出；每次渲染都会启动一个全新的引擎。WASM 资源和平台载荷都带有各自的源码、许可证和完整性清单。
 
+## 浏览器支持模块
+
+`@deepseek-ai/libreoffice-kit/font-config` 导出两个 WASM 适配器共用的浏览器安全函数 `normalize`、`fontFamilyPriority` 和 `memoryFontConfig`。`@deepseek-ai/libreoffice-kit/document-inspection` 导出 `inspectDocument(bytes, extension, limits)`，提供相同的 OOXML 限额检查和传统复合文件检查。这些子路径不会初始化引擎或读取 Host 文件系统，可由打包器纳入浏览器 Worker。独立的 `@deepseek-ai/libreoffice-kit-browser` 包负责浏览器文档渲染和不区分操作系统的引擎资源。
+
+若依赖树无需 LibreOffice 引擎包，请使用 [`@deepseek-ai/libreoffice-kit-fonts`](../fonts/README.zh.md)；它暂存同一份实现，并从包根导出 `createFontSource`。
+
+`@deepseek-ai/libreoffice-kit/fonts` 导出 `createFontSource(options)`，在无需安装 LibreOffice 引擎的情况下为浏览器提供 Host 字体。其惰性 Node Worker 每次匹配都会刷新已安装字体元数据，按共用回退偏好选择物理字面，并返回可复用 sfnt 子集。`resolve(request)` 返回 `{ id, bytes, family, alias }` 条目；`read(id)` 返回其字节。原始 family/style 和名称表保持不变；浏览器用内容派生的 `DSH_<SHA256>` 别名区分子集。原始文件变化后，旧读取会拒绝，需要重新匹配。取消会在已派发工作完成后丢弃结果；`dispose()` 终止 Worker 并等待其退出。
+
+子集使用完整的 Unicode 17 Script/Script_Extensions 数据，包括补充平面和未知／私用区字符。每个文字系统保留 Common/Inherited 字符、变体选择符及 HarfBuzz 排版／复合字形闭包。空字符请求返回 Common 子集，可能仅含元数据和 `.notdef`。TTC/OTC 字体集合和 Apple dfont 资源被提取为单独的 sfnt 字面。`maxCachedSubsetBytes` 限制 Worker 内的子集字节 LRU（默认 128 MiB）；淘汰条目可从未改变的原始文件重新生成。该字体源没有磁盘缓存，保留字节限制也不是 Worker 总内存上限。
+
+字体源需要随包发布的 HarfBuzz 子集 WASM、回执及许可声明。[构建配方](../../engine/font-subset/README.zh.md) 固定其源码，并为大文字系统分区启用堆增长；Node API 打包时验证这些资源。该字体源和测试不会改变 Node 转换器使用原始字体的行为。
+
 ## 源码与许可
 
 本包使用 [MPL-2.0](LICENSE) 许可。引擎包包含 `prebuilds.json` 完整性清单、`sources/` 对应源码配方和补丁，以及 `licenses/` 第三方再分发声明。
@@ -66,7 +78,7 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 ## 使用限制
 
 - 保真度取决于源格式、已安装字体和所选引擎。缺失字体名称不能报告所有缺字。
-- 只支持 DOCX、XLSX 和 PPTX 输入。转换不发现系统 LibreOffice，也不下载引擎和字体。
+- 支持 DOC、DOCX、XLS、XLSX、PPT 和 PPTX 输入。转换不发现系统 LibreOffice，也不下载引擎和字体。
 - 字体导入和输出限制不能约束全部原生内存或临时磁盘使用。原生平台引擎的字体解析可能与 WASM 不同。
 - npm 安装使用按平台选择的可选包。自行打包引擎的应用需要保留所选包的完整内容，包括资源和许可声明。
 - Windows 需要系统安装与 Node.js 架构一致的 Microsoft Visual C++ v14 Redistributable（x64 或 ARM64）；包中不捆绑该运行库。Windows ARM64 引擎需要使用 ARM64 Node.js。

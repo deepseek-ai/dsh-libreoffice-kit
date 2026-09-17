@@ -1,0 +1,43 @@
+{
+  "name": "@deepseek-ai/libreoffice-kit-fonts",
+  "version": "0.0.1-1",
+  "type": "module",
+  "license": "MPL-2.0",
+  "description": "Portable Host font matching and HarfBuzz WASM subsets",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",
+    "directory": "packages/fonts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/font-source.d.ts",
+      "import": "./lib/font-source.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "font-api.json",
+    "assets/",
+    "sources/",
+    "licenses/",
+    "NOTICE",
+    "README.zh.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/build-fonts.mjs --verify"
+  },
+  "dependencies": {
+    "@unicode/unicode-17.0.0": "2.0.7",
+    "fontkit": "2.0.4"
+  }
+}

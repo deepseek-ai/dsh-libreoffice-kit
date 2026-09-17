@@ -1,7 +1,9 @@
 // The browser Worker owns one LibreOfficeKit instance and serializes all calls.
 // Pointers remain inside that worker's WebAssembly memory.
 
+#define LOK_USE_UNSTABLE_API
 #include <LibreOfficeKit/LibreOfficeKit.h>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <cstdlib>
 #include <cstdio>
@@ -71,6 +73,65 @@ int dsh_lok_document_save_pdf(LibreOfficeKitDocument* document, const char* url,
 {
     return guarded([&] {
         return document->pClass->saveAs(document, url, "pdf", filterOptions);
+    }, 0);
+}
+
+/** Initializes read-only Writer pages or normal Impress slides for tiled rendering. */
+int dsh_lok_document_initialize_rendering(LibreOfficeKitDocument* document)
+{
+    return guarded([&] {
+        document->pClass->initializeForRendering(document, "{\".uno:ShowBorderShadow\":{\"type\":\"boolean\",\"value\":\"false\"}}");
+        if (document->pClass->getDocumentType(document) == LOK_DOCTYPE_PRESENTATION)
+            document->pClass->setPartMode(document, LOK_PARTMODE_SLIDES);
+        return 1;
+    }, 0);
+}
+
+/** Returns a LibreOfficeKitDocumentType, or -1 when the query throws. */
+int dsh_lok_document_type(LibreOfficeKitDocument* document)
+{
+    return guarded([&] { return document->pClass->getDocumentType(document); }, -1);
+}
+
+/** Returns the number of Impress slides, or -1 when the query throws. */
+int dsh_lok_document_parts(LibreOfficeKitDocument* document)
+{
+    return guarded([&] { return document->pClass->getParts(document); }, -1);
+}
+
+/** Returns owned Writer page rectangles in twips; free with the exported free function. */
+char* dsh_lok_document_page_rectangles(LibreOfficeKitDocument* document)
+{
+    return guarded([&] { return document->pClass->getPartPageRectangles(document); }, static_cast<char*>(nullptr));
+}
+
+/** Writes the selected slide's twip dimensions into two wasm32 longs. */
+int dsh_lok_document_size(LibreOfficeKitDocument* document, int part, long* width, long* height)
+{
+    return guarded([&] {
+        document->pClass->setPart(document, part);
+        document->pClass->getDocumentSize(document, width, height);
+        return 1;
+    }, 0);
+}
+
+/** Returns the LibreOfficeKitTileMode, or -1 when the query throws. */
+int dsh_lok_document_tile_mode(LibreOfficeKitDocument* document)
+{
+    return guarded([&] { return document->pClass->getTileMode(document); }, -1);
+}
+
+/** Paints twip coordinates into a premultiplied RGBA/BGRA buffer; part -1 selects Writer. */
+int dsh_lok_document_paint(LibreOfficeKitDocument* document, unsigned char* buffer, int part,
+                         int canvasWidth, int canvasHeight, int x, int y, int width, int height)
+{
+    return guarded([&] {
+        if (part < 0)
+            document->pClass->paintTile(document, buffer, canvasWidth, canvasHeight, x, y, width, height);
+        else
+            document->pClass->paintPartTile(document, buffer, part, LOK_PARTMODE_SLIDES,
+                                            canvasWidth, canvasHeight, x, y, width, height);
+        return 1;
     }, 0);
 }
 

@@ -59,6 +59,18 @@ Node WASM image downscaling uses LibreOffice's CPU image filter. Text layout, fo
 
 For reproducible comparisons, use identical documents, fonts, DPI, and limits; WASM installations run on Linux. Report engine startup together with conversion time; every render starts a fresh engine. The WASM assets and platform payloads carry their source, license, and integrity manifests.
 
+## Browser support modules
+
+`@deepseek-ai/libreoffice-kit/font-config` exports the browser-safe `normalize`, `fontFamilyPriority` and `memoryFontConfig` helpers shared by both WASM adapters. `@deepseek-ai/libreoffice-kit/document-inspection` exports `inspectDocument(bytes, extension, limits)` for the same bounded OOXML and legacy compound-file checks. These subpaths do not initialize an engine or read the Host filesystem; bundlers may include them in browser Workers. The separate `@deepseek-ai/libreoffice-kit-browser` package owns browser document rendering and its OS-independent engine resources.
+
+For a dependency tree without LibreOffice engine packages, use [`@deepseek-ai/libreoffice-kit-fonts`](../fonts/README.md), which stages the same implementation and exports `createFontSource` from its root.
+
+`@deepseek-ai/libreoffice-kit/fonts` exports `createFontSource(options)` for Host-assisted browser font loading without installing a LibreOffice engine. Its lazy Node Worker refreshes installed-font metadata on every match, selects physical faces using the shared fallback preferences, and returns reusable sfnt subsets. `resolve(request)` returns `{ id, bytes, family, alias }` entries; `read(id)` returns their bytes. The original family/style and name tables remain intact; the browser uses the content-derived `DSH_<SHA256>` alias to distinguish subsets. Changed original files reject old reads and require another match. Cancellation discards dispatched results when work settles; `dispose()` terminates and joins the Worker.
+
+Subsets use the complete Unicode 17 Script/Script_Extensions data, including supplementary and unknown/private-use characters. Every script retains Common/Inherited characters, variation selectors, and HarfBuzz layout/composite closure. An empty-character request returns a Common subset that may contain only metadata and `.notdef`. TTC/OTC collections and Apple dfont resources become individual sfnt faces. `maxCachedSubsetBytes` bounds the Worker’s LRU of subset bytes (128 MiB by default); evicted entries regenerate from unchanged originals. This source keeps no disk cache, and the retained-byte limit is not a total Worker memory limit.
+
+The font source requires the packaged HarfBuzz subset WASM, receipt, and notices. [The build recipe](../../engine/font-subset/README.md) pins its sources and enables heap growth for large script partitions; Node API packing validates these resources. The source and tests do not alter the Node converter’s original-font behavior.
+
 ## Source and license
 
 This package is licensed under [MPL-2.0](LICENSE). The engine packages include `prebuilds.json` integrity inventories, corresponding source recipes and patches in `sources/`, and third-party redistribution notices in `licenses/`.
@@ -66,7 +78,7 @@ This package is licensed under [MPL-2.0](LICENSE). The engine packages include `
 ## Limitations
 
 - Fidelity depends on source formatting, installed fonts, and the selected engine. Missing-font names do not report every missing glyph.
-- Only DOCX, XLSX, and PPTX input is supported. Conversion does not discover system LibreOffice or download engines and fonts.
+- DOC, DOCX, XLS, XLSX, PPT, and PPTX input is supported. Conversion does not discover system LibreOffice or download engines and fonts.
 - Font import and output limits do not bound all native memory or temporary disk use. Native platform engines may resolve fonts differently from WASM.
 - Installations from npm use platform-specific optional packages. Applications that bundle engines must retain the complete selected package, including its resources and notices.
 - Windows requires the Microsoft Visual C++ v14 Redistributable matching the Node.js architecture (x64 or ARM64); it is not bundled. Use ARM64 Node.js for the Windows ARM64 engine.

@@ -22,16 +22,37 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./fonts": {
+      "types": "./lib/types/font-source.d.ts",
+      "default": "./lib/font-source.js"
+    },
+    "./font-config": {
+      "types": "./lib/types/font-config.d.ts",
+      "default": "./lib/font-config.js"
+    },
+    "./document-inspection": {
+      "types": "./lib/types/document.d.ts",
+      "default": "./lib/document.js"
+    }
   },
   "files": [
     "README.zh.md",
     "lib/index.js",
     "lib/worker.js",
     "NOTICE",
-    "lib/types/**/*.d.ts"
+    "lib/types/**/*.d.ts",
+    "lib/font-source.js",
+    "lib/font-worker.js",
+    "lib/font-config.js",
+    "lib/document.js",
+    "assets/font-subset.wasm",
+    "assets/font-subset.json",
+    "sources/font-subset/",
+    "licenses/font-subset/"
   ],
   "dependencies": {
+    "@unicode/unicode-17.0.0": "2.0.7",
     "fflate": "0.8.2",
     "fontkit": "2.0.4",
     "saxes": "6.0.0"
@@ -39,8 +60,8 @@
   "optionalDependencies": {
     "@deepseek-ai/libreoffice-kit-darwin-arm64": "workspace:*",
     "@deepseek-ai/libreoffice-kit-darwin-x64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*",
     "@deepseek-ai/libreoffice-kit-win32-arm64": "workspace:*",
-    "@deepseek-ai/libreoffice-kit-win32-x64": "workspace:*",
-    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*"
+    "@deepseek-ai/libreoffice-kit-win32-x64": "workspace:*"
   }
 }

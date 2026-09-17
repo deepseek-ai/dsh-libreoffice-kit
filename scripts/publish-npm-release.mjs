@@ -49,7 +49,7 @@ export async function validateNpmPublication(candidateDirectory, npmDirectory, e
     'npm publication belongs to a different qualified candidate');
   const adapter = kitManifest();
   assert(adapter.version === release.version, 'npm Node API version differs from the qualified engine family');
-  const expected = [...release.packages, adapter].map(record => ({ name: record.name, version: record.version, file: tarballName(record) }));
+  const expected = [...release.packages, release.browser, adapter].map(record => ({ name: record.name, version: record.version, file: tarballName(record) }));
   assert(Array.isArray(publication.packages) && publication.packages.length === expected.length, 'npm publication requires every declared package');
   const order = readFileSync(join(npmDirectory, 'publish-order.txt'), 'utf8');
   assert(order === `${expected.map(record => record.file).join('\n')}\n`, 'npm publish order must list each engine before the Node API');
@@ -71,7 +71,7 @@ export async function validateNpmPublication(candidateDirectory, npmDirectory, e
       assert(inner.bytes === engine.install.bytes && inner.sha256 === engine.install.sha256,
         `npm engine differs from its qualified installation tar: ${identity.name}`);
     } else {
-      assert(digest.sha256 === sha256(join(candidateDirectory, identity.file)), 'npm Node API differs from its qualified archive');
+      assert(digest.sha256 === sha256(join(candidateDirectory, identity.file)), 'npm Browser/Node API differs from its qualified archive');
     }
     const { manifest } = auditNpmArchive(file);
     assert(manifest.name === identity.name && manifest.version === identity.version, 'npm archive manifest identity mismatch');
