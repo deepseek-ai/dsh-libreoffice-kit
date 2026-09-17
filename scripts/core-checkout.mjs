@@ -32,6 +32,7 @@ export function checkoutCore(directory, repo = root) {
     run('git', ['remote', 'add', 'origin', source.repository], { cwd: directory });
     run('git', ['fetch', '--depth=1', 'origin', source.revision], { cwd: directory, timeout: 900_000 });
   }
-  run('git', ['checkout', '--detach', source.revision], { cwd: directory });
+  // Materializing Core's source tree can exceed the short command timeout on Windows.
+  run('git', ['checkout', '--detach', source.revision], { cwd: directory, timeout: 900_000 });
   verify(directory);
 }
