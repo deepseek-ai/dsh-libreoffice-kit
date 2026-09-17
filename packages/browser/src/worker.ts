@@ -5,17 +5,14 @@ import { createFontReader } from './font-channel.ts'
 import { BrowserRenderError } from './types.ts'
 import type { BrowserRenderErrorCode, BrowserTileRequest } from './types.ts'
 import type { OwnerMessage, WorkerMessage, WorkerOptions } from './protocol.ts'
-import { rgbaPixels, tileDimensions, TWIPS_PER_CSS_PIXEL, writerPages } from './rendering.ts'
+import { TWIPS_PER_CSS_PIXEL, writerPages } from './rendering.ts'
 import type { EnginePage } from './rendering.ts'
 
-interface EmscriptenModule {
-  readonly FS: { mkdirTree(path: string): void; writeFile(path: string, data: Uint8Array): void }
-  readonly ENV: Record<string, string>
-  readonly HEAPU32: Uint32Array
-  readonly PThread: { terminateAllThreads(): void }
-  ccall(name: string, returnType: string | null, argTypes: string[], args: unknown[]): number
-  UTF8ToString(pointer: number): string
-}
+import type { EmscriptenModule } from './engine-types.ts'
+import type { BrowserEditorFormat } from './editor-types.ts'
+import { EditorEngine } from './editor-engine.ts'
+import { renderRegion } from './engine-rendering.ts'
+
 interface EngineGlobal extends DedicatedWorkerGlobalScope {
   createLibreOfficeModule(overrides: Record<string, unknown>): Promise<EmscriptenModule>
 }
@@ -24,6 +21,7 @@ let module: EmscriptenModule | undefined
 let office = 0
 let document = 0
 let pages: EnginePage[] = []
+let editor: EditorEngine | undefined
 let fatal = false
 let fontFailure: unknown
 let serial = Promise.resolve()
@@ -39,7 +37,7 @@ function error(code: BrowserRenderErrorCode): BrowserRenderError {
   try { return new BrowserRenderError(code, module.UTF8ToString(pointer)) } finally { call('free', [pointer]) }
 }
 
-async function open(options: WorkerOptions, channel: SharedArrayBuffer): Promise<void> {
+async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing = false): Promise<void> {
   const { assets } = options
   let metadata: ReturnType<typeof inspectDocument>
   try { metadata = inspectDocument(options.data, options.extension, options) } catch (failure) { throw new BrowserRenderError('invalid-document', failure instanceof Error ? failure.message : String(failure)) }
@@ -50,6 +48,7 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer): Promise
   let resolveFonts: ReturnType<typeof createFontReader> | undefined
   module = await scope.createLibreOfficeModule({
     noInitialRun: true,
+    dshOnCallback(type: number, payload: string) { editor?.callback(type, payload) },
     mainScriptUrlOrBlob: assets.loaderUrl,
     locateFile(name: string) {
       const basename = name.slice(name.lastIndexOf('/') + 1)
@@ -82,10 +81,20 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer): Promise
   module.FS.writeFile(input, options.data)
   office = module.ccall('dsh_lok_initialize', 'number', ['string', 'string'], [assets.programDirectory, 'file:///dsh/profile'])
   if (!office) throw error('invalid-document')
-  document = module.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, 'Batch=true,EnableMacrosExecution=false'])
+  document = module.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, editing ? 'EnableMacrosExecution=false' : 'Batch=true,EnableMacrosExecution=false'])
   if (!document || !call('dsh_lok_document_initialize_rendering', [document])) throw error('invalid-document')
   const type = call('dsh_lok_document_type', [document])
-  if (type !== (options.extension === 'doc' || options.extension === 'docx' ? 0 : 2)) throw new BrowserRenderError('invalid-document', 'The document type does not match its extension.')
+  if (type !== (options.extension === 'doc' || options.extension === 'docx' ? 0 : options.extension === 'xlsx' ? 1 : 2)) throw new BrowserRenderError('invalid-document', 'The document type does not match its extension.')
+  if (editing) {
+    editor = new EditorEngine(module, document, options.extension as BrowserEditorFormat, options.maxUncompressedBytes,
+      event => send({ type: 'editor-event', event }), failure => {
+        fatal ||= failure instanceof WebAssembly.RuntimeError
+        send({ type: 'editor-event', event: { type: 'error', code: 'render-failed', message: failure instanceof Error ? failure.message : String(failure) } })
+      })
+    await editor.start()
+    pages = editor.state.parts.map((part, index) => ({ ...part, x: 0, y: 0, part: type === 0 ? -1 : index }))
+    return
+  }
   if (type === 0) {
     const pointer = call('dsh_lok_document_page_rectangles', [document])
     if (!pointer) throw error('invalid-document')
@@ -110,19 +119,12 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer): Promise
 function render(request: BrowserTileRequest): { width: number; height: number; rgba: Uint8ClampedArray } {
   if (fatal) throw new BrowserRenderError('render-failed', 'LibreOffice Worker has aborted.')
   if (!document || !module) throw new BrowserRenderError('disposed', 'The document is closed.')
-  const { page, width, height } = tileDimensions(request, pages)
-  const size = width * height * 4
-  const pointer = call('malloc', [size])
-  if (!pointer) throw error('render-failed')
-  try {
-    new Uint8Array(module.HEAPU32.buffer, pointer, size).fill(0)
-    const position = [page.x + Math.round(request.x * TWIPS_PER_CSS_PIXEL), page.y + Math.round(request.y * TWIPS_PER_CSS_PIXEL), Math.max(1, Math.round(request.width * TWIPS_PER_CSS_PIXEL)), Math.max(1, Math.round(request.height * TWIPS_PER_CSS_PIXEL))]
-    if (!call('dsh_lok_document_paint', [document, pointer, page.part, width, height, ...position])) throw error('render-failed')
-    return { width, height, rgba: rgbaPixels(new Uint8Array(module.HEAPU32.buffer, pointer, size), call('dsh_lok_document_tile_mode', [document])) }
-  } finally { call('free', [pointer]) }
+  return renderRegion(module, document, request, pages, () => error('render-failed'))
 }
 
 function dispose(): void {
+  editor?.stop()
+  editor = undefined
   try {
     if (module && !fatal) {
       if (document) { const value = document; document = 0; if (!call('dsh_lok_document_destroy', [value])) throw error('render-failed') }
@@ -139,12 +141,24 @@ function dispose(): void {
 
 scope.onmessage = (event: MessageEvent<OwnerMessage>) => {
   const message = event.data
-  if (message.type === 'dispose') lifetime.abort()
+  if (message.type === 'dispose') { lifetime.abort(); editor?.stop() }
   serial = serial.then(async () => {
     try {
       switch (message.type) {
-        case 'open': await open(message.options, message.channel); send({ type: 'opened', id: message.id, pages: pages.map(({ width, height }) => ({ width, height })) }); break
+        case 'open': await open(message.options, message.channel, message.editing); send({ type: 'opened', id: message.id, pages: pages.map(({ width, height }) => ({ width, height })), ...(editor ? { editor: editor.state } : {}) }); break
         case 'tile': { const tile = render(message.request); send({ type: 'tile', id: message.id, tile }, [tile.rgba.buffer]); break }
+        case 'editor-tile': {
+          if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
+          const tile = editor.render(message.request)
+          send({ type: 'tile', id: message.id, tile }, [tile.rgba.buffer])
+          break
+        }
+        case 'edit': {
+          if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
+          const result = await editor.operation(message.operation)
+          send({ type: 'edited', id: message.id, ...result }, result.snapshot ? [result.snapshot.data.buffer] : [])
+          break
+        }
         case 'dispose': dispose(); send({ type: 'disposed', id: message.id }); scope.close(); break
       }
     } catch (failure) {

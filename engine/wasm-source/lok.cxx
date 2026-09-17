@@ -9,14 +9,25 @@
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <emscripten.h>
 
 extern "C" LibreOfficeKit* libreofficekit_hook_2(const char*, const char*);
+extern "C" bool dsh_lok_yield();
+
+EM_JS(void, dsh_lok_callback, (int type, const char* payload), {
+    if (Module['dshOnCallback']) Module['dshOnCallback'](type, payload ? UTF8ToString(payload) : '');
+});
 
 namespace {
 
 // Exception diagnostics remain available even when a LOK instance could not be
 // created. The fixed buffer also records allocation failures without allocating.
 char lastError[4096] = {};
+
+void editorCallback(int type, const char* payload, void*)
+{
+    dsh_lok_callback(type, payload);
+}
 
 template <typename Result, typename Function>
 Result guarded(Function function, Result failure) noexcept
@@ -52,9 +63,12 @@ extern "C" {
 LibreOfficeKit* dsh_lok_initialize(const char* installPath, const char* profileUrl)
 {
     return guarded([&] {
-        // Synchronous conversion runs on the browser Worker without a GUI event loop.
+        // The owning Worker drives nonblocking event slices for editing sessions.
         ::setenv("SAL_LOK_OPTIONS", "unipoll", 1);
-        return libreofficekit_hook_2(installPath, profileUrl);
+        auto* office = libreofficekit_hook_2(installPath, profileUrl);
+        if (office != nullptr)
+            office->pClass->setOptionalFeatures(office, LOK_FEATURE_PART_IN_INVALIDATION_CALLBACK);
+        return office;
     }, static_cast<LibreOfficeKit*>(nullptr));
 }
 
@@ -73,6 +87,80 @@ int dsh_lok_document_save_pdf(LibreOfficeKitDocument* document, const char* url,
 {
     return guarded([&] {
         return document->pClass->saveAs(document, url, "pdf", filterOptions);
+    }, 0);
+}
+
+/** Export an editable snapshot in its original Office format. */
+int dsh_lok_document_save(LibreOfficeKitDocument* document, const char* url, const char* format)
+{
+    return guarded([&] { return document->pClass->saveAs(document, url, format, "TakeOwnership"); }, 0);
+}
+
+/** Register the single owning Worker's document notifications. */
+int dsh_lok_document_listen(LibreOfficeKitDocument* document)
+{
+    return guarded([&] { document->pClass->registerCallback(document, editorCallback, nullptr); return 1; }, 0);
+}
+
+/** Process pending VCL events and timers without blocking the Worker message loop. */
+int dsh_lok_pump()
+{
+    return guarded([&] { return dsh_lok_yield() ? 1 : 0; }, -1);
+}
+
+int dsh_lok_document_key(LibreOfficeKitDocument* document, int type, int character, int key)
+{
+    return guarded([&] { document->pClass->postKeyEvent(document, type, character, key); return 1; }, 0);
+}
+
+int dsh_lok_document_mouse(LibreOfficeKitDocument* document, int type, int x, int y,
+                           int count, int buttons, int modifiers)
+{
+    return guarded([&] { document->pClass->postMouseEvent(document, type, x, y, count, buttons, modifiers); return 1; }, 0);
+}
+
+int dsh_lok_document_composition(LibreOfficeKitDocument* document, int type, const char* text)
+{
+    return guarded([&] { document->pClass->postWindowExtTextInputEvent(document, 0, type, text); return 1; }, 0);
+}
+
+int dsh_lok_document_command(LibreOfficeKitDocument* document, const char* command, const char* arguments)
+{
+    return guarded([&] { document->pClass->postUnoCommand(document, command, arguments, true); return 1; }, 0);
+}
+
+char* dsh_lok_document_command_values(LibreOfficeKitDocument* document, const char* command)
+{
+    return guarded([&] { return document->pClass->getCommandValues(document, command); }, static_cast<char*>(nullptr));
+}
+
+int dsh_lok_document_paste(LibreOfficeKitDocument* document, const char* mime, const char* text, int size)
+{
+    return guarded([&] { return document->pClass->paste(document, mime, text, size); }, false) ? 1 : 0;
+}
+
+char* dsh_lok_document_selection(LibreOfficeKitDocument* document)
+{
+    return guarded([&] { return document->pClass->getTextSelection(document, "text/plain;charset=utf-8", nullptr); }, static_cast<char*>(nullptr));
+}
+
+int dsh_lok_document_part(LibreOfficeKitDocument* document, int part)
+{
+    return guarded([&] { document->pClass->setPart(document, part); return 1; }, 0);
+}
+
+char* dsh_lok_document_part_name(LibreOfficeKitDocument* document, int part)
+{
+    return guarded([&] { return document->pClass->getPartName(document, part); }, static_cast<char*>(nullptr));
+}
+
+int dsh_lok_document_viewport(LibreOfficeKitDocument* document, int pixels, int twips,
+                             int x, int y, int width, int height)
+{
+    return guarded([&] {
+        document->pClass->setClientZoom(document, pixels, pixels, twips, twips);
+        document->pClass->setClientVisibleArea(document, x, y, width, height);
+        return 1;
     }, 0);
 }
 

@@ -12,6 +12,7 @@ import { assert, regularFile, sha256, verifyEnginePackage } from './verify-artif
 const directory = join(root, 'packages/browser');
 const assetPaths = { worker: 'lib/worker.js', loader: 'assets/soffice.js', wasm: 'assets/soffice.wasm', data: 'assets/soffice.data', metadata: 'assets/soffice.data.js.metadata' };
 const renderExports = ['dsh_lok_document_initialize_rendering', 'dsh_lok_document_type', 'dsh_lok_document_parts', 'dsh_lok_document_page_rectangles', 'dsh_lok_document_size', 'dsh_lok_document_tile_mode', 'dsh_lok_document_paint'];
+const editorExports = ['dsh_lok_document_save', 'dsh_lok_document_listen', 'dsh_lok_pump', 'dsh_lok_document_key', 'dsh_lok_document_mouse', 'dsh_lok_document_composition', 'dsh_lok_document_command', 'dsh_lok_document_command_values', 'dsh_lok_document_paste', 'dsh_lok_document_selection', 'dsh_lok_document_part', 'dsh_lok_document_part_name', 'dsh_lok_document_viewport'];
 
 /** Compile the public adapter and a self-contained classic Worker. */
 export function buildBrowserSources() {
@@ -39,7 +40,7 @@ export function verifyBrowserPackage(target = directory, expectedVersion = readJ
   }
   const module = new WebAssembly.Module(readFileSync(join(target, assetPaths.wasm)));
   const exports = new Set(WebAssembly.Module.exports(module).map(value => value.name));
-  for (const name of renderExports) assert(exports.has(name) || exports.has(`_${name}`), `WASM has no direct-render export: ${name}`);
+  for (const name of [...renderExports, ...editorExports]) assert(exports.has(name) || exports.has(`_${name}`), `WASM has no browser export: ${name}`);
   for (const path of ['sources/engine/wasm-source/lok.cxx', 'sources/engine/wasm-source/build.mjs', 'sources/source-changes.patch', 'licenses/LICENSE', 'licenses/NOTICE', 'licenses/javascript/fflate-LICENSE', 'licenses/javascript/saxes-LICENSE', 'licenses/javascript/xmlchars-LICENSE']) regularFile(target, path);
   return assets;
 }

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openDocument } from '../src/index.ts'
+import { openEditor } from '../src/editor.ts'
+import type { BrowserEditorState } from '../src/editor-types.ts'
 import type { BrowserDocumentOptions } from '../src/types.ts'
 import { FONT_CHUNK_BYTES, FontState } from '../src/protocol.ts'
 import { fontViews } from '../src/font-channel.ts'
@@ -97,6 +99,79 @@ describe('browser document ownership', () => {
 
 const tileRequest = { pageIndex: 0, x: 0, y: 0, width: 10, height: 10, scale: 1 }
 const fontRequest = { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }
+
+const editingState: BrowserEditorState = { documentType: 'text', revision: 0, part: 0,
+  parts: [{ name: '', width: 816, height: 1056 }], pages: [], cursor: null, cursorVisible: false,
+  selection: [], graphicSelection: null, cellAddress: '', cellFormula: '', commands: {} }
+
+function supportedEditor(): void {
+  supported()
+  ControlledWorker.opening = (worker, message) => worker.receive({ type: 'opened', id: message.id,
+    pages: [{ width: 816, height: 1056 }], editor: editingState })
+}
+
+describe('browser editor ownership', () => {
+  it('keeps input order and confirms the exported revision despite later state notifications', async () => {
+    supportedEditor()
+    const source = { ...options(), extension: 'docx' as const }
+    const editor = await openEditor(source)
+    const worker = ControlledWorker.instances[0]!
+    expect(worker.messages[0]).toMatchObject({ type: 'open', editing: true })
+    expect([...source.data]).toEqual([1, 2, 3])
+    const events = vi.fn()
+    const unsubscribe = editor.subscribe(events)
+    const input = editor.input({ type: 'composition', action: 'update', text: '中文' })
+    const end = editor.input({ type: 'composition', action: 'end', text: '' })
+    const save = editor.save()
+    const operations = worker.messages.filter(message => message.type === 'edit')
+    expect(operations.map(message => message.operation.type)).toEqual(['input', 'input', 'save'])
+    worker.receive({ type: 'editor-event', event: { type: 'state', state: { ...editingState, revision: 1 } } })
+    for (const message of operations.slice(0, 2)) worker.receive({ type: 'edited', id: message.id })
+    worker.receive({ type: 'edited', id: operations[2]!.id, snapshot: { data: new Uint8Array([4, 5]), revision: 1, extension: 'docx' } })
+    worker.receive({ type: 'editor-event', event: { type: 'state', state: { ...editingState, revision: 2 } } })
+    await Promise.all([input, end])
+    expect(await save).toMatchObject({ revision: 1, data: new Uint8Array([4, 5]) })
+    expect(editor.state.revision).toBe(2)
+    expect(events).toHaveBeenCalledTimes(2)
+    unsubscribe()
+    worker.receive({ type: 'editor-event', event: { type: 'invalidate', part: 0, rectangle: null, revision: 2 } })
+    expect(events).toHaveBeenCalledTimes(2)
+    const disposal = editor.dispose()
+    expect(editor.dispose()).toBe(disposal)
+    await disposal
+    expect(worker.terminated).toBe(true)
+    await expect(editor.paste('late')).rejects.toMatchObject({ code: 'disposed' })
+  })
+
+  it('contains observer exceptions and reports terminal engine errors to every subscriber', async () => {
+    supportedEditor()
+    const editor = await openEditor({ ...options(), extension: 'docx' })
+    const worker = ControlledWorker.instances[0]!
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      editor.subscribe(() => { throw new Error('observer failed') })
+      const events = vi.fn()
+      editor.subscribe(events)
+      worker.receive({ type: 'editor-event', event: { type: 'invalidate', part: 0, rectangle: null, revision: 1 } })
+      expect(events).toHaveBeenCalledOnce()
+      expect(log).toHaveBeenCalledOnce()
+      const input = editor.paste('x')
+      const failure = expect(input).rejects.toMatchObject({ code: 'render-failed' })
+      worker.receive({ type: 'error', id: worker.messages.at(-1)!.id, fatal: true, code: 'render-failed', message: 'WASM trapped' })
+      await failure
+      expect(events).toHaveBeenLastCalledWith({ type: 'error', code: 'render-failed', message: 'WASM trapped' })
+      await editor.dispose()
+      expect(worker.terminated).toBe(true)
+    } finally { log.mockRestore(); await editor.dispose() }
+  })
+
+  it('rejects a preview-only opening response instead of exposing a partial editor', async () => {
+    supported()
+    await expect(openEditor({ ...options(), extension: 'docx' })).rejects.toMatchObject({ code: 'invalid-document' })
+    expect(ControlledWorker.instances[0]!.terminated).toBe(true)
+  })
+})
+
 async function dispatched(worker: ControlledWorker): Promise<Extract<OwnerMessage, { type: 'tile' }>> {
   await vi.waitFor(() => expect(worker.messages.at(-1)?.type).toBe('tile'))
   return worker.messages.at(-1) as Extract<OwnerMessage, { type: 'tile' }>

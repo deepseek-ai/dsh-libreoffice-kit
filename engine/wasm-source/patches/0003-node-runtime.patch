@@ -44,7 +44,7 @@
  
 --- a/desktop/util/Executable_soffice_bin-emscripten-exports
 +++ b/desktop/util/Executable_soffice_bin-emscripten-exports
-@@ -12,3 +12,16 @@
+@@ -12,3 +12,29 @@
  _lok_preinit_2
  _malloc
  _free
@@ -61,6 +61,19 @@
 +_dsh_lok_document_size
 +_dsh_lok_document_tile_mode
 +_dsh_lok_document_paint
++_dsh_lok_document_save
++_dsh_lok_document_listen
++_dsh_lok_document_key
++_dsh_lok_document_mouse
++_dsh_lok_document_composition
++_dsh_lok_document_command
++_dsh_lok_document_command_values
++_dsh_lok_document_paste
++_dsh_lok_document_selection
++_dsh_lok_document_part
++_dsh_lok_document_part_name
++_dsh_lok_document_viewport
++_dsh_lok_pump
 --- a/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 +++ b/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 @@ -27,7 +27,7 @@
