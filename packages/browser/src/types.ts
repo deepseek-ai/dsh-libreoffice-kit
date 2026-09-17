@@ -71,6 +71,7 @@ export interface BrowserDocumentOptions {
 
 /** One Worker-owned, read-only Office document. */
 export interface BrowserDocument {
+  /** Visible pages; Writer omits zero-area automatic section parity placeholders. */
   readonly pages: readonly BrowserPage[]
   /** Render a page region; cancellation discards that region without closing the document. */
   renderTile(request: BrowserTileRequest, signal?: AbortSignal): Promise<BrowserTile>

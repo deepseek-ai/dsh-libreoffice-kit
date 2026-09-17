@@ -13,6 +13,21 @@ describe('LibreOffice page geometry', () => {
     expect(() => writerPages('2147483647,2,10,4')).toThrow('invalid page rectangles')
     expect(() => writerPages('1,2147483647,10,4')).toThrow('invalid page rectangles')
   })
+  it('omits zero-area section parity frames while retaining content offsets and ordinary blank pages', () => {
+    const pages = writerPages('284,284,12240,15840; 12524,284,0,0; 284,16408,12240,15840')
+    expect(pages).toEqual([
+      { x: 284, y: 284, width: 816, height: 1056, part: -1 },
+      { x: 284, y: 16408, width: 816, height: 1056, part: -1 },
+    ])
+    expect(tileDimensions({ pageIndex: 1, x: 0, y: 0, width: 100, height: 100, scale: 1 }, pages).page.y).toBe(16408)
+    expect(writerPages('284,284,12240,15840;284,16408,12240,15840;284,32532,12240,15840')).toHaveLength(3)
+  })
+  it('rejects malformed zero-area frames and documents without a visible page', () => {
+    expect(() => writerPages('284,284,0,0')).toThrow('no document pages')
+    for (const rectangle of ['1,2,0,4', '1,2,4,0', '-1,2,0,0', '1,NaN,0,0', '2147483648,2,0,0']) {
+      expect(() => writerPages(`284,284,12240,15840;${rectangle}`)).toThrow('invalid page rectangles')
+    }
+  })
   it('bounds page coordinates and allocation before calling wasm32', () => {
     const pages = writerPages('0,0,12240,15840')
     const request = { pageIndex: 0, x: 32, y: 64, width: 100.2, height: 90.1, scale: 2 }

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { chromium, _electron } from 'playwright';
 import { documentFixture } from '../test/runtime-fixture.mjs';
+import { writerLayoutFixture } from '../test/browser-fixture.mjs';
 import { verifyBrowserPackage } from './build-browser.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
 import { root, readJson } from './platform-matrix.mjs';
@@ -63,7 +64,9 @@ const fixtures = {
   doc: await readFile(join(root, 'test/fixtures/one-page.doc')),
   ppt: await readFile(join(root, 'test/fixtures/one-slide.ppt')),
   pptx: await readFile(join(root, 'test/fixtures/one-slide.pptx')),
+  oddPage: writerLayoutFixture('oddPage'), evenPage: writerLayoutFixture('evenPage'), blankPage: writerLayoutFixture('blankPage'),
 };
+const expectedPageInk = { oddPage: [true, true], evenPage: [true, true, true], blankPage: [true, false, true] };
 let currentFormat;
 const server = createServer(async (request, response) => {
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
@@ -131,9 +134,9 @@ try {
   const workers = new Set();
   page.on('worker', worker => { workers.add(worker); worker.once('close', () => workers.delete(worker)); });
   await page.goto(origin);
-  for (const format of ['doc', 'docx', 'ppt', 'pptx', 'mixed']) {
+  for (const format of ['doc', 'docx', 'ppt', 'pptx', 'mixed', 'oddPage', 'evenPage', 'blankPage']) {
     currentFormat = format;
-    formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks }) => {
+    formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks, expectedInk }) => {
       if (!crossOriginIsolated) throw new Error('Browser is not cross-origin isolated');
       const { openDocument } = await import(`${origin}/browser/lib/index.js`);
       const manifest = await (await fetch(`${origin}/browser/assets.json`)).json();
@@ -142,7 +145,7 @@ try {
       const data = new Uint8Array(await (await fetch(`${origin}/fixture/${format}`)).arrayBuffer());
       const started = performance.now();
       let missingFonts = [];
-      const doc = await openDocument({ data, extension: format === 'mixed' ? 'docx' : format, assets,
+      const doc = await openDocument({ data, extension: ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
         timeoutMs: 120000, maxLoadedFontBytes: 256 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024, fontFallbacks,
         onMissingFonts: families => { missingFonts = [...families]; },
         resolveFonts: async (request, signal) => {
@@ -166,14 +169,29 @@ try {
         const rendered = performance.now();
         const canvas = document.getElementById('page'); canvas.width = tile.width; canvas.height = tile.height;
         canvas.getContext('2d').putImageData(new ImageData(tile.rgba, tile.width, tile.height), 0, 0);
-        let paintedPixels = 0;
-        for (let i = 0; i < tile.rgba.length; i += 4) if (tile.rgba[i] < 240 && tile.rgba[i + 1] < 240 && tile.rgba[i + 2] < 240 && tile.rgba[i + 3] > 0) paintedPixels++;
+        const countInk = pixels => {
+          let count = 0;
+          for (let i = 0; i < pixels.length; i += 4) if (pixels[i] < 240 && pixels[i + 1] < 240 && pixels[i + 2] < 240 && pixels[i + 3] > 0) count++;
+          return count;
+        };
+        const paintedPixels = countInk(tile.rgba);
         if (paintedPixels < 10) throw new Error('Rendered tile contains no visible content');
+        const pageInk = [];
+        if (expectedInk !== undefined) {
+          if (doc.pages.length !== expectedInk.length) throw new Error('Writer visible page count differs from the fixture');
+          for (let pageIndex = 0; pageIndex < doc.pages.length; pageIndex++) {
+            const page = doc.pages[pageIndex];
+            const pixels = pageIndex === 0 ? tile : await doc.renderTile({ pageIndex, x: 0, y: 0, width: page.width, height: page.height, scale: 1 });
+            pageInk.push(countInk(pixels.rgba) >= 10);
+            if (pageInk[pageIndex] !== expectedInk[pageIndex]) throw new Error('Writer page ink differs from the fixture');
+          }
+        }
         const rgbaSha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', tile.rgba))).map(b => b.toString(16).padStart(2, '0')).join('');
         return { pages: doc.pages.length, pageSizes: doc.pages, width: tile.width, height: tile.height, paintedPixels, rgbaSha256,
-          openMs: Math.round(opened - started), renderMs: Math.round(rendered - opened), cancelledTile: true, missingFonts };
+          openMs: Math.round(opened - started), renderMs: Math.round(rendered - opened), cancelledTile: true, missingFonts,
+          ...(expectedInk === undefined ? {} : { pageInk }) };
       } finally { await doc.dispose(); await doc.dispose(); }
-    }, { origin, format, fontFallbacks: source.fontFallbacks });
+    }, { origin, format, fontFallbacks: source.fontFallbacks, expectedInk: expectedPageInk[format] });
     if (format === 'doc' || format === 'ppt') assert(formats[format].missingFonts.length === 0, 'Binary documents must not report engine bootstrap families');
     if (format === 'docx' || format === 'mixed') assert(formats[format].missingFonts.every(family => family === 'Arial'), 'Font notice includes an engine-only fallback family');
     for (let attempts = 0; workers.size > 0 && attempts < 250; attempts++) await new Promise(resolve => setTimeout(resolve, 20));

@@ -5,13 +5,15 @@ import type { BrowserPage, BrowserTileRequest } from './types.ts'
 export const TWIPS_PER_CSS_PIXEL = 15
 export interface EnginePage extends BrowserPage { readonly x: number; readonly y: number; readonly part: number }
 
-/** Parse Writer's semicolon-separated x,y,width,height rectangles in twips. */
+/** Parse Writer's twip rectangles, omitting non-visible section parity placeholders. */
 export function writerPages(rectangles: string): EnginePage[] {
-  const pages = rectangles.split(';').filter(value => value.trim()).map((rectangle) => {
+  const pages = rectangles.split(';').filter(value => value.trim()).flatMap<EnginePage>((rectangle) => {
     const fields = rectangle.split(',').map(value => Number(value.trim()))
     const [x, y, width, height] = fields
-    if (fields.length !== 4 || x === undefined || y === undefined || width === undefined || height === undefined || fields.some(value => !Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) || width <= 0 || height <= 0 || x + width > 0x7fffffff || y + height > 0x7fffffff) throw new BrowserRenderError('invalid-document', 'LibreOffice returned invalid page rectangles.')
-    return { x, y, width: width / TWIPS_PER_CSS_PIXEL, height: height / TWIPS_PER_CSS_PIXEL, part: -1 }
+    if (fields.length !== 4 || x === undefined || y === undefined || width === undefined || height === undefined || fields.some(value => !Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) || (width === 0) !== (height === 0) || x + width > 0x7fffffff || y + height > 0x7fffffff) throw new BrowserRenderError('invalid-document', 'LibreOffice returned invalid page rectangles.')
+    // Writer's single-column tiled layout gives automatic odd/even section fillers no visible area.
+    if (width === 0 && height === 0) return []
+    return [{ x, y, width: width / TWIPS_PER_CSS_PIXEL, height: height / TWIPS_PER_CSS_PIXEL, part: -1 }]
   })
   if (pages.length === 0) throw new BrowserRenderError('invalid-document', 'LibreOffice returned no document pages.')
   return pages
