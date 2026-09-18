@@ -17,10 +17,11 @@ import { verifyFontSubset } from './build-font-subset.mjs';
 import { npm } from './pack-utils.mjs';
 import { root } from './platform-matrix.mjs';
 import { assert } from './verify-artifacts.mjs';
+import { qualifyReadonlyModel } from './verify-readonly-model.mjs';
 
 const { values } = parseArgs({ options: {
   candidate: { type: 'string' }, output: { type: 'string' }, executable: { type: 'string' },
-  format: { type: 'string' }, screenshots: { type: 'string' },
+  format: { type: 'string' }, screenshots: { type: 'string' }, 'model-font': { type: 'string' },
 } });
 assert(values.candidate, 'Usage: smoke-browser-preview.mjs --candidate <packed-browser-directory> [--executable <chromium>]');
 const candidateDirectory = resolve(values.candidate);
@@ -30,6 +31,7 @@ const temporary = await mkdtemp(join(tmpdir(), 'office-preview-install-'));
 const consumer = join(temporary, 'consumer');
 const formats = values.format ? [values.format] : ['docx', 'xlsx', 'pptx'];
 assert(formats.every(format => ['docx', 'xlsx', 'pptx'].includes(format)), 'Unknown preview fixture');
+assert(formats.length !== 3 || values['model-font'], 'Full preview qualification requires --model-font <local-font.ttf>');
 const fixtures = Object.fromEntries(formats.map(format => [format, previewFixture(format)]));
 let browser;
 let source;
@@ -325,6 +327,8 @@ try {
     crossOriginIsolated: true, workerDisposal: true, publicMutationApiAbsent: true, fontSubsets, fontDemand, formats: results,
     memory: { platform: process.platform, architecture: process.arch,
       method: 'Sum of resident bytes for this Chromium instance from ps; includes browser overhead and double-counts shared pages; sequential fixtures share caches', samples: memory } };
+  if (formats.length === 3) receipt.nativeReadonlyModel = qualifyReadonlyModel({ kitDirectory: directory,
+    wasmDirectory: engineDirectory, fontPath: resolve(values['model-font']) });
   if (formats.length === 3) verifyPreviewRuntime(receipt, { sourceCommit: candidate.sourceCommit,
     kitSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256, allowDirty: true });
   await processInfo.detach();

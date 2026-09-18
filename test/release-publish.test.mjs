@@ -397,6 +397,13 @@ test('browser qualification requires matching archives and all rendering, isolat
     save('verification.json', evidence);
     assert.throws(() => validatePublication(directory, env), /Missing browser rendering/);
   }
+  for (const mutate of [r => delete r.nativeReadonlyModel, r => r.nativeReadonlyModel.cases.pop(),
+    r => r.nativeReadonlyModel.cases[0].modelUnchanged = false]) {
+    evidence.browser = structuredClone(receipt);
+    mutate(evidence.browser);
+    save('verification.json', evidence);
+    assert.throws(() => validatePublication(directory, env));
+  }
   delete evidence.browser;
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /Browser verification/);

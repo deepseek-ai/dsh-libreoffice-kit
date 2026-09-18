@@ -1,4 +1,5 @@
 /** Bind successful browser rendering and font-subset qualification to the exact distributed archives. */
+import { verifyReadonlyModel } from './verify-readonly-model.mjs';
 import { assert } from './verify-artifacts.mjs';
 
 /** Require all supported formats, isolation, font subsets and joined Worker disposal. */
@@ -20,5 +21,6 @@ export function verifyBrowserReceipt(receipt, { browserSha256, adapterSha256, fo
     assert(Number.isSafeInteger(result?.pages) && result.pages > 0 && Number.isSafeInteger(result?.paintedPixels) && result.paintedPixels > 0,
       `Missing browser rendering evidence: ${format}`);
   }
+  verifyReadonlyModel(receipt.nativeReadonlyModel);
   return receipt;
 }

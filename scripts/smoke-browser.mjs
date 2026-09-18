@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Qualify packed original-byte Office rendering in a sandboxed, isolated Chromium. */
 import { existsSync } from 'node:fs';
+import { qualifyReadonlyModel } from './verify-readonly-model.mjs';
 import { verifyBrowserPreview } from './verify-browser-preview.mjs';
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -24,10 +25,11 @@ import { run, npm } from './pack-utils.mjs';
 
 const { values } = parseArgs({ options: {
   candidate: { type: 'string' }, output: { type: 'string' },
-  executable: { type: 'string' }, electron: { type: 'string' }, screenshots: { type: 'string' },
+  'model-font': { type: 'string' }, executable: { type: 'string' }, electron: { type: 'string' }, screenshots: { type: 'string' },
 } });
 const output = resolve(values.output ?? join(root, '.release/evidence/browser.json'));
 assert(values.candidate, 'Usage: smoke-browser.mjs --candidate <general-release-directory> [--output <receipt.json>]');
+assert(values['model-font'], 'Browser qualification requires --model-font <local-font.ttf>');
 const candidateDirectory = resolve(values.candidate);
 const preview = existsSync(join(candidateDirectory, 'browser-preview.json'));
 const candidate = preview ? verifyBrowserPreview(candidateDirectory) : readJson(join(candidateDirectory, 'release.json'));
@@ -256,7 +258,9 @@ try {
     installedOutsideRepository: true, network: 'offline',
     sourceCommit: preview ? candidate.sourceCommit : run('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(), sourceDirty: preview ? candidate.sourceDirty : run('git', ['status', '--porcelain', '--', '.', ':(exclude)packages/*/prebuilds.json'], { cwd: root }).trim().length > 0, isolated: true, fontSubsets: true, disposed: true,
     engine: 'libreofficekit-tiles', runtime: values.electron ? 'electron' : 'chromium', crossOriginIsolated: true, hostOriginalBytes: true, workerDisposal: true,
-    formats, fontRequests: requests.length, mixedScriptRequests: laterScriptRequests.length };
+    formats, fontRequests: requests.length, mixedScriptRequests: laterScriptRequests.length,
+    nativeReadonlyModel: qualifyReadonlyModel({ kitDirectory: directory,
+      wasmDirectory: join(temporary, 'consumer/node_modules/@deepseek-ai/libreoffice-kit-wasm'), fontPath: resolve(values['model-font']) }) };
   await mkdir(dirname(output), { recursive: true }); await writeFile(output, `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(`Browser qualification: ${output}`);
 } catch (error) {

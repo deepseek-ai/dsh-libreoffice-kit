@@ -1,5 +1,6 @@
 /** Authenticate the installed reading runtime's evidence against the final two archives. */
 import { assert } from './verify-artifacts.mjs';
+import { verifyReadonlyModel } from './verify-readonly-model.mjs';
 
 export const previewMutationProbes = ['key-input', 'ime-input', 'paste', 'command', 'save', 'legacy-edit', 'legacy-capture', 'invalid-navigation'];
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -41,5 +42,6 @@ export function verifyPreviewRuntime(receipt, { sourceCommit, kitSha256, wasmSha
   assert(receipt.formats.xlsx.worksheets?.selected === true && receipt.formats.xlsx.worksheets.formulaPreserved === true
     && receipt.formats.xlsx.worksheets.stalePartRejected === true && receipt.formats.xlsx.worksheets.selectionPreservedAfterStalePart === true,
     'Missing worksheet navigation evidence');
+  verifyReadonlyModel(receipt.nativeReadonlyModel);
   return receipt;
 }

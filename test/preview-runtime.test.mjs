@@ -14,6 +14,10 @@ test('old editing receipts and incomplete reading/runtime evidence cannot qualif
   for (const mutate of [
     r => r.kind = 'browser-editor', r => r.schemaVersion = 2, r => r.sourceCommit = '4'.repeat(40),
     r => r.archiveSha256 = '4'.repeat(64), r => r.wasmSha256 = '4'.repeat(64), r => r.passed = false,
+    r => delete r.nativeReadonlyModel, r => r.nativeReadonlyModel.cases.pop(),
+    r => r.nativeReadonlyModel.cases[0].modelUnchanged = false,
+    r => r.nativeReadonlyModel.cases[0].undoUnchanged = false,
+    r => r.nativeReadonlyModel.cases[0].changedPixels = 1,
     r => r.publicMutationApiAbsent = false, r => r.externalNetworkRequests = 1, r => r.fontDemand = false,
     r => r.formats.docx.sourceAfterSha256 = '0'.repeat(64), r => r.formats.pptx.modelUnchanged = false,
     r => r.formats.docx.afterRgbaSha256 = '0'.repeat(64), r => delete r.formats.pptx.afterRgbaSha256,

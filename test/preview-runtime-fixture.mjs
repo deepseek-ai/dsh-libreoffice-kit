@@ -1,10 +1,12 @@
 /** Synthetic receipts exist only in unit tests; runtime evidence comes from real installed browsers. */
+import { readonlyReceiptFixture } from './readonly-receipt-fixture.mjs';
 import { previewMutationProbes } from '../scripts/verify-preview-runtime.mjs';
 export function previewRuntimeFixture(archiveSha256, wasmSha256, sourceCommit) {
   return { schemaVersion: 1, kind: 'preview-runtime', sourceCommit, sourceDirty: false,
     archiveSha256, wasmSha256, passed: true, installedOutsideRepository: true, npmOffline: true,
     externalNetworkRequests: 0, crossOriginIsolated: true, workerDisposal: true,
     publicMutationApiAbsent: true, fontSubsets: true, fontDemand: true,
+    nativeReadonlyModel: readonlyReceiptFixture(),
     formats: Object.fromEntries(['docx', 'xlsx', 'pptx'].map(format => [format, {
       opened: true, disposed: true, bytes: 100, paintedPixels: 10, rgbaSha256: '3'.repeat(64), afterRgbaSha256: '3'.repeat(64),
       sourceSha256: '4'.repeat(64), sourceAfterSha256: '4'.repeat(64), modelUnchanged: true,

@@ -1,5 +1,6 @@
 /** Independent preview distribution rejects missing bytes and native dependency coupling. */
 import assert from 'node:assert/strict';
+import { browserReceiptFixture } from './release-browser-fixture.mjs';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -36,9 +37,7 @@ function candidateFixture(t) {
   const candidate = { schemaVersion: 1, kind: 'browser-preview', sourceCommit: '1'.repeat(40), sourceDirty: true, packages, dependencies: [] };
   const save = () => writeFileSync(join(directory, 'browser-preview.json'), JSON.stringify(candidate));
   save();
-  const receipt = { sourceCommit: candidate.sourceCommit, sourceDirty: true, archiveSha256: packages.kit.sha256, wasmSha256: packages.wasm.sha256,
-    passed: true, isolated: true, fontSubsets: true, disposed: true,
-    formats: Object.fromEntries(['doc', 'docx', 'ppt', 'pptx'].map(format => [format, { pages: 1, paintedPixels: 10 }])) };
+  const receipt = { ...browserReceiptFixture(packages.kit.sha256, packages.wasm.sha256, candidate.sourceCommit), sourceDirty: true };
   return { directory, candidate, receipt, save };
 }
 
