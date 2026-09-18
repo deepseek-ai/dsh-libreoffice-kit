@@ -23,7 +23,8 @@
     "release:publish": "node scripts/release-publish.mjs",
     "test:adapter": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -b packages/entry"
+    "typecheck": "tsc -b packages/entry",
+    "build:font-subset": "node scripts/build-font-subset.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
@@ -33,6 +34,7 @@
     "vitest": "^4.1.8",
     "tsx": "^4.22.4",
     "js-yaml": "^4.2.0",
-    "@types/js-yaml": "^4.0.9"
+    "@types/js-yaml": "^4.0.9",
+    "harfbuzzjs": "1.6.1"
   }
 }

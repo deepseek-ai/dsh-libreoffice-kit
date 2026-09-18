@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { createFontLoader, memoryFontConfig, preloadFonts } from './font-loader.ts'
+import { preloadPdfFonts } from './font-full.ts'
 import { profileXml } from './profile.ts'
 import { ConversionError } from './errors.ts'
 import type { FontFace, FontMatchRequest } from './fonts.ts'
@@ -49,7 +50,8 @@ interface EmscriptenFileSystem {
 }
 
 /** The Emscripten module surface the conversion drives. */
-interface EmscriptenModule {
+export interface EmscriptenModule {
+  readonly HEAPU32: Uint32Array
   readonly FS: EmscriptenFileSystem
   readonly ENV: Record<string, string>
   /**
@@ -73,6 +75,7 @@ interface EmscriptenModule {
 
 /** Module overrides the conversion supplies; Emscripten extends the module's own surface. */
 interface EmscriptenModuleOverrides {
+  dshOnCallback(type: number, payload: string): void
   readonly noInitialRun: boolean
   readonly mainScriptUrlOrBlob: string
   /**
@@ -115,7 +118,7 @@ export interface WasmConversionResult {
 
 type EmscriptenFactory = (overrides: EmscriptenModuleOverrides) => Promise<EmscriptenModule>
 
-function engineError(module: EmscriptenModule, office: number): Error {
+export function engineError(module: EmscriptenModule, office: number): Error {
   const pointer = module.ccall('dsh_lok_error', 'number', ['number'], [office])
   if (!pointer) return new Error('LibreOffice WASM could not convert the document.')
   try { return new Error(module.UTF8ToString(pointer)) } finally { module.ccall('free', null, ['number'], [pointer]) }
@@ -136,8 +139,21 @@ function requiredFontLoader(loader: FontLoader | undefined): FontLoader {
  * @param request - Engine installation, source bytes, limits, and font metadata.
  * @returns the generated PDF bytes and the declared families the catalog could not provide.
  */
-export async function convertWithWasm(request: WasmConversionRequest): Promise<WasmConversionResult> {
-  const { engine, bytes, extension, operation, options, document: metadata, faces } = request
+export interface WasmSession {
+  readonly module: EmscriptenModule
+  readonly office: number
+  readonly document: number
+  readonly pdf: boolean
+  readonly missingFonts: string[]
+  idle(): Promise<void>
+}
+
+/** A single module loader and owned session lifecycle for export and direct raster operations. */
+export async function withWasmSession<T>(request: Omit<WasmConversionRequest, 'operation'>,
+  use: (session: WasmSession) => Promise<T> | T): Promise<T> {
+  const { engine, bytes, extension, options, document: metadata, faces } = request
+  const pdf = extension === 'pdf'
+  let idleReady = false
   const factory = require(engine.loader) as EmscriptenFactory
   const raw = readFileSync(engine.data)
   const data = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)
@@ -149,6 +165,13 @@ export async function convertWithWasm(request: WasmConversionRequest): Promise<W
   let failure: unknown
   try {
     module = await factory({
+      dshOnCallback(type, payload) {
+        if (type !== 16) return
+        try {
+          const result = JSON.parse(payload) as { commandName?: string; idleID?: string }
+          if (result.commandName === '.uno:ReportWhenIdle' && result.idleID === 'node-raster') idleReady = true
+        } catch { /* Non-JSON callbacks are irrelevant to the idle barrier. */ }
+      },
       noInitialRun: true,
       mainScriptUrlOrBlob: engine.loader,
       locateFile(name) {
@@ -171,34 +194,50 @@ export async function convertWithWasm(request: WasmConversionRequest): Promise<W
           loadedModule.FS.writeFile(path, bytes)
           return path
         }, faces)
-        preloadFonts(fontLoader, options, metadata)
+        if (pdf) {
+          loadedModule.FS.mkdirTree('/usr/share/fonts/dsh-pdfium')
+          preloadPdfFonts(options, faces, (name, bytes) => loadedModule.FS.writeFile(`/usr/share/fonts/dsh-pdfium/${name}`, bytes))
+        } else preloadFonts(fontLoader, options, metadata)
       }],
       onAbort() { fatal = true },
       print() {}, printErr() {},
     })
     const instance = module
     const input = `/dsh/document.${extension}`
-    const output = `/dsh/output.${operation.format}`
-    instance.FS.writeFile(input, bytes)
-    office = instance.ccall('dsh_lok_initialize', 'number', ['string', 'string'], [engine.programDirectory, 'file:///dsh/profile'])
-    if (!office) throw engineError(instance, 0)
-    document = instance.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, 'Batch=true,EnableMacrosExecution=false'])
-    if (!document) throw engineError(instance, office)
-    const filterOptions = operation.format === 'pdf' ? JSON.stringify({
-      ExportBookmarks: { type: 'boolean', value: 'true' }, ReduceImageResolution: { type: 'boolean', value: 'true' },
-      MaxImageResolution: { type: 'long', value: String(options.maxImageResolution) },
-    }) : operation.format === 'txt' ? 'UTF8,LF' : ''
-    const succeeded = instance.ccall('dsh_lok_document_export', 'number',
-      ['number', 'number', 'string', 'string', 'string', 'number', 'string'],
-      [office, document, `file://${output}`, operation.format, filterOptions, Number(operation.recalculate), operation.sheet ?? ''])
-    if (!succeeded) throw engineError(instance, office)
-    if (!instance.FS.analyzePath(output).exists) throw new ConversionError('invalid-output', 'LibreOffice did not create its output.')
-    const status = instance.FS.stat(output)
-    if (!instance.FS.isFile(status.mode)) throw new ConversionError('invalid-output', 'Generated output is not a regular file.')
-    if (status.size > options.maxOutputBytes) throw new ConversionError('output-too-large', 'Generated output exceeds its output byte limit.')
-    const result = instance.FS.readFile(output)
-    validateOutput(result, operation.format)
-    return { output: result, missingFonts: requiredFontLoader(fontLoader).missingFonts }
+    if (!pdf) instance.FS.writeFile(input, bytes)
+    if (pdf) {
+      const pointer = instance.ccall('malloc', 'number', ['number'], [bytes.length])
+      if (!pointer) throw engineError(instance, 0)
+      try {
+        new Uint8Array(instance.HEAPU32.buffer).set(bytes, pointer)
+        document = instance.ccall('dsh_pdf_open', 'number', ['number', 'number', 'string'], [pointer, bytes.length, ''])
+      } finally { instance.ccall('free', null, ['number'], [pointer]) }
+      if (!document) throw engineError(instance, 0)
+    } else {
+      office = instance.ccall('dsh_lok_initialize', 'number', ['string', 'string'], [engine.programDirectory, 'file:///dsh/profile'])
+      if (!office) throw engineError(instance, 0)
+      document = instance.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, 'Batch=true,EnableMacrosExecution=false'])
+      if (!document) throw engineError(instance, office)
+    }
+    return await use({ module: instance, office, document, pdf,
+      get missingFonts() { return requiredFontLoader(fontLoader).missingFonts },
+      async idle() {
+        if (pdf) return
+        idleReady = false
+        if (!instance.ccall('dsh_lok_document_command', 'number', ['number', 'string', 'string'],
+          [document, '.uno:ReportWhenIdle', '{"idleID":{"type":"string","value":"node-raster"}}'])) throw engineError(instance, office)
+        const deadline = performance.now() + options.timeoutMs
+        while (!idleReady) {
+          for (let i = 0; i < 8 && !idleReady; i++) {
+            const pending = instance.ccall('dsh_lok_pump', 'number', [], [])
+            if (pending < 0) throw engineError(instance, office)
+            if (!pending) break
+          }
+          if (performance.now() > deadline) throw new ConversionError('timeout', 'LibreOffice did not reach its raster idle barrier.')
+          if (!idleReady) await new Promise(resolve => setTimeout(resolve, 0))
+        }
+      },
+    })
   } catch (error) {
     fatal ||= error instanceof WebAssembly.RuntimeError
     failure = error
@@ -206,10 +245,34 @@ export async function convertWithWasm(request: WasmConversionRequest): Promise<W
   } finally {
     const errors: unknown[] = []
     if (module && !fatal) {
-      if (document) try { if (!module.ccall('dsh_lok_document_destroy', 'number', ['number'], [document])) throw engineError(module, office) } catch (error) { errors.push(error); fatal ||= error instanceof WebAssembly.RuntimeError }
+      if (document) try { if (!module.ccall(pdf ? 'dsh_pdf_destroy' : 'dsh_lok_document_destroy', 'number', ['number'], [document])) throw engineError(module, office) } catch (error) { errors.push(error); fatal ||= error instanceof WebAssembly.RuntimeError }
       if (office && !fatal) try { if (!module.ccall('dsh_lok_destroy', 'number', ['number'], [office])) throw engineError(module, 0) } catch (error) { errors.push(error) }
     }
     if (module) try { module.PThread.terminateAllThreads() } catch (error) { errors.push(error) }
     if (errors.length) throw new AggregateError(failure ? [failure, ...errors] : errors, 'LibreOffice WASM cleanup failed.')
   }
+}
+
+/** Convert bounded source bytes; return owned bytes only after engine teardown. */
+export async function convertWithWasm(request: WasmConversionRequest): Promise<WasmConversionResult> {
+  return withWasmSession(request, (session) => {
+    const { module, office, document } = session
+    const { operation, options } = request
+    const output = `/dsh/output.${operation.format}`
+    const filterOptions = operation.format === 'pdf' ? JSON.stringify({
+      ExportBookmarks: { type: 'boolean', value: 'true' }, ReduceImageResolution: { type: 'boolean', value: 'true' },
+      MaxImageResolution: { type: 'long', value: String(options.maxImageResolution) },
+    }) : operation.format === 'txt' ? 'UTF8,LF' : ''
+    const succeeded = module.ccall('dsh_lok_document_export', 'number',
+      ['number', 'number', 'string', 'string', 'string', 'number', 'string'],
+      [office, document, `file://${output}`, operation.format, filterOptions, Number(operation.recalculate), operation.sheet ?? ''])
+    if (!succeeded) throw engineError(module, office)
+    if (!module.FS.analyzePath(output).exists) throw new ConversionError('invalid-output', 'LibreOffice did not create its output.')
+    const status = module.FS.stat(output)
+    if (!module.FS.isFile(status.mode)) throw new ConversionError('invalid-output', 'Generated output is not a regular file.')
+    if (status.size > options.maxOutputBytes) throw new ConversionError('output-too-large', 'Generated output exceeds its output byte limit.')
+    const result = module.FS.readFile(output)
+    validateOutput(result, operation.format)
+    return { output: result, missingFonts: session.missingFonts }
+  })
 }

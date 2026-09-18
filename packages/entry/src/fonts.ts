@@ -1,4 +1,8 @@
 /** Host font metadata snapshots and conversion-local glyph matching over original files. */
+import { fontFamilyPriority, normalize } from './font-config.ts'
+import type { FontMatchRequest } from './font-request.ts'
+export type { FontMatchRequest } from './font-request.ts'
+export { fontFamilyPriority, normalize } from './font-config.ts'
 import { closeSync, constants, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import type { Stats } from 'node:fs'
 import { homedir } from 'node:os'
@@ -36,18 +40,6 @@ export interface FontFace {
   coverage?: GlyphRange[]
 }
 
-/** VCL attributes LibreOffice requests one family for. */
-export interface FontMatchRequest {
-  readonly family: string
-  readonly style: string
-  readonly weight: number
-  readonly italic: number
-  readonly width: number
-  readonly pitch: number
-  readonly language: string
-  readonly codePoints: readonly number[]
-}
-
 /** Selected physical files and the requested family the catalog could not find. */
 export interface FontMatchResult {
   readonly fonts: FontFace[]
@@ -58,6 +50,8 @@ export interface FontMatchResult {
 export interface SystemFontCatalogOptions {
   readonly faces: readonly FontFace[]
   readonly fallbackFamilies: readonly (readonly string[])[]
+  /** Whole-file consumers deduplicate collections; subset consumers retain each selected face. */
+  readonly deduplicateBy?: 'file' | 'face'
 }
 
 /** Host font roots and physical file limits. */
@@ -75,42 +69,6 @@ export function absent(error: unknown): boolean {
   return error instanceof Error && 'code' in error && ['ENOENT', 'EACCES', 'EPERM', 'ENOTDIR'].includes(String(error.code))
 }
 
-/**
- * Case- and separator-insensitive family key used to compare names across sources.
- * @param value - Family, style, or postscript name as recorded by a document or font.
- * @returns The normalized key.
- */
-export function normalize(value: string): string {
-  return value.normalize('NFKC').toLowerCase().replaceAll(/[\s_-]/g, '')
-}
-/**
- * Order named substitutions and their generic text family without excluding unlisted fonts.
- * @param requested - Original family names, in document order.
- * @param groups - Ordered family groups shared with Fontconfig aliases.
- * @param pitch - VCL pitch; one requests a monospaced fallback.
- * @param symbols - Whether symbol alternatives precede the generic fallback.
- * @returns distinct family names, with original requests first.
- */
-export function fontFamilyPriority(requested: readonly string[], groups: readonly (readonly string[])[],
-  pitch = 0, symbols = false): string[] {
-  const original = requested.map(normalize)
-  const matched = groups.filter(group => group.some(family => original.includes(normalize(family))))
-  const generic = original.includes('monospace') || pitch === 1 ? 'monospace'
-    : original.includes('serif') ? 'serif'
-      : matched.flat().map(normalize).find(family => family === 'serif' || family === 'sansserif' || family === 'monospace') ?? 'sansserif'
-  const families = [...requested, ...matched.flat()]
-  for (const kind of symbols ? ['symbol', generic] : [generic]) {
-    for (const group of groups) {
-      if (group.some(family => normalize(family) === kind)) families.push(...group)
-    }
-  }
-  const priority = new Map<string, string>()
-  for (const family of families) {
-    const name = normalize(family)
-    if (!priority.has(name)) priority.set(name, family)
-  }
-  return [...priority.values()]
-}
 /**
  * Discover system and per-user font roots using the selected platform's path separators.
  * @param platform - Host operating system.
@@ -331,10 +289,29 @@ function regionalPriority(face: FontFace, language: string): number {
 /**
  * Snapshot eligible local font metadata without retaining font bytes or decoding glyph coverage.
  * @param options - Host font roots and physical file limits.
- * @returns metadata reused for the converter lifetime; recreate it after changing installed fonts.
+ * @param previous - Optional prior snapshot whose unchanged physical files can reuse parsed metadata.
+ * @returns current metadata; changed and newly installed files are decoded again.
  */
-export function indexSystemFonts(options: FontIndexOptions): FontFace[] {
-  return fontPaths(options.directories, options.maxFiles).flatMap(path => inspect(path, options.maxFileBytes))
+export function indexSystemFonts(options: FontIndexOptions, previous: readonly FontFace[] = []): FontFace[] {
+  const reusable = new Map<string, FontFace[]>()
+  for (const face of previous) {
+    const group = reusable.get(face.path)
+    if (group) group.push(face)
+    else reusable.set(face.path, [face])
+  }
+  return fontPaths(options.directories, options.maxFiles).flatMap((path) => {
+    const prior = reusable.get(path)
+    if (prior !== undefined) {
+      let current: Stats
+      try { current = statSync(path) } catch (error) {
+        // A file may disappear or become protected between enumeration and refresh.
+        if (absent(error)) return []
+        throw error
+      }
+      if (current.isFile() && current.size <= options.maxFileBytes && STAT_KEYS.every(key => current[key] === prior[0]![key])) return prior
+    }
+    return inspect(path, options.maxFileBytes)
+  })
 }
 /** Conversion-local glyph coverage over the converter's first metadata snapshot. */
 export class SystemFontCatalog {
@@ -354,7 +331,7 @@ export class SystemFontCatalog {
      * generic families, then other glyph-covering faces.
      * @param request - VCL family/style attributes and Unicode scalars missing from its current font.
      * @param signal - cancellation checked between synchronous font reads.
-     * @returns selected physical files, deduplicated across collection faces; absent glyphs remain unresolved.
+     * @returns selected files or physical faces according to deduplicateBy; absent glyphs remain unresolved.
      * @throws if an indexed font changes or cannot be read during glyph matching.
      */
   match(request: FontMatchRequest, signal: AbortSignal): FontMatchResult {
@@ -387,9 +364,10 @@ export class SystemFontCatalog {
       const covered = covers(face, [...missing])
       if (missing.size > 0 && covered.length === 0)
         continue
-      if (!files.has(face.path)) {
+      const identity = this.options.deduplicateBy === 'face' ? `${face.path}#${face.faceIndex}` : face.path
+      if (!files.has(identity)) {
         selected.push(face)
-        files.add(face.path)
+        files.add(identity)
       }
       for (const point of covered)
         missing.delete(point)

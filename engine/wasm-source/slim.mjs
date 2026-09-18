@@ -1,13 +1,15 @@
 /** Deterministic removal of desktop resources from the Node WASM filesystem image. */
 
-import { assertRequiredUiResources, unusedUiResource } from '../ui-resource-policy.mjs';
+import { assertRequiredUiResources } from '../ui-resource-policy.mjs';
 
 const ui = '/instdir/share/config/soffice.cfg/';
 
 function desktopResource(filename) {
   if (filename.startsWith(ui)) {
     const relative = filename.slice(ui.length);
-    return unusedUiResource(relative) || relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
+    // The shared WASM engine runs persistent editors: VCL idle work and editing
+    // commands instantiate layouts beyond the native conversion allowlist.
+    return relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
   }
   return /^\/instdir\/share\/config\/images(?:_[a-z0-9_]+)?\.zip$/.test(filename)
     || /^\/(?:core\/)?android\/default-document\//.test(filename)

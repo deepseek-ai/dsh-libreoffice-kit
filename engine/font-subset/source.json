@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "harfbuzzjs-1.6.1-hb-36cb489-growth-v1",
+  "harfbuzzjs": {
+    "repository": "https://github.com/harfbuzz/harfbuzzjs.git",
+    "commit": "8aa047b90387790b255b118cf45ad11691a38910"
+  },
+  "harfbuzz": {
+    "repository": "https://github.com/harfbuzz/harfbuzz.git",
+    "commit": "36cb489cb02ce4b92099669ba9f9bea348eff93f"
+  },
+  "emsdk": {
+    "commit": "5eb0bde7585670252e8ba05e9d361627bffd08b5",
+    "version": "4.0.10"
+  }
+}
