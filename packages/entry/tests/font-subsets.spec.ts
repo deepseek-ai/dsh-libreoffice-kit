@@ -214,3 +214,11 @@ it('regional matches of identical installed files preserve the latest valid cont
   await service.resolve({ ...request('Roboto', 'A'), language: 'ja' })
   expect((await service.read(japanese.id)).byteLength).toBe(japanese.bytes)
 })
+
+it('rejects an unknown asset mode before indexing any font files', async () => {
+  const fonts = await import('../src/fonts.ts')
+  const index = vi.spyOn(fonts, 'indexSystemFonts')
+  const service = source(scratch('LatinGreek.ttf'))
+  await expect(service.resolve({ ...request('Roboto', 'A'), mode: 'stream' as never })).rejects.toThrow('Unknown font asset mode.')
+  expect(index).not.toHaveBeenCalled()
+})
