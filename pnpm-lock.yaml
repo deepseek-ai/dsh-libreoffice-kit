@@ -56,6 +56,9 @@ importers:
       '@unicode/unicode-17.0.0':
         specifier: 2.0.7
         version: 2.0.7
+      '@deepseek-ai/libreoffice-kit-wasm':
+        specifier: workspace:*
+        version: link:../wasm
       fflate:
         specifier: 0.8.2
         version: 0.8.2
@@ -65,10 +68,6 @@ importers:
       saxes:
         specifier: 6.0.0
         version: 6.0.0
-    optionalDependencies:
-      '@deepseek-ai/libreoffice-kit-wasm':
-        specifier: workspace:*
-        version: link:../wasm
 
   packages/fonts:
     dependencies:
