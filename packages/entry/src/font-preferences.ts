@@ -93,7 +93,7 @@ export function fontPreferences(request: FontMatchRequest, groups: readonly (rea
     : region === 'jp' ? 'hiragana' : region === 'kr' ? 'hangul' : 'han'
     : script === 'Old_Turkic' ? 'orkhon' : script.toLowerCase()
   const legacy = fontFamilyPriority(requested, groups, request.pitch, script === 'Common' && request.codePoints.some(point => /\p{Symbol}/u.test(String.fromCodePoint(point))))
-  const config = FONTCONFIG_FONTS[generic === 'sansserif' ? 'sans-serif' : generic] ?? []
+  const config = FONTCONFIG_FONTS[generic === 'sansserif' ? 'sans-serif' : generic]!
   const windows = WINDOWS_FONTS[scriptKey] ?? []
   // Chromium's CJK arrays are sans faces. Serif/mono use Fontconfig's separate categories first.
   const candidates = script === 'Latin' || script === 'Greek' || script === 'Cyrillic' || script === 'Common'

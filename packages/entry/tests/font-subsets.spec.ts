@@ -217,17 +217,22 @@ it.each([1, 128 * 1024 * 1024])('refresh retires obsolete selections with a %i-b
   await expect(service.read(old.id)).rejects.toThrow(/not selected/)
 })
 
-it('regional matches of identical installed files preserve the latest valid content selection', async () => {
-  const root = scratch()
-  copyFileSync(join(fixtures, 'LatinGreek.ttf'), join(root, 'copy_sc.ttf'))
-  copyFileSync(join(fixtures, 'LatinGreek.ttf'), join(root, 'copy_jp.ttf'))
+it('removing an older TTC copy preserves the latest path and face selected for its shared content', async () => {
+  const root = scratch('Faces.ttc')
   const service = source(root)
-  const chinese = (await service.resolve({ ...request('Roboto', 'A'), language: 'zh' })).fonts[0]!
-  const japanese = (await service.resolve({ ...request('Roboto', 'A'), language: 'ja' })).fonts[0]!
-  expect(japanese.id).toBe(chinese.id)
-  rmSync(join(root, 'copy_sc.ttf'))
-  await service.resolve({ ...request('Roboto', 'A'), language: 'ja' })
-  expect((await service.read(japanese.id)).byteLength).toBe(japanese.bytes)
+  const first = (await service.resolve({ ...request('Roboto', 'A'), mode: 'full' })).fonts[0]!
+  const copy = join(root, '0-copy.ttc')
+  copyFileSync(join(root, 'Faces.ttc'), copy)
+  const second = (await service.resolve({ ...request('Noto Sans Devanagari', 'न'), mode: 'full' })).fonts[0]!
+  expect(second.id).toBe(first.id)
+  expect(second.family).toBe('Noto Sans Devanagari')
+  rmSync(join(root, 'Faces.ttc'))
+  // Refresh without selecting the shared asset again, so a stale-path removal cannot hide a lost current selection.
+  expect((await service.resolve({ ...request('Missing Family', '\u{10ffff}'), mode: 'full' })).fonts).toEqual([])
+  expect(Buffer.from(await service.read(second.id))).toEqual(readFileSync(copy))
+  rmSync(copy)
+  await service.resolve({ ...request('Missing Family', '\u{10ffff}'), mode: 'full' })
+  await expect(service.read(second.id)).rejects.toThrow(/not selected/)
 })
 
 it('rejects an unknown asset mode before indexing any font files', async () => {

@@ -233,6 +233,48 @@ it('regional priority prefers the requested writing system and stays neutral oth
   expect(select('en-US')).toBe('Noto Sans JP')
 })
 
+it.each(['darwin', 'linux', 'win32'])('Han text follows accompanying Korean or Bopomofo on %s', (platform) => {
+  for (const [text, expected] of [['漢안', 'Noto Sans KR'], ['漢ㄅ', 'Noto Sans TC']] as const) {
+    const faces = ['Noto Sans SC', 'Noto Sans JP', 'Noto Sans TC', 'Noto Sans KR'].map(family => fontFace(family, text))
+    const result = new SystemFontCatalog({ faces, fallbackFamilies: [], platform })
+      .match(fontMatchRequest({ family: 'Carlito', language: 'en-US', codePoints: Array.from(text, character => character.codePointAt(0)!) }), new AbortController().signal)
+    expect(result.fonts.map(face => face.family), text).toEqual([expected])
+  }
+})
+
+it.each(['darwin', 'linux', 'win32'])('standalone kana and Bopomofo prefer their regional faces on %s', (platform) => {
+  for (const [text, expected] of [['あ', 'Noto Sans JP'], ['ア', 'Noto Sans JP'], ['ㄅ', 'Noto Sans TC']] as const) {
+    const faces = ['Noto Sans SC', 'Noto Sans JP', 'Noto Sans TC'].map(family => fontFace(family, text))
+    const result = new SystemFontCatalog({ faces, fallbackFamilies: [], platform })
+      .match(fontMatchRequest({ family: 'Carlito', language: 'en-US', codePoints: [text.codePointAt(0)!] }), new AbortController().signal)
+    expect(result.fonts.map(face => face.family), text).toEqual([expected])
+  }
+})
+
+it.each(['darwin', 'linux', 'win32'])('Hong Kong Han accepts Traditional Chinese before unknown and wrong regions on %s', (platform) => {
+  const choose = (families: string[]) => new SystemFontCatalog({ faces: families.map(family => fontFace(family, '漢')), fallbackFamilies: [], platform })
+    .match(fontMatchRequest({ family: 'Carlito', language: 'zh-HK', codePoints: [0x6f22] }), new AbortController().signal)
+    .fonts.map(face => face.family)
+  expect(choose(['Noto Sans SC', 'Unspecified Text', 'Noto Sans TC'])).toEqual(['Noto Sans TC'])
+  expect(choose(['Noto Sans SC', 'Unspecified Text'])).toEqual(['Unspecified Text'])
+  expect(choose(['Noto Sans SC', 'Unspecified Text', 'Noto Sans HK'])).toEqual(['Noto Sans HK'])
+})
+
+it.each(['darwin', 'linux', 'win32'])('Old Turkic uses the Chromium Orkhon font candidates on %s', (platform) => {
+  const faces = [fontFace('A Unlisted Body', '𐰀'), fontFace('Segoe UI Historic', '𐰀'), fontFace('Segoe UI Symbol', '𐰀')]
+  const result = new SystemFontCatalog({ faces, fallbackFamilies: [], platform })
+    .match(fontMatchRequest({ family: 'Missing Family', codePoints: [0x10c00] }), new AbortController().signal)
+  expect(result.fonts.map(face => face.family)).toEqual(['Segoe UI Historic'])
+})
+
+it('a configured monospaced generic keeps its explicit body face before system candidates', () => {
+  const faces = [fontFace('Noto Sans Mono CJK KR', '안', { fixed: true }), fontFace('Configured Mono', '안', { fixed: true })]
+  const result = matchFonts(faces, 'Document Mono', {
+    fontFallbacks: [['Document Mono', 'monospace'], ['monospace', 'Configured Mono']],
+  }, { language: 'en-US', codePoints: [0xc548] })
+  expect(result.fonts.map(face => face.family)).toEqual(['Configured Mono'])
+})
+
 it('an indexed face is located inside its file or reported as replaced', () => {
   const parsed = { postscriptName: 'Kept Face' }
   expect(indexedFace(parsed as unknown as Parameters<typeof indexedFace>[0], { faceIndex: 0, postscriptName: 'Kept Face' }).postscriptName).toBe('Kept Face')
@@ -263,6 +305,15 @@ it('script extensions keep Japanese marks with kana and preserve Unicode 17 scal
   expect([...fontScriptGroups([0x3042, 0x30fc, 0x1e6c0])]).toEqual([['Hiragana', [0x3042, 0x30fc]], ['Tai_Yo', [0x1e6c0]]])
   expect(fontPreferences(fontMatchRequest({ family: 'Carlito', language: 'en-US' }), [], 'Han', ['Han', 'Katakana']).region).toBe('jp')
   expect(fontPreferences(fontMatchRequest({ family: 'PingFang TC' }), [], 'Han', ['Han']).region).toBe('tc')
+})
+
+it('out-of-range numeric code points stay unknown without preventing valid glyph selection', () => {
+  const unknown = [-1, 0x110000, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]
+  const points = [65, ...unknown]
+  expect([...fontScriptGroups(points)]).toEqual([['Latin', [65]], ['Unknown', unknown]])
+  const result = matchFonts([fontFace('Arial', 'A')], 'Arial', {}, { language: 'en-US', codePoints: points })
+  expect(result.fonts.map(face => face.family)).toEqual(['Arial'])
+  expect(result.unresolvedCodePoints).toEqual(unknown)
 })
 
 it('Urdu body script faces remain eligible and uncovered characters are diagnosed', () => {
