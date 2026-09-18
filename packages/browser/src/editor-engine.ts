@@ -130,10 +130,20 @@ export class EditorEngine {
 
   private pump(): void {
     const deadline = performance.now() + 8
-    for (let pass = 0; pass < 8; pass++) {
-      const result = this.call('dsh_lok_pump')
-      if (result < 0) throw new BrowserRenderError('render-failed', 'LibreOffice event processing failed.')
-      if (!result || performance.now() >= deadline) break
+    // A newly created capture window can activate itself through deferred VCL
+    // events. Preserve the caller's view so subsequent commands retain their
+    // callback channel and never target the read-only capture window.
+    const view = this.renderView >= 0 ? this.call('dsh_lok_document_get_view', [this.document]) : -1
+    try {
+      for (let pass = 0; pass < 8; pass++) {
+        const result = this.call('dsh_lok_pump')
+        if (result < 0) throw new BrowserRenderError('render-failed', 'LibreOffice event processing failed.')
+        if (!result || performance.now() >= deadline) break
+      }
+    } finally {
+      if (view >= 0 && !this.call('dsh_lok_document_set_view', [this.document, view])) {
+        throw new BrowserRenderError('render-failed', 'The editor view could not be restored after event processing.')
+      }
     }
     this.flush()
   }

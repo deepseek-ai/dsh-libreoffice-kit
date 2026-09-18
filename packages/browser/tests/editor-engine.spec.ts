@@ -371,10 +371,38 @@ it('captures cached pixels in a separate view and restores the editable view', a
   expect(result.tiles).toEqual([cached])
   expect(result.state.renderGeneration).toBe(0)
   const calls = vi.mocked(f.module.ccall).mock.calls
-  expect(calls.filter(([name]) => name === 'dsh_lok_document_set_view').map(([, , , args]) => args[1])).toEqual([4, 3])
+  const views = calls.filter(([name]) => name === 'dsh_lok_document_set_view').map(([, , , args]) => args[1])
+  expect(views[0]).toBe(4)
+  expect(views.slice(1).every(view => view === 3)).toBe(true)
   expect(calls.some(([name]) => name === 'dsh_lok_document_paint')).toBe(false)
   f.editor.stop()
   expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_destroy_view', 'number', ['number', 'number'], [1, 4])
+})
+
+it('restores the editing view after deferred capture-window activation before awaiting command callbacks', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  let currentView = 3
+  let activateCaptureWindow = false
+  f.overrides.set('dsh_lok_document_get_view', () => currentView)
+  f.overrides.set('dsh_lok_document_set_view', args => { currentView = Number(args[1]); return 1 })
+  f.overrides.set('dsh_lok_document_create_view', () => { activateCaptureWindow = true; currentView = 4; return 4 })
+  f.overrides.set('dsh_lok_pump', () => {
+    if (activateCaptureWindow) { currentView = 4; activateCaptureWindow = false }
+    return 0
+  })
+  f.overrides.set('dsh_lok_document_command', args => {
+    // Only the editing view has a command-result callback registered.
+    if (currentView === 3) f.editor.callback(16, JSON.stringify({ commandName: args[1] }))
+    return 1
+  })
+  let completed = false
+  const task = f.editor.capture({ generation: 0, maxPixels: 1, tiles: [] }).then(() => { completed = true })
+  await vi.advanceTimersByTimeAsync(32)
+  expect(completed).toBe(true)
+  await task
+  expect(currentView).toBe(3)
+  await expect(f.editor.operation({ type: 'command', command: '.uno:Bold' })).resolves.toEqual({})
 })
 
 it('rejects pixels invalidated during capture and restores its view before failing', async () => {

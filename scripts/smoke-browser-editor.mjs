@@ -174,6 +174,75 @@ try {
         canvas.getContext('2d').putImageData(new ImageData(tile.rgba, tile.width, tile.height), 0, 0);
         return tile.rgba.some((value, index) => index % 4 !== 3 && value < 240);
       };
+      const samePixels = (a, b) => a.width === b.width && a.height === b.height
+        && a.rgba.length === b.rgba.length && a.rgba.every((value, index) => value === b.rgba[index]);
+      const pixelHashes = async capture => Promise.all(capture.tiles.map(async tile =>
+        Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', tile.rgba)), byte => byte.toString(16).padStart(2, '0')).join('')));
+      const captureRequest = () => {
+        const part = editor.state.parts[0];
+        const width = Math.min(512, part.width), split = Math.floor(width / 2), height = Math.min(256, part.height);
+        return { maxPixels: 512 * 256, tiles: [
+          { request: { part: 0, x: 0, y: 0, width: split, height, scale: 1 } },
+          { request: { part: 0, x: split, y: 0, width: width - split, height, scale: 1 } },
+        ] };
+      };
+      const editingPosition = () => JSON.stringify({ part: editor.state.part, cellFormula: editor.state.cellFormula,
+        cursor: editor.state.cursor, revision: editor.state.revision });
+      const qualifyCapture = async initial => {
+        const request = captureRequest();
+        const unsaved = await editor.capture(request);
+        check(unsaved.state.revision > 0, `${format} capture did not observe unsaved edits`);
+        check(unsaved.tiles.some((tile, index) => !samePixels(tile, initial.tiles[index])), `${format} unsaved capture retained original pixels`);
+        const cached = unsaved.tiles[0];
+        const mixed = await editor.capture({ ...request, generation: unsaved.state.renderGeneration,
+          tiles: [{ ...request.tiles[0], cached }, request.tiles[1]] });
+        check(cached.rgba.byteLength === cached.width * cached.height * 4, `${format} capture detached the caller's cached tile`);
+        check(samePixels(mixed.tiles[0], cached), `${format} capture changed valid cached tile bytes`);
+        check(samePixels(mixed.tiles[1], unsaved.tiles[1]), `${format} capture did not paint the missing tile consistently`);
+        check(mixed.state.renderGeneration === unsaved.state.renderGeneration, `${format} cached capture changed generations`);
+        let sheetSelection;
+        if (format === 'xlsx') {
+          await editor.setPart(0);
+          await editor.dispatch('.uno:GoToCell', { ToPoint: { type: 'string', value: 'B1' } });
+          check(editor.state.cellFormula.includes('A1'), 'Calc capture fixture must retain a selected formula');
+          const before = editingPosition(), selection = { sheet: 'Second', range: 'A1:C2', scale: 1 };
+          const geometry = await editor.capture({ maxPixels: 512 * 256, selection, tiles: [] });
+          check(geometry.regions.length === 1 && geometry.regions[0].part === 1
+            && geometry.regions[0].sheet === 'Second' && geometry.regions[0].range === 'A1:C2', 'Calc capture selected a different worksheet/range');
+          check(editingPosition() === before, 'Calc capture geometry changed the user part/formula/cursor/revision');
+          const region = geometry.regions[0];
+          const selected = await editor.capture({ generation: geometry.state.renderGeneration, maxPixels: 512 * 256, selection,
+            tiles: [{ request: { part: region.part, ...region.rectangle, scale: 1 } }] });
+          check(editingPosition() === before, 'Calc selected capture changed the user part/formula/cursor/revision');
+          check(selected.tiles[0].rgba.some((value, index) => index % 4 !== 3 && value < 240), 'Calc Second!A1:C2 capture is blank');
+          sheetSelection = { sheet: region.sheet, range: region.range, userSelectionPreserved: true, hashes: await pixelHashes(selected) };
+        }
+        // Queue these without awaiting: the first batch must finish before Undo,
+        // and every tile in the later batch must observe the same post-Undo model.
+        const before = await editor.capture(request);
+        const earlierTask = editor.capture({ ...request, generation: before.state.renderGeneration });
+        const editTask = editor.dispatch('.uno:Undo');
+        const laterTask = editor.capture(request);
+        const [earlier, , later] = await Promise.all([earlierTask, editTask, laterTask]);
+        check(earlier.state.renderGeneration === before.state.renderGeneration
+          && earlier.tiles.every((tile, index) => samePixels(tile, before.tiles[index])), `${format} earlier capture included a later edit`);
+        check(later.state.renderGeneration > earlier.state.renderGeneration, `${format} queued edit did not advance the capture generation`);
+        const after = await editor.capture(request);
+        check(after.state.renderGeneration === later.state.renderGeneration
+          && later.tiles.every((tile, index) => samePixels(tile, after.tiles[index])), `${format} capture mixed pixels from different generations`);
+        let staleRejected = false;
+        try { await editor.capture({ ...request, generation: earlier.state.renderGeneration,
+          tiles: [{ ...request.tiles[0], cached: earlier.tiles[0] }, request.tiles[1]] }); }
+        catch (error) { if (error.code !== 'snapshot-changed') throw error; staleRejected = true; }
+        check(staleRejected, `${format} capture accepted an old generation`);
+        await editor.dispatch('.uno:Redo');
+        const restored = await editor.capture(request);
+        check(restored.tiles.every((tile, index) => samePixels(tile, before.tiles[index])), `${format} Redo did not restore captured pixels`);
+        return { unsavedPixels: true, cachedBytesReused: true, missingTilePainted: true, staleGenerationRejected: true,
+          orderedAcrossEdit: true, initialHashes: await pixelHashes(initial), unsavedHashes: await pixelHashes(unsaved),
+          generations: { unsaved: unsaved.state.renderGeneration, beforeEdit: earlier.state.renderGeneration, afterEdit: later.state.renderGeneration },
+          ...(sheetSelection ? { sheetSelection } : {}) };
+      };
       const latencies = [];
       let object;
       let geometryChanged = false;
@@ -182,6 +251,8 @@ try {
         check(await paint(), `${format} initial tile is blank`);
         await globalThis.captureEditorMemory(format, 'opened');
         check(editor.state.revision === 0, 'Opening and painting marked the document edited');
+        const initialCapture = await editor.capture(captureRequest());
+        check(initialCapture.state.revision === 0, 'Initial capture marked the document edited');
         if (format === 'docx') {
           await editor.dispatch('.uno:SelectAll'); await editor.paste('Office editor ');
           await editor.input({ type: 'composition', action: 'update', text: '中' });
@@ -251,6 +322,7 @@ try {
         check(await paint(1.5), 'Edited zoomed tile is blank');
         const invalidations = events.filter(event => event.type === 'invalidate');
         check(invalidations.length > 0, 'Editing emitted no tile invalidations');
+        const capture = await qualifyCapture(initialCapture);
         const snapshot = await editor.save();
         await globalThis.captureEditorMemory(format, 'edited');
         await globalThis.captureEditorExport(format, Array.from(snapshot.data));
@@ -289,7 +361,7 @@ try {
         return { data: Array.from(snapshot.data), revision: savedRevision, openMs, reopenedSelection, geometryChanged, object,
           invalidations: invalidations.length, localInvalidations: invalidations.filter(event => event.rectangle !== null).length,
           samples: latencies.length, p95Ms: latencies.length ? latencies[Math.ceil(latencies.length * 0.95) - 1] : null,
-          saveReopen: true, disposed: true };
+          saveReopen: true, disposed: true, capture };
       } finally { stop(); await editor.dispose(); }
     }, { origin, format, fontFallbacks: source.fontFallbacks });
     const bytes = new Uint8Array(result.data);
