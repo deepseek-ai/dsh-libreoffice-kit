@@ -43,6 +43,7 @@ async function run(args: string[]) {
 it('discovers capabilities without creating a converter', async () => {
   const result = await run(['capabilities', '--json'])
   expect(JSON.parse(result.stdout).runtime.backend).toBe('wasm')
+  expect(JSON.parse(result.stdout).imageRendering.maxDimension).toBe(8192)
   expect(api.create).not.toHaveBeenCalled()
 })
 it('passes conversion, limits, font configuration, and exact sheet names through the public API', async () => {
@@ -64,6 +65,7 @@ it.each([
   [['convert', '--input', 'a.docx', '--output', 'b.pdf', '--timeout-ms', 'abc'], /positive integer/],
   [['recalculate', '--input', 'a.xls', '--output', 'b.xlsx', '--sheet', 'Sheet1'], /only for CSV/],
   [['convert', '--unknown'], /Unknown option/],
+  [['convert', '--input', 'a.docx', '--output', 'b.pdf', '--max-dimension', '512'], /require the render/],
 ] as const)('rejects invalid CLI arguments %j', async (args, message) => {
   const result = await run([...args])
   expect(JSON.parse(result.stderr).error).toMatch(message)
@@ -87,9 +89,9 @@ it('reports converter failures including non-Error rejections', async () => {
 it('renders a complete selected PNG batch through the existing converter with its limits', async () => {
   api.renderImages.mockResolvedValue({ backend: 'wasm', rasterEngine: 'pdfium', source: 'saved', images: [] })
   const result = await run(['render', '--input', 'a.pdf', '--output-dir', './images', '--pages', '3,1', '--dpi', '144',
-    '--max-pages', '4', '--max-pixels', '12345', '--max-output-bytes', '67890', '--timeout-ms', '700'])
+    '--max-pages', '4', '--max-pixels', '12345', '--max-dimension', '512', '--max-output-bytes', '67890', '--timeout-ms', '700'])
   expect(api.create).toHaveBeenCalledWith({ maxOutputBytes: 67890, timeoutMs: 700 })
-  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.pdf'), outputDir: resolve('images'), pages: [3, 1], dpi: 144, maxPages: 4, maxPixels: 12345 }, expect.any(AbortSignal))
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.pdf'), outputDir: resolve('images'), pages: [3, 1], dpi: 144, maxPages: 4, maxPixels: 12345, maxDimension: 512 }, expect.any(AbortSignal))
   expect(JSON.parse(result.stdout).rasterEngine).toBe('pdfium')
   expect(api.dispose).toHaveBeenCalledOnce()
 })

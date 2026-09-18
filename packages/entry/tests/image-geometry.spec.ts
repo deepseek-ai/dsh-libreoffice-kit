@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { inflateSync } from 'node:zlib'
 import { encodePng } from '../src/png.ts'
-import { rgbaPixels, tileDimensions, writerPages } from '../src/rendering.ts'
+import { rgbaPixels, splitRasterRectangle, tileDimensions, writerPages } from '../src/rendering.ts'
 import { parseCellRange, rangeName, sheetPartInfo, dataArea, sheetRangeRectangle } from '../src/sheet-geometry.ts'
 import { resolveImageRender, selectedPages } from '../src/image-operations.ts'
 
@@ -61,4 +61,40 @@ it('never conflates sheets with printed pages or truncates an all-pages request'
   expect(() => selectedPages('all', 101, 100)).toThrow(/maxPages/)
   expect(() => selectedPages([4], 3, 100)).toThrow(/outside/)
   expect(selectedPages([3, 1], 4, 100)).toEqual([3, 1])
+})
+it('splits a fractional-scale sheet into pixel-aligned fragments without gaps or overlaps', () => {
+  const rectangle = { x: 12.8, y: 4.8, width: 80.8, height: 58.4 }, scale = 1.25
+  const tiles = splitRasterRectangle(rectangle, scale, { maxPixels: 997, maxDimension: 37, maxTiles: 100 })
+  const covered = new Set<string>()
+  for (const tile of tiles) {
+    const { width, height } = tileDimensions({ pageIndex: 0, ...tile, scale }, [{ x: 0, y: 0, part: 0,
+      width: rectangle.x + rectangle.width, height: rectangle.y + rectangle.height }])
+    expect(width).toBeLessThanOrEqual(37); expect(height).toBeLessThanOrEqual(37)
+    expect(width * height).toBeLessThanOrEqual(997)
+    const x = (tile.x - rectangle.x) * scale, y = (tile.y - rectangle.y) * scale
+    expect(x).toBeCloseTo(Math.round(x), 9); expect(y).toBeCloseTo(Math.round(y), 9)
+    for (let row = 0; row < height; row++) for (let column = 0; column < width; column++) {
+      const key = `${Math.round(x) + column},${Math.round(y) + row}`
+      expect(covered.has(key)).toBe(false); covered.add(key)
+    }
+  }
+  expect(covered.size).toBe(101 * 73)
+  expect(covered.has('0,0')).toBe(true); expect(covered.has('100,72')).toBe(true)
+})
+it('uses thin-sheet capacity and rejects huge split plans before allocation', () => {
+  const tiles = splitRasterRectangle({ x: 0, y: 0, width: 1000, height: 2 }, 1,
+    { maxPixels: 100, maxDimension: 8192, maxTiles: 20 })
+  expect(tiles).toHaveLength(20)
+  expect(tiles.every(tile => tile.width === 50 && tile.height === 2)).toBe(true)
+  expect(() => splitRasterRectangle({ x: 0, y: 0, width: 1e12, height: 1e12 }, 1,
+    { maxPixels: 16777216, maxDimension: 8192, maxTiles: 100 })).toThrow(/maxPages/)
+  const bounded = splitRasterRectangle({ x: 0, y: 0, width: 10, height: 10 }, 1,
+    { maxPixels: 15, maxDimension: 4, maxTiles: 100 })
+  expect(bounded.every(tile => tile.width <= 4 && tile.height <= 4 && tile.width * tile.height <= 15)).toBe(true)
+})
+it('validates maxDimension as a per-image limit with an 8192-pixel default', () => {
+  const request = { inputPath: '/in.xlsx', outputDir: '/out' }
+  expect(resolveImageRender(request).maxDimension).toBe(8192)
+  expect(resolveImageRender({ ...request, maxDimension: 128 }).maxDimension).toBe(128)
+  for (const maxDimension of [0, -1, 1.5, Infinity, NaN, 16777217]) expect(() => resolveImageRender({ ...request, maxDimension })).toThrow(/maxDimension/)
 })

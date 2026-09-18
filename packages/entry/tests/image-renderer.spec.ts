@@ -8,7 +8,7 @@ import { resolveOptions } from '../src/options.ts'
 import type { WasmEngine } from '../src/engine.ts'
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
-async function fixture(extension: string) {
+async function fixture(extension: string, allSheetsVisible = false) {
   const root = await mkdtemp(join(tmpdir(), 'kit-image-engine-')); roots.push(root)
   const outputDir = join(root, 'images'); await mkdir(outputDir)
   const log = join(root, 'calls.jsonl')
@@ -32,7 +32,7 @@ module.exports = async function factory(options) {
       if (name === 'dsh_lok_document_parts' || name === 'dsh_pdf_page_count') return 2
       if (name === 'dsh_pdf_page_size') { memory[args[2]/4]=300;memory[args[3]/4]=150;return 1 }
       if (name === 'dsh_lok_document_page_rectangles') return text('0,0,300,150;0,200,300,150')
-      if (name === 'dsh_lok_document_part_info') return text(JSON.stringify({name:['Data','Hidden'][args[1]],visible:args[1]===0?1:0,rtllayout:0,lastcolumn:1,lastrow:1}))
+      if (name === 'dsh_lok_document_part_info') return text(JSON.stringify({name:['Data','Hidden'][args[1]],visible:${allSheetsVisible ? '1' : 'args[1]===0?1:0'},rtllayout:0,lastcolumn:1,lastrow:1}))
       if (name === 'dsh_lok_document_command_values') {
         if(args[1] === '.uno:AllPageSize')return text(JSON.stringify({parts:[{width:300,height:150},{width:450,height:300}]}))
         if(args[1] === '.uno:SheetGeometryData')return text(JSON.stringify({columns:{sizes:'150:16383',hidden:'0:16383',filtered:'0:16383'},rows:{sizes:'150:1048575',hidden:'0:1048575',filtered:'0:1048575'}}))
@@ -83,4 +83,31 @@ it('rejects an oversized complete batch before painting anything and releases th
   const calls = await readFile(log, 'utf8')
   expect(calls).not.toContain('dsh_pdf_paint')
   expect(calls).toContain('dsh_pdf_destroy')
+})
+it('splits a sheet by output pixels while retaining its original A1 range and exact fragment rectangles', async () => {
+  const { base, outputDir, root, log } = await fixture('xlsx')
+  const result = await renderImagesWithWasm({ ...base, operation: resolveImageRender({ inputPath: join(root, 'in.xlsx'), outputDir,
+    sheet: 'Data', range: 'B2:C3', dpi: 96, maxPixels: 100, maxDimension: 10, maxPages: 4 }) })
+  expect(result.pageCount).toBe(1)
+  expect(result.images.map(image => ({ sheet: image.sheet, range: image.range, width: image.width, height: image.height, rectangle: image.rectangle }))).toEqual(
+    [[10, 10], [20, 10], [10, 20], [20, 20]].map(([x, y]) => ({ sheet: 'Data', range: 'B2:C3', width: 10, height: 10, rectangle: { x, y, width: 10, height: 10 } })))
+  expect(result.images.map(image => image.index)).toEqual([1, 2, 3, 4])
+  expect(await readdir(outputDir)).toHaveLength(4)
+  const calls = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as unknown[])
+  expect(calls.filter(call => call[0] === 'dsh_lok_document_load')).toHaveLength(1)
+  expect(calls.filter(call => call[0] === 'dsh_lok_document_paint')).toHaveLength(4)
+})
+it('counts fragments across all worksheets against maxPages before painting any image', async () => {
+  const { base, outputDir, root, log } = await fixture('xlsx', true)
+  await expect(renderImagesWithWasm({ ...base, operation: resolveImageRender({ inputPath: join(root, 'in.xlsx'), outputDir,
+    dpi: 96, maxDimension: 10, maxPages: 7 }) })).rejects.toMatchObject({ code: 'output-too-large', message: expect.stringMatching(/maxPages/) })
+  expect(await readdir(outputDir)).toEqual([])
+  expect(await readFile(log, 'utf8')).not.toContain('dsh_lok_document_paint')
+})
+it.each(['docx', 'pptx', 'pdf'])('rejects an oversized %s page instead of splitting it', async extension => {
+  const { base, outputDir, root, log } = await fixture(extension)
+  await expect(renderImagesWithWasm({ ...base, operation: resolveImageRender({ inputPath: join(root, `in.${extension}`), outputDir,
+    dpi: 96, maxDimension: 15 }) })).rejects.toMatchObject({ code: 'output-too-large' })
+  expect(await readdir(outputDir)).toEqual([])
+  expect(await readFile(log, 'utf8')).not.toMatch(/dsh_(?:lok_document|pdf)_paint/)
 })

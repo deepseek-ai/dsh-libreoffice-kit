@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { withWasmSession, engineError, type WasmConversionRequest, type WasmSession } from './wasm.ts'
 import { numericCall, engineString, pdfPages, renderRegion } from './engine-rendering.ts'
-import { tileDimensions, writerPages, type EnginePage } from './rendering.ts'
+import { splitRasterRectangle, tileDimensions, writerPages, type EnginePage } from './rendering.ts'
 import { dataArea, parseCellRange, rangeName, sheetPartInfo, sheetRangeRectangle, type Rectangle, type SheetGeometry } from './sheet-geometry.ts'
 import { selectedPages, type ImageRenderSpec, type RenderedImage, type RenderImagesResult } from './image-operations.ts'
 import { ConversionError } from './errors.ts'
@@ -58,12 +58,27 @@ async function regions(session: WasmSession, request: ImageRenderSpec): Promise<
 export async function renderImagesWithWasm(request: Omit<WasmConversionRequest, 'operation'> & { operation: ImageRenderSpec }): Promise<RenderImagesResult> {
   return withWasmSession(request, async (session) => {
     const { operation, options } = request
-    const { count, regions: selected } = await regions(session, operation)
+    const { count, regions: sourceRegions } = await regions(session, operation)
     const scale = operation.dpi / 96
+    const selected: ImageRegion[] = []
+    for (const region of sourceRegions) {
+      if (region.sheet === undefined) { selected.push(region); continue }
+      let rectangles: Rectangle[]
+      try {
+        rectangles = splitRasterRectangle(region.rectangle, scale, { maxPixels: operation.maxPixels,
+          maxDimension: operation.maxDimension, maxTiles: operation.maxPages - selected.length })
+      } catch (cause) {
+        throw new ConversionError('output-too-large', cause instanceof Error ? cause.message : 'Worksheet image batch exceeds its limits.', { cause })
+      }
+      selected.push(...rectangles.map(rectangle => ({ ...region, rectangle })))
+    }
     // Validate the complete batch before painting the first image; never truncate a selection.
     for (const { page, rectangle } of selected) {
-      const { width, height } = tileDimensions({ pageIndex: 0, ...rectangle, scale }, [page])
-      if (width * height > operation.maxPixels) throw new ConversionError('output-too-large', 'Selected image exceeds maxPixels; choose a smaller A1 range or DPI.')
+      const pixelWidth = Math.ceil(rectangle.width * scale - 1e-9), pixelHeight = Math.ceil(rectangle.height * scale - 1e-9)
+      if (pixelWidth > operation.maxDimension || pixelHeight > operation.maxDimension || pixelWidth * pixelHeight > operation.maxPixels) {
+        throw new ConversionError('output-too-large', 'Selected page exceeds maxPixels or maxDimension; reduce DPI or raise the image limits.')
+      }
+      tileDimensions({ pageIndex: 0, ...rectangle, scale }, [page])
     }
     const images: RenderedImage[] = []
     let total = 0

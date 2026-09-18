@@ -1,9 +1,40 @@
 /** Platform-independent document geometry and raster pixel conversion. */
+import type { Rectangle } from './sheet-geometry.ts'
 export const TWIPS_PER_CSS_PIXEL = 15
 export const MAX_TILE_PIXELS = 16 * 1024 * 1024
 export interface EnginePage { readonly width: number; readonly height: number; readonly x: number; readonly y: number; readonly part: number }
 export interface TileRequest { readonly pageIndex: number; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly scale: number }
 export interface RasterTile { readonly width: number; readonly height: number; readonly rgba: Uint8ClampedArray }
+
+/** Split a region on its output-pixel grid, bounding the plan before allocating it. */
+export function splitRasterRectangle(rectangle: Rectangle, scale: number,
+  limits: { readonly maxPixels: number; readonly maxDimension: number; readonly maxTiles: number }): Rectangle[] {
+  const { x, y, width, height } = rectangle
+  const { maxPixels, maxDimension, maxTiles } = limits
+  if (![x, y, width, height, scale].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0 || scale <= 0
+    || !Number.isSafeInteger(maxPixels) || maxPixels < 1 || maxPixels > MAX_TILE_PIXELS
+    || !Number.isSafeInteger(maxDimension) || maxDimension < 1 || maxDimension > MAX_TILE_PIXELS
+    || !Number.isSafeInteger(maxTiles) || maxTiles < 0) throw new TypeError('Invalid raster splitting limits or rectangle.')
+  const pixelWidth = Math.ceil(width * scale - 1e-9), pixelHeight = Math.ceil(height * scale - 1e-9)
+  if (![pixelWidth, pixelHeight].every(value => Number.isSafeInteger(value) && value > 0)) throw new RangeError('Raster dimensions exceed the coordinate range.')
+  let tileWidth = Math.min(pixelWidth, maxDimension), tileHeight = Math.min(pixelHeight, maxDimension)
+  if (tileWidth * tileHeight > maxPixels) {
+    const side = Math.floor(Math.sqrt(maxPixels))
+    if (tileWidth <= side) tileHeight = Math.floor(maxPixels / tileWidth)
+    else if (tileHeight <= side) tileWidth = Math.floor(maxPixels / tileHeight)
+    else { tileWidth = side; tileHeight = Math.min(tileHeight, Math.floor(maxPixels / tileWidth)) }
+  }
+  const columns = Math.ceil(pixelWidth / tileWidth), rows = Math.ceil(pixelHeight / tileHeight)
+  if (columns * rows > maxTiles) throw new RangeError('Raster batch exceeds maxPages after worksheet splitting.')
+  const result: Rectangle[] = []
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const left = column * tileWidth / scale, top = row * tileHeight / scale
+      result.push({ x: x + left, y: y + top, width: Math.min(tileWidth / scale, width - left), height: Math.min(tileHeight / scale, height - top) })
+    }
+  }
+  return result
+}
 
 /** Writer's zero-area parity placeholders have no visible page. Offsets stay in twips. */
 export function writerPages(rectangles: string): EnginePage[] {
