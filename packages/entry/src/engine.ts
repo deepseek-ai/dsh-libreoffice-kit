@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
  * Engine-family version every installed engine package must carry. The engine
  * family shares its release version with this Node API.
  */
-export const ENGINE_VERSION = '0.0.2-rc3'
+export const ENGINE_VERSION = '0.0.2-rc4'
 
 /** npm scope and name prefix shared by the engine packages this adapter installs. */
 const ENGINE_PREFIX = '@deepseek-ai/libreoffice-kit'
@@ -127,39 +127,16 @@ function glibcVersion(value: unknown): number[] | undefined {
 }
 
 /**
- * macOS and Windows require their native engine. Linux uses WASM when no compatible development native engine is installed.
+ * Resolve the shared WASM engine on every supported operating system.
  * @param resolvePackage - Package manifest resolver; injectable for selection tests.
- * @param packageExists - Installed-package probe; injectable for selection tests.
+ * @param _packageExists - Retained positional compatibility with earlier resolvers.
  * @param host - Process identification and diagnostic report.
- * @returns the installed native engine, or the installed WASM engine.
+ * @returns the installed WASM engine; native packages never change selection.
  */
 export async function resolveEngine(resolvePackage: (name: string) => string = name => require.resolve(`${name}/package.json`),
-  packageExists: (name: string) => boolean = installedPackageExists,
-  { platform = process.platform, arch = process.arch, report = hostReport }: EngineResolutionHost = {}): Promise<Engine> {
-  const details = platform === 'linux' ? report() : {}
-  const target = platformTarget(platform, arch, () => details)
-  if (target !== undefined) {
-    const name = `${ENGINE_PREFIX}-${target}`
-    let packageFile: string | undefined
-    try { packageFile = resolvePackage(name) } catch (error) {
-      // A missing native package permits WASM only on Linux; broken exports reject on every host.
-      const failure = error as { code?: unknown; message?: unknown } | null
-      const missing = failure?.code === 'MODULE_NOT_FOUND' && typeof failure.message === 'string'
-        && failure.message.includes(`${name}/package.json`)
-      if (!missing) throw error
-      if (packageExists(name)) throw new Error(`Installed LibreOfficeKit package is incomplete: ${name}`, { cause: error })
-      if (platform !== 'linux') throw new Error(`Required LibreOfficeKit native package is missing: ${name}`, { cause: error })
-    }
-    if (packageFile !== undefined) {
-      const engine = await readEngine(packageFile, 'native', target)
-      const minimum = glibcVersion(engine.glibcMinimum)
-      const host = glibcVersion(details.header?.glibcVersionRuntime)
-      const unsupported = minimum && host && minimum.some((part, index) => part > (host[index] ?? 0)
-        && minimum.slice(0, index).every((prior, priorIndex) => prior === host[priorIndex]))
-      if (!unsupported) return engine
-    }
-  }
-  if (platform !== 'linux') throw new Error(`Unsupported LibreOfficeKit host: ${platform}-${arch}`)
+  _packageExists: (name: string) => boolean = installedPackageExists,
+  { platform = process.platform, arch = process.arch }: EngineResolutionHost = {}): Promise<Engine> {
+  if (!['darwin', 'win32', 'linux'].includes(platform)) throw new Error(`Unsupported LibreOfficeKit host: ${platform}-${arch}`)
   return readEngine(resolvePackage(`${ENGINE_PREFIX}-wasm`), 'wasm', 'wasm')
 }
 
