@@ -1,0 +1,18 @@
+--- a/vcl/headless/svpinst.cxx
++++ b/vcl/headless/svpinst.cxx
+@@ -299,6 +299,15 @@
+ }
+ 
+ #if defined __EMSCRIPTEN__
++
++// A browser-owned LibreOfficeKit instance yields between messages instead of
++// entering the application's Emscripten main loop. Never wait on the Worker.
++extern "C" bool dsh_lok_yield()
++{
++    SolarMutexGuard guard;
++    auto* instance = SvpSalInstance::s_pDefaultInstance;
++    return instance && instance->ImplYield(false, true);
++}
+ 
+ static void loop(void * arg) {
+     SolarMutexGuard g;

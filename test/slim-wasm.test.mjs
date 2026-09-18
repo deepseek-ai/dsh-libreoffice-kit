@@ -14,14 +14,10 @@ function fixture(paths) {
   return { data: Buffer.concat(chunks), metadata: { files, remote_package_size: offset } };
 }
 
-test('WASM repacking removes desktop files and preserves every retained byte and attribute', () => {
+test('WASM repacking preserves editor layouts outside the conversion allowlist and removes desktop chrome', () => {
   const desktop = [
     '/android/default-document/example.odt', '/android/default-document/example_test.ods',
     '/core/android/default-document/example.odt', '/core/android/default-document/example_test.ods',
-    '/instdir/share/config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
-    '/instdir/share/config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui',
-    '/instdir/share/config/soffice.cfg/modules/simpress/ui/pmintropage.ui',
-    '/instdir/share/config/soffice.cfg/custom/ui/inputbar.ui',
     '/instdir/share/config/soffice.cfg/modules/swriter/ui/notebookbar.ui',
     '/instdir/share/config/soffice.cfg/modules/scalc/ui/notebookbar_compact.ui',
     '/instdir/share/config/soffice.cfg/modules/swriter/toolbar/standardbar.xml',
@@ -30,6 +26,10 @@ test('WASM repacking removes desktop files and preserves every retained byte and
     '/instdir/program/intro.png', '/instdir/program/intro-highres.png', '/instdir/program/shell/logo.svg',
   ];
   const retained = [
+    '/instdir/share/config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
+    '/instdir/share/config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui',
+    '/instdir/share/config/soffice.cfg/modules/simpress/ui/pmintropage.ui',
+    '/instdir/share/config/soffice.cfg/custom/ui/inputbar.ui',
     '/instdir/program/services/services.rdb', '/instdir/program/types.rdb',
     ...requiredUiResources.map(file => `/instdir/share/config/soffice.cfg/${file}`),
     '/instdir/share/config/soffice.cfg/settings.xml', '/instdir/share/elsewhere/keep.ui',
@@ -37,7 +37,8 @@ test('WASM repacking removes desktop files and preserves every retained byte and
     '/instdir/share/fonts/font.ttf', '/instdir/share/liblangtag/language.xml',
     '/instdir/LICENSE', '/instdir/NOTICE',
   ];
-  const { data, metadata } = fixture(desktop.flatMap((file, index) => [file, ...retained.slice(index, index + 1)]));
+  const { data, metadata } = fixture(Array.from({ length: Math.max(desktop.length, retained.length) }, (_, index) =>
+    [desktop[index], retained[index]].filter(Boolean)).flat());
   const original = structuredClone(metadata);
   const result = slimWasmData(data, metadata);
   assert.deepEqual(metadata, original);

@@ -1,10 +1,14 @@
 /** Convert caller-authorized disk documents with installed native or Node WASM engines. */
 import { constants } from 'node:fs'
-import { open, mkdtemp, mkdir, rm, unlink } from 'node:fs/promises'
+import { open, mkdtemp, mkdir, rm, unlink, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { resolveImageRender } from './image-operations.ts'
+import type { ImageRenderSpec, RenderImagesRequest, RenderImagesResult } from './image-operations.ts'
+export { IMAGE_FORMATS } from './image-operations.ts'
+export type { RenderImagesRequest, RenderImagesResult, RenderedImage } from './image-operations.ts'
 import { runNative } from './native.ts'
 import { resolveOptions } from './options.ts'
 import { resolveEngine } from './engine.ts'
@@ -72,12 +76,12 @@ export interface Converter {
    * @returns Engine choice and missing declared font families.
    */
   render(request: { inputPath: string; outputPath: string }, signal?: AbortSignal): Promise<RenderResult>
-  /**
-   * Convert to the format named by the output extension; CSV requires a sheet for multi-sheet inputs.
-   * @param request - Absolute authorized input and fresh output paths, and optional CSV sheet name.
-   * @param signal - Cancellation, including while queued.
-   * @returns Engine choice and missing declared font families.
+  /** Render Office directly to PNG, or PDF through PDFium, in one fresh output directory.
+   * Worksheets use sheet/A1 coordinates; page selections are one-based for documents and slides.
+   * Failure/cancellation removes the complete batch. The manifest describes one saved input snapshot.
    */
+  renderImages(request: RenderImagesRequest, signal?: AbortSignal): Promise<RenderImagesResult>
+  /** Convert to the output extension; CSV requires a sheet for multi-sheet inputs. */
   convert(request: ConversionRequest, signal?: AbortSignal): Promise<RenderResult>
   /**
    * Recalculate the entire workbook synchronously and save formulas with refreshed cached results.
@@ -99,6 +103,8 @@ interface WasmWorkerResult {
   readonly missingFonts: string[]
 }
 
+interface ImagesWorkerResult { readonly kind?: undefined; readonly ok: true; readonly images: RenderImagesResult }
+
 /** Worker result for a native conversion, which returns the font imports the helper loads. */
 interface NativeWorkerResult {
   readonly kind?: undefined
@@ -112,6 +118,7 @@ interface NativeWorkerResult {
 type WorkerMessage =
   | { readonly kind: 'fonts'; readonly faces: FontFace[] }
   | WasmWorkerResult
+  | ImagesWorkerResult
   | NativeWorkerResult
   | { readonly kind?: undefined; readonly ok: false; readonly code?: string; readonly error: string }
 
@@ -140,7 +147,7 @@ async function readBounded(path: string, limit: number, signal: AbortSignal, rol
 }
 
 async function runWorker(data: WorkerRequest, signal: AbortSignal, onFonts: (faces: FontFace[]) => void):
-Promise<WasmWorkerResult | NativeWorkerResult> {
+Promise<WasmWorkerResult | NativeWorkerResult | ImagesWorkerResult> {
   signal.throwIfAborted()
   const worker = new Worker(new URL('./worker.js', import.meta.url), {
     workerData: data, name: 'libreoffice-conversion', execArgv: [], stdout: true, stderr: true,
@@ -148,7 +155,7 @@ Promise<WasmWorkerResult | NativeWorkerResult> {
   // Emscripten pthread diagnostics must not enter the embedding application's stdout protocol.
   worker.stdout.resume()
   worker.stderr.resume()
-  const settled = Promise.withResolvers<WasmWorkerResult | NativeWorkerResult>()
+  const settled = Promise.withResolvers<WasmWorkerResult | NativeWorkerResult | ImagesWorkerResult>()
   const abort = (): void => { settled.reject(signal.reason) }
   signal.addEventListener('abort', abort, { once: true })
   worker.once('error', settled.reject)
@@ -178,7 +185,7 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
   let engine: Engine
   try { engine = await resolveEngine() } catch (cause) { throw new ConversionError('unavailable', (cause as Error).message, { cause }) }
   const lifetime = new AbortController()
-  const active = new Set<Promise<RenderResult>>()
+  const active = new Set<Promise<RenderResult | RenderImagesResult>>()
   const waiting = new Set<() => void>()
   let running = false
   let disposal: Promise<void> | undefined
@@ -217,6 +224,7 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       try { await input.writeFile(sourceBytes) } finally { await input.close() }
       const result = await runWorker({ inputPath, extension, operation: request, options: resolvedOptions, engine, scratch, fontFaces },
         stopped, (faces) => { fontFaces = faces })
+      if ('images' in result) throw new ConversionError('failed', 'Conversion worker returned an image batch for an export request.')
       let bytes: Uint8Array
       if ('output' in result) bytes = result.output
       else {
@@ -256,6 +264,42 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       }
     }
   }
+  async function executeImages(request: ImageRenderSpec, signal: AbortSignal): Promise<RenderImagesResult> {
+    await acquire(signal)
+    const deadline = new AbortController()
+    const stopped = AbortSignal.any([signal, deadline.signal])
+    const timer = setTimeout(() => deadline.abort(new ConversionError('timeout', 'LibreOffice image rendering timed out.')), resolvedOptions.timeoutMs)
+    let scratch: string | undefined
+    let owned = false
+    let succeeded = false
+    try {
+      stopped.throwIfAborted()
+      await mkdir(request.outputDir, { mode: 0o700 })
+      owned = true
+      const source = await readBounded(request.inputPath, resolvedOptions.maxInputBytes, stopped, 'input')
+      scratch = await mkdtemp(join(tmpdir(), 'libreoffice-kit-images-'))
+      const inputPath = join(scratch, `document.${request.extension}`)
+      await writeFile(inputPath, source, { flag: 'wx', mode: 0o600 })
+      const result = await runWorker({ inputPath, extension: request.extension, operation: request, options: resolvedOptions, engine, scratch, fontFaces },
+        stopped, faces => { fontFaces = faces })
+      if (!('images' in result)) throw new ConversionError('failed', 'Image worker did not return its manifest.')
+      stopped.throwIfAborted()
+      await writeFile(join(request.outputDir, 'manifest.json'), `${JSON.stringify(result.images, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
+      stopped.throwIfAborted()
+      succeeded = true
+      return result.images
+    } finally {
+      clearTimeout(timer)
+      try {
+        const cleanup = await Promise.allSettled([
+          ...(scratch ? [rm(scratch, { recursive: true, force: true })] : []),
+          ...(owned && !succeeded ? [rm(request.outputDir, { recursive: true, force: true })] : []),
+        ])
+        const failures = cleanup.filter(result => result.status === 'rejected')
+        if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Image batch cleanup failed.')
+      } finally { running = false; for (const wake of [...waiting]) wake() }
+    }
+  }
   async function submit(request: ConversionRequest, operation: 'render' | 'convert' | 'recalculate', signal?: AbortSignal): Promise<RenderResult> {
     const task = execute(resolveConversion(request, operation),
       signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal)
@@ -266,6 +310,12 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
   return {
     backend: engine.backend,
     render: (request, signal) => submit(request, 'render', signal),
+    async renderImages(request, signal) {
+      const task = executeImages(resolveImageRender(request), signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal)
+      active.add(task)
+      void task.finally(() => active.delete(task)).catch(() => {})
+      return task
+    },
     convert: (request, signal) => submit(request, 'convert', signal),
     recalculate: (request, signal) => submit(request, 'recalculate', signal),
     dispose() {

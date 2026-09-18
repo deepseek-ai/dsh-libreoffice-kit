@@ -3,9 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { resolve } from 'node:path'
 
 const api = vi.hoisted(() => ({
-  convert: vi.fn(), recalculate: vi.fn(), dispose: vi.fn(), create: vi.fn(), discover: vi.fn(),
+  renderImages: vi.fn(), convert: vi.fn(), recalculate: vi.fn(), dispose: vi.fn(), create: vi.fn(), discover: vi.fn(),
 }))
 vi.mock('../src/index.ts', () => ({
+  IMAGE_FORMATS: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf'],
   CONVERSION_FORMATS: [{ inputs: ['docx'], outputs: ['pdf'] }],
   createConverter: api.create, discoverRuntime: api.discover,
 }))
@@ -26,7 +27,7 @@ beforeEach(() => {
     if (event === 'SIGINT') cancel = listener as () => void
     return process
   })
-  api.create.mockResolvedValue({ convert: api.convert, recalculate: api.recalculate, dispose: api.dispose })
+  api.create.mockResolvedValue({ renderImages: api.renderImages, convert: api.convert, recalculate: api.recalculate, dispose: api.dispose })
   api.convert.mockResolvedValue({ backend: 'native', missingFonts: [] })
   api.recalculate.mockResolvedValue({ backend: 'native', missingFonts: [] })
   api.discover.mockResolvedValue({ version: 'test', backend: 'wasm', cliPath: '/cli.js', nodeApiPath: '/index.js' })
@@ -82,4 +83,13 @@ it('reports converter failures including non-Error rejections', async () => {
   api.create.mockRejectedValue('unavailable engine')
   const result = await run(['convert', '--input', 'a.docx', '--output', 'b.pdf'])
   expect(JSON.parse(result.stderr)).toEqual({ code: 'failed', error: 'unavailable engine' })
+})
+it('renders a complete selected PNG batch through the existing converter with its limits', async () => {
+  api.renderImages.mockResolvedValue({ backend: 'wasm', rasterEngine: 'pdfium', source: 'saved', images: [] })
+  const result = await run(['render', '--input', 'a.pdf', '--output-dir', './images', '--pages', '3,1', '--dpi', '144',
+    '--max-pages', '4', '--max-pixels', '12345', '--max-output-bytes', '67890', '--timeout-ms', '700'])
+  expect(api.create).toHaveBeenCalledWith({ maxOutputBytes: 67890, timeoutMs: 700 })
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.pdf'), outputDir: resolve('images'), pages: [3, 1], dpi: 144, maxPages: 4, maxPixels: 12345 }, expect.any(AbortSignal))
+  expect(JSON.parse(result.stdout).rasterEngine).toBe('pdfium')
+  expect(api.dispose).toHaveBeenCalledOnce()
 })

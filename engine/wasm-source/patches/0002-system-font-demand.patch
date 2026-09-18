@@ -1,24 +1,27 @@
 diff --git a/vcl/inc/font/PhysicalFontCollection.hxx b/vcl/inc/font/PhysicalFontCollection.hxx
-index b5509b8f6..6a202fd5c 100644
+index b5509b8f6..81e195a49 100644
 --- a/vcl/inc/font/PhysicalFontCollection.hxx
 +++ b/vcl/inc/font/PhysicalFontCollection.hxx
-@@ -29,6 +29,9 @@
+@@ -29,6 +29,10 @@
  
  #include <array>
  #include <string_view>
 +#if defined __EMSCRIPTEN__
 +#include <unordered_set>
++#include <vector>
 +#endif
  
  #define MAX_GLYPHFALLBACK 16
  
-@@ -81,6 +84,10 @@ public:
+@@ -81,6 +85,12 @@ public:
      SAL_DLLPRIVATE std::unique_ptr<vcl::font::PhysicalFontFaceCollection> GetFontFaceCollection() const;
  
  private:
 +#if defined __EMSCRIPTEN__
 +    mutable std::unordered_set<OUString> maDemandFontFiles;
-+    bool EnsureSystemFonts(const vcl::font::FontSelectPattern&, const OUString& rMissingCodes) const;
++    mutable std::unordered_set<OUString> maDemandFontFamilies;
++    std::vector<OUString> EnsureSystemFonts(const vcl::font::FontSelectPattern&,
++                                           const OUString& rMissingCodes, bool& rAdded) const;
 +#endif
      mutable bool            mbMatchData;    // true if matching attributes are initialized
  
@@ -38,10 +41,10 @@ index e3bba325c..4b0a1d624 100644
                                  GetTextLayout(int nFallbackLevel) override;
  };
 diff --git a/vcl/source/font/PhysicalFontCollection.cxx b/vcl/source/font/PhysicalFontCollection.cxx
-index 5ce7a60cb..4c782a626 100644
+index 5ce7a60cb..2f0a0d3ea 100644
 --- a/vcl/source/font/PhysicalFontCollection.cxx
 +++ b/vcl/source/font/PhysicalFontCollection.cxx
-@@ -31,6 +31,14 @@
+@@ -31,6 +31,15 @@
  #include <font/PhysicalFontCollection.hxx>
  #include <font/fontsubstitution.hxx>
  
@@ -50,20 +53,22 @@ index 5ce7a60cb..4c782a626 100644
 +#include <stdexcept>
 +#include <emscripten.h>
 +#include <osl/file.hxx>
++#include <rtl/ustrbuf.hxx>
 +#include <unx/freetypetextrender.hxx>
 +#endif
 +
  static ImplFontAttrs lcl_IsCJKFont( std::u16string_view rFontName )
  {
      // Test, if Fontname includes CJK characters --> In this case we
-@@ -68,6 +76,94 @@ static ImplFontAttrs lcl_IsCJKFont( std::u16string_view rFontName )
+@@ -68,6 +77,110 @@ static ImplFontAttrs lcl_IsCJKFont( std::u16string_view rFontName )
  namespace vcl::font
  {
  
 +#if defined __EMSCRIPTEN__
-+bool PhysicalFontCollection::EnsureSystemFonts(const FontSelectPattern& rPattern,
-+                                                const OUString& rMissingCodes) const
++std::vector<OUString> PhysicalFontCollection::EnsureSystemFonts(
++    const FontSelectPattern& rPattern, const OUString& rMissingCodes, bool& rAdded) const
 +{
++    rAdded = false;
 +    const OUString aLanguage = LanguageTag(rPattern.meLanguage).getBcp47();
 +    char aError[4096] = {};
 +    int nFatal = 0;
@@ -72,9 +77,10 @@ index 5ce7a60cb..4c782a626 100644
 +    auto* pPaths = static_cast<char*>(MAIN_THREAD_EM_ASM_PTR({
 +        try {
 +            const resolver = Module['dshResolveSystemFonts'];
-+            if (typeof resolver !== 'function')
++            const faceResolver = Module['dshResolveSystemFontFaces'];
++            if (typeof faceResolver !== 'function' && typeof resolver !== 'function')
 +                throw new Error('LibreOffice system font resolver is not configured');
-+            const paths = resolver({
++            const request = ({
 +                family: UTF16ToString($0),
 +                style: UTF16ToString($1),
 +                weight: $2,
@@ -84,13 +90,17 @@ index 5ce7a60cb..4c782a626 100644
 +                language: UTF16ToString($6),
 +                codePoints: Array.from(UTF16ToString($7), char => char.codePointAt(0))
 +            });
-+            if (!Array.isArray(paths) || paths.some(path =>
-+                typeof path !== 'string' || !path.startsWith('/') || [0, 10, 13].some(code =>
-+                    path.includes(String.fromCharCode(code)))))
-+                throw new TypeError('LibreOffice system font resolver must return MEMFS paths synchronously');
-+            if (paths.length === 0)
++            const faces = typeof faceResolver === 'function' ? faceResolver(request)
++                : resolver(request).map(path => ({ path, family: "" }));
++            const invalid = value => typeof value !== 'string' || ([0, 9, 10, 13]).some(code =>
++                value.includes(String.fromCharCode(code)));
++            if (!Array.isArray(faces) || faces.some(face => !face || invalid(face.path)
++                || !face.path.startsWith('/') || invalid(face.family)))
++                throw new TypeError('LibreOffice font resolver must return MEMFS face records synchronously');
++            if (faces.length === 0)
 +                return 0;
-+            const bytes = new TextEncoder().encode(paths.join(String.fromCharCode(10)) + String.fromCharCode(0));
++            const records = faces.map(face => face.path + String.fromCharCode(9) + face.family);
++            const bytes = new TextEncoder().encode(records.join(String.fromCharCode(10)) + String.fromCharCode(0));
 +            const pointer = Module['_malloc'](bytes.length);
 +            if (!pointer)
 +                throw new Error('LibreOffice system font response allocation failed');
@@ -118,55 +128,68 @@ index 5ce7a60cb..4c782a626 100644
 +        throw std::runtime_error(aError);
 +    std::unique_ptr<char, decltype(&std::free)> aOwnedPaths(pPaths, std::free);
 +    if (!pPaths)
-+        return false;
++        return {};
 +
-+    bool bAdded = false;
++    std::vector<OUString> aFamilies;
 +    const OUString aPaths = OUString::fromUtf8(pPaths);
 +    sal_Int32 nPosition = 0;
 +    do
 +    {
-+        const OUString aPath = aPaths.getToken(0, '\n', nPosition);
++        const OUString aRecord = aPaths.getToken(0, '\n', nPosition);
++        const sal_Int32 nSeparator = aRecord.indexOf('\t');
++        if (nSeparator < 0)
++            throw std::runtime_error("LibreOffice received an invalid font face record");
++        const OUString aPath = aRecord.copy(0, nSeparator);
++        const OUString aFamily = aRecord.copy(nSeparator + 1);
++        if (!aFamily.isEmpty())
++        {
++            aFamilies.push_back(aFamily);
++            maDemandFontFamilies.insert(GetEnglishSearchFontName(aFamily));
++        }
 +        if (maDemandFontFiles.find(aPath) != maDemandFontFiles.end())
 +            continue;
 +        OUString aFileURL;
 +        if (osl::FileBase::getFileURLFromSystemPath(aPath, aFileURL) != osl::FileBase::E_None
 +            || !FreeTypeTextRenderImpl::RegisterFontFile(
-+                const_cast<PhysicalFontCollection*>(this), aFileURL, OUString()))
++                const_cast<PhysicalFontCollection*>(this), aFileURL, aFamily))
 +            throw std::runtime_error("LibreOffice could not register a supplied system font");
 +        maDemandFontFiles.insert(aPath);
-+        bAdded = true;
++        rAdded = true;
 +    } while (nPosition >= 0);
 +
-+    if (bAdded)
++    if (rAdded)
 +    {
 +        // Active layout objects keep their font faces; only derived matching data becomes stale.
 +        mbMatchData = false;
 +        mpFallbackList.reset();
 +        mnFallbackCount = -1;
 +    }
-+    return bAdded;
++    return aFamilies;
 +}
 +#endif
 +
  PhysicalFontCollection::PhysicalFontCollection()
      : mbMatchData( false )
      , mpPreMatchHook( nullptr )
-@@ -92,6 +188,9 @@ void PhysicalFontCollection::SetFallbackHook(GlyphFallbackFontSubstitution* pHoo
+@@ -92,6 +205,10 @@ void PhysicalFontCollection::SetFallbackHook(GlyphFallbackFontSubstitution* pHoo
  
  void PhysicalFontCollection::Clear()
  {
 +#if defined __EMSCRIPTEN__
 +    maDemandFontFiles.clear();
++    maDemandFontFamilies.clear();
 +#endif
      // remove fallback lists
      mpFallbackList.reset();
      mnFallbackCount = -1;
-@@ -185,6 +284,21 @@ PhysicalFontFamily* PhysicalFontCollection::GetGlyphFallbackFont(FontSelectPatte
+@@ -185,6 +302,60 @@ PhysicalFontFamily* PhysicalFontCollection::GetGlyphFallbackFont(FontSelectPatte
                                                                   OUString& rMissingCodes,
                                                                   int nFallbackLevel) const
  {
 +#if defined __EMSCRIPTEN__
-+    if (EnsureSystemFonts(rFontSelData, rMissingCodes))
++    bool bAdded = false;
++    const auto aFamilies = EnsureSystemFonts(rFontSelData, rMissingCodes, bAdded);
++    if (bAdded)
 +    {
 +        for (sal_Int32 nIndex = 0; nIndex < rMissingCodes.getLength();)
 +        {
@@ -179,16 +202,75 @@ index 5ce7a60cb..4c782a626 100644
 +                pFontInstance->IgnoreFallbackForUnicode(nCode, rFontSelData.GetWeight(), aFamily);
 +        }
 +    }
++    // Script subsets have distinct families. Choose by cmap instead of asking
++    // Fontconfig to choose among the original font's identically named files.
++    for (const auto& rFamily : aFamilies)
++    {
++        auto* pFamily = FindFontFamily(rFamily);
++        auto* pFace = pFamily ? pFamily->FindBestFontFace(rFontSelData) : nullptr;
++        const FontCharMapRef pMap = pFace ? pFace->GetFontCharMap() : nullptr;
++        if (!pMap)
++            continue;
++        const OUString aSearchName = GetEnglishSearchFontName(rFamily);
++        OUStringBuffer aRemaining;
++        bool bCovered = false;
++        for (sal_Int32 nIndex = 0; nIndex < rMissingCodes.getLength();)
++        {
++            const sal_UCS4 nCode = rMissingCodes.iterateCodePoints(&nIndex);
++            if (!pMap->HasChar(nCode))
++            {
++                aRemaining.appendUtf32(nCode);
++                continue;
++            }
++            bCovered = true;
++            OUString aOldFamily;
++            bool bOldEmbolden;
++            ItalicMatrix aOldMatrix;
++            if (pFontInstance->GetFallbackForUnicode(nCode, rFontSelData.GetWeight(),
++                                                    &aOldFamily, &bOldEmbolden, &aOldMatrix))
++                pFontInstance->IgnoreFallbackForUnicode(nCode, rFontSelData.GetWeight(), aOldFamily);
++            pFontInstance->AddFallbackForUnicode(nCode, rFontSelData.GetWeight(), aSearchName,
++                                                 rFontSelData.mbEmbolden, rFontSelData.maItalicMatrix);
++        }
++        if (bCovered)
++        {
++            rFontSelData.maSearchName = aSearchName;
++            rMissingCodes = aRemaining.makeStringAndClear();
++            return pFamily;
++        }
++    }
 +#endif
      PhysicalFontFamily* pFallbackData = nullptr;
  
      // find a matching font candidate for platform specific glyph fallback
-@@ -1008,6 +1122,9 @@ static bool FindMetricCompatibleFont_impl(FontSelectPattern& rFontSelData)
+@@ -941,6 +1112,10 @@ std::shared_ptr<PhysicalFontCollection> PhysicalFontCollection::Clone() const
+     auto xClonedCollection = std::make_shared<PhysicalFontCollection>();
+     xClonedCollection->mpPreMatchHook = mpPreMatchHook;
+     xClonedCollection->mpFallbackHook = mpFallbackHook;
++#if defined __EMSCRIPTEN__
++    xClonedCollection->maDemandFontFiles = maDemandFontFiles;
++    xClonedCollection->maDemandFontFamilies = maDemandFontFamilies;
++#endif
+ 
+     // TODO: clone the config-font attributes too?
+     xClonedCollection->mbMatchData    = false;
+@@ -1008,6 +1183,20 @@ static bool FindMetricCompatibleFont_impl(FontSelectPattern& rFontSelData)
  
  PhysicalFontFamily* PhysicalFontCollection::FindFontFamily(FontSelectPattern& rFSD) const
  {
 +#if defined __EMSCRIPTEN__
-+    EnsureSystemFonts(rFSD, OUString());
++    const OUString aRequested = GetEnglishSearchFontName(rFSD.GetFamilyName());
++    if (maDemandFontFamilies.find(aRequested) != maDemandFontFamilies.end())
++        return FindFontFamily(aRequested);
++    bool bAdded = false;
++    for (const auto& rFamily : EnsureSystemFonts(rFSD, OUString(), bAdded))
++    {
++        if (auto* pFamily = FindFontFamily(rFamily))
++        {
++            rFSD.maSearchName = GetEnglishSearchFontName(rFamily);
++            return pFamily;
++        }
++    }
 +#endif
      // give up if no fonts are available
      if( !Count() )
