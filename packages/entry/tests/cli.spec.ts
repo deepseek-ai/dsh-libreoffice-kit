@@ -95,3 +95,24 @@ it('renders a complete selected PNG batch through the existing converter with it
   expect(JSON.parse(result.stdout).rasterEngine).toBe('pdfium')
   expect(api.dispose).toHaveBeenCalledOnce()
 })
+it.each([
+  [['render', '--input', 'a.pdf'], /requires --output-dir/],
+  [['render', '--input', 'a.pdf', '--output-dir', 'images', '--output', 'a.png'], /does not accept/],
+  [['convert', '--input', 'a.docx'], /--input and --output/],
+  [['render', '--input', 'a.pdf', '--output-dir', 'images', '--pages', '1,bad'], /--pages/],
+] as const)('rejects incomplete or conflicting image arguments %j', async (args, message) => {
+  const result = await run([...args])
+  expect(JSON.parse(result.stderr).error).toMatch(message)
+  expect(api.renderImages).not.toHaveBeenCalled()
+  if (api.create.mock.calls.length) expect(api.dispose).toHaveBeenCalledOnce()
+})
+it('preserves exact sheet selections and lets the API resolve omitted image limits', async () => {
+  api.renderImages.mockResolvedValue({ images: [] })
+  await run(['render', '--input', 'a.xlsx', '--output-dir', 'images', '--sheet', '表 A', '--range', '$B$2:C3'])
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.xlsx'), outputDir: resolve('images'), sheet: '表 A', range: '$B$2:C3' }, expect.any(AbortSignal))
+})
+it('forwards the explicit all-pages selector without treating it as a numeric list', async () => {
+  api.renderImages.mockResolvedValue({ images: [] })
+  await run(['render', '--input', 'a.pdf', '--output-dir', 'images', '--pages', 'all'])
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.pdf'), outputDir: resolve('images'), pages: 'all' }, expect.any(AbortSignal))
+})
