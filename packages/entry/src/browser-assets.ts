@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveEngine } from './engine.ts'
 
@@ -41,11 +41,12 @@ async function resolveAssets(): Promise<BrowserAssets> {
     throw new Error('Invalid browser Worker receipt')
   const worker = receipt.files.worker
   if (worker?.path !== 'lib/browser/worker.js') throw new Error('Invalid browser Worker path')
+  if (!Number.isSafeInteger(worker.bytes) || worker.bytes <= 0) throw new Error('Invalid browser Worker receipt')
   const prebuild = JSON.parse(await readFile(join(engine.root, 'prebuilds.json'), 'utf8')) as { files: Record<string, string> }
   const verify = async (packageRoot: string, path: string, expectedHash: string, expectedBytes?: number): Promise<BrowserAsset> => {
     const [realRoot, realFile, info] = await Promise.all([realpath(packageRoot), realpath(path), stat(path)])
     const rel = relative(realRoot, realFile)
-    if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || !info.isFile() || info.size < 1
+    if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`) || !info.isFile() || info.size < 1
       || (expectedBytes !== undefined && info.size !== expectedBytes) || !/^[a-f0-9]{64}$/.test(expectedHash ?? ''))
       throw new Error('Invalid installed browser resource')
     const hash = createHash('sha256')
