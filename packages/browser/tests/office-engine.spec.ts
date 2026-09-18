@@ -223,6 +223,30 @@ it.each(['docx', 'pptx'] as const)('renders %s directly without creating another
   expect(vi.mocked(f.module.ccall).mock.calls.some(([name]) => /create_view|save|paste|composition/.test(name))).toBe(false)
   expect(f.module.FS.readFile).not.toHaveBeenCalled(); expect(f.module.FS.writeFile).not.toHaveBeenCalled()
 })
+it.each(['xlsx', 'pptx'] as const)('rejects queued old-part %s tiles before native painting and retains the new selection', async format => {
+  const f = fixture(format); await f.reader.start()
+  const previousRequest = { part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 }
+  const completed = f.reader.render(previousRequest)
+  await f.reader.operation({ type: 'part', part: 1 })
+  f.reader.callback(2, '15, 30, 45, 60'); f.reader.callback(34, 'A1:B1'); f.reader.callback(19, '7')
+  await vi.advanceTimersByTimeAsync(16)
+  const selected = f.reader.state
+  vi.mocked(f.module.ccall).mockClear(); f.events.length = 0
+  expect(() => f.reader.render(previousRequest)).toThrow(expect.objectContaining({ code: 'stale-part' }))
+  expect(f.module.ccall).not.toHaveBeenCalled(); expect(f.events).toEqual([])
+  expect(f.reader.state).toBe(selected)
+  expect(await f.reader.operation({ type: 'copy' })).toEqual({ text: 'First' })
+  expect(f.reader.render({ ...previousRequest, part: 1 })).toEqual(completed)
+  expect(f.reader.state.selection).toBe(selected.selection)
+})
+it('observes queued native part changes before deciding whether a tile can paint', async () => {
+  const f = fixture(); await f.reader.start()
+  f.reader.callback(14, '1'); f.reader.callback(2, '15, 30, 45, 60')
+  expect(() => f.reader.render({ part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 }))
+    .toThrow(expect.objectContaining({ code: 'stale-part' }))
+  expect(f.reader.state).toMatchObject({ part: 1, selection: [{ x: 1, y: 2, width: 3, height: 4 }] })
+  expect(vi.mocked(f.module.ccall).mock.calls.some(([name]) => name === 'dsh_lok_document_paint')).toBe(false)
+})
 it('stops after an event-loop failure and ignores subsequent callbacks', async () => {
   const f = fixture(); await f.reader.start(); f.overrides.set('dsh_lok_pump', -1)
   await vi.advanceTimersByTimeAsync(16); expect(f.failed).toHaveBeenCalledOnce()

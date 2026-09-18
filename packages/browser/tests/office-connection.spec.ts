@@ -30,6 +30,20 @@ function options(): OfficeDocumentOptions {
       metadataUrl: '/soffice.data.js.metadata', programDirectory: '/instdir/program' } }
 }
 afterEach(() => { vi.unstubAllGlobals(); ReadingWorker.instances = [] })
+it('propagates a stale-part tile rejection without closing the reading session', async () => {
+  const document = await openOfficeDocument(options()), worker = ReadingWorker.instances[0]!
+  try {
+    const request = { part: 1, x: 0, y: 0, width: 1, height: 1, scale: 1 }
+    const stale = expect(document.renderTile(request)).rejects.toMatchObject({ code: 'stale-part' })
+    worker.receive({ type: 'error', id: worker.messages.at(-1)!.id, code: 'stale-part', message: 'Inactive part', fatal: false })
+    await stale
+    expect(worker.terminated).toBe(false)
+    const current = document.renderTile({ ...request, part: 0 })
+    const tile = { width: 1, height: 1, rgba: new Uint8ClampedArray(4) }
+    worker.receive({ type: 'tile', id: worker.messages.at(-1)!.id, tile })
+    expect(await current).toEqual(tile)
+  } finally { await document.dispose() }
+})
 it.each(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const)('opens %s without an editable mode or legacy opt-in', async extension => {
   const document = await openOfficeDocument({ ...options(), extension, readOnly: false } as OfficeDocumentOptions)
   const worker = ReadingWorker.instances[0]!

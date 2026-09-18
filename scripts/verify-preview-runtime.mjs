@@ -39,7 +39,7 @@ export function verifyPreviewRuntime(receipt, { sourceCommit, kitSha256, wasmSha
     && hash(layout.wideRgbaSha256) && hash(layout.narrowRgbaSha256) && layout.wideRgbaSha256 !== layout.narrowRgbaSha256,
   'Missing Writer continuous-layout evidence');
   assert(receipt.formats.xlsx.worksheets?.selected === true && receipt.formats.xlsx.worksheets.formulaPreserved === true
-    && receipt.formats.xlsx.worksheets.crossPartSelectionPreserved === true,
+    && receipt.formats.xlsx.worksheets.stalePartRejected === true && receipt.formats.xlsx.worksheets.selectionPreservedAfterStalePart === true,
     'Missing worksheet navigation evidence');
   return receipt;
 }

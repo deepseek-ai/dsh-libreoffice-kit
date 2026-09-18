@@ -27,7 +27,7 @@ test('old editing receipts and incomplete reading/runtime evidence cannot qualif
     r => r.formats.docx.layout.selectionPreserved = false,
     r => r.formats.docx.layout.narrowRgbaSha256 = r.formats.docx.layout.wideRgbaSha256,
     r => r.formats.docx.layout.paginatedRestored = false, r => r.formats.xlsx.worksheets.formulaPreserved = false,
-    r => r.formats.xlsx.worksheets.crossPartSelectionPreserved = false,
+    r => r.formats.xlsx.worksheets.stalePartRejected = false, r => r.formats.xlsx.worksheets.selectionPreservedAfterStalePart = false,
     ...previewMutationProbes.map(probe => r => r.formats.docx.rejectedOperations[probe] = false),
   ]) { const receipt = fixture(); mutate(receipt); assert.throws(() => verifyPreviewRuntime(receipt, identity)); }
 });

@@ -83,7 +83,7 @@ export interface BrowserDocument {
 }
 
 /** Stable failures callers may map to their own localized product copy. */
-export type BrowserRenderErrorCode = 'unavailable' | 'invalid-document' | 'timeout' | 'font-limit' | 'font-unavailable' | 'disposed' | 'render-failed'
+export type BrowserRenderErrorCode = 'unavailable' | 'invalid-document' | 'timeout' | 'font-limit' | 'font-unavailable' | 'disposed' | 'render-failed' | 'stale-part'
 
 /** A rendering failure with a stable machine-readable category. */
 export class BrowserRenderError extends Error {

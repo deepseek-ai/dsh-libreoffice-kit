@@ -16,6 +16,6 @@ export function previewRuntimeFixture(archiveSha256, wasmSha256, sourceCommit) {
         viewportIndependent: true, paginatedRestored: true, widthMatched: true, selectionPreserved: true,
         wideRgbaSha256: '6'.repeat(64), narrowRgbaSha256: '7'.repeat(64),
         wide: { width: 700, height: 1000 }, narrow: { width: 360, height: 2000 } } } : {}),
-      ...(format === 'xlsx' ? { worksheets: { selected: true, formulaPreserved: true, crossPartSelectionPreserved: true } } : {}),
+      ...(format === 'xlsx' ? { worksheets: { selected: true, formulaPreserved: true, stalePartRejected: true, selectionPreservedAfterStalePart: true } } : {}),
     }])) };
 }

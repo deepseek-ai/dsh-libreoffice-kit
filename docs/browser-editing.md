@@ -21,7 +21,9 @@ An optional `anchor:{x,y}` identifies a point in the previous layout. The engine
 
 `setViewport(rectangle, scale)` updates only scrolling and raster zoom. Equal widths do not trigger layout; while one layout is running, newer pending widths replace older pending widths. `layoutGeneration` changes when the layout changes; `renderGeneration` changes on pixel/geometry invalidation, including delayed fonts. Invalidation events identify a part and rectangle; a null rectangle means the whole part, and part `-1` means every part.
 
-`renderTile(request, signal)` returns owned RGBA bytes with no selection/cursor controls baked in. The application deduplicates requests, caches pixels with a bounded budget and discards truly invalid results. Aborting a tile request abandons that consumer's result, rather than closing the document. Keep already-started valid work if another consumer or the cache still needs it. Office image export uses the Node/CLI `render` path, independently of the visible reading session.
+`renderTile(request, signal)` returns owned RGBA bytes with no selection/cursor controls baked in. It paints only the current worksheet/slide (`request.part === state.part` when the Worker executes it). A queued tile for a former part rejects with `BrowserRenderError.code === 'stale-part'` before painting, preserving the current selection and keeping the document usable. Treat this as an expired display request. Navigate with `setPart()` before requesting that part's tiles; the browser API does not perform background cross-part drawing.
+
+The application deduplicates requests, caches pixels with a bounded budget and discards truly invalid results. Aborting a tile request abandons that consumer's result, rather than closing the document. Keep already-started valid work if another consumer or the cache still needs it. Office image export uses the Node/CLI `render` path, independently of the visible reading session.
 
 ```js
 import { openOfficeDocument } from '@deepseek-ai/libreoffice-kit/browser';

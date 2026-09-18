@@ -25,6 +25,8 @@ Writer starts in `paginated` layout. `setLayout({mode: 'continuous', width, anch
 
 `setViewport` changes scrolling and raster zoom only. Equal layout widths are deduplicated and pending layout requests coalesce to the latest width. DPR changes must update pixel density without changing the document width. `layoutGeneration` changes when layout changes; `renderGeneration` changes for invalidated geometry or pixels, including newly resolved fonts. Cache entries and in-flight results must be checked against the invalidation state. No extra view is created for capture or measurement; measuring an inactive worksheet does not move the active selection.
 
+`renderTile` paints the current part only. A tile queued before `setPart` may become obsolete: the Worker rejects it with `BrowserRenderError.code === 'stale-part'` before entering LibreOffice painting, without changing selection or closing the session. Discard that expired display request. Already-started valid painting may still finish and enter the cache. Background multi-sheet image export belongs to the separate Node/CLI API.
+
 ## PDF, resources and fonts
 
 `openDocument({ extension: 'pdf', ... }, signal)` retains the existing PDFium browser API. Its fixed pages and serialized tiles are read-only. PDFium preloads the configured original fonts with explicit `mode: 'full'`; embedded fonts take priority. Applications own viewport, cache and PNG assembly.

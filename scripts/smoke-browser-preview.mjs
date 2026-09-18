@@ -283,13 +283,18 @@ try {
           const selectedState = () => JSON.stringify({ part: reader.state.part, cursor: reader.state.cursor,
             selection: reader.state.selection, cellAddress: reader.state.cellAddress, cellFormula: reader.state.cellFormula });
           const beforeOtherPart = selectedState(), copiedBeforeOtherPart = await reader.copy();
-          await reader.renderTile({ part: 0, x: 0, y: 0, width: 100, height: 100, scale: 1 });
+          let stalePartRejected = false;
+          try { await reader.renderTile({ part: 0, x: 0, y: 0, width: 100, height: 100, scale: 1 }); }
+          catch (error) { check(error.code === 'stale-part', 'Inactive tile did not report stale-part'); stalePartRejected = true; }
+          check(stalePartRejected, 'Inactive worksheet tile entered LibreOffice painting');
           await settled();
-          check(await reader.copy() === copiedBeforeOtherPart && selectedState() === beforeOtherPart,
-            'Painting another worksheet changed the active worksheet or its selection');
+          const copiedAfterOtherPart = await reader.copy(), afterOtherPart = selectedState();
+          check(copiedAfterOtherPart === copiedBeforeOtherPart && afterOtherPart === beforeOtherPart,
+            'Painting another worksheet changed the active worksheet or its selection: ' + JSON.stringify({
+              before: JSON.parse(beforeOtherPart), after: JSON.parse(afterOtherPart), textChanged: copiedAfterOtherPart !== copiedBeforeOtherPart }));
           await reader.setPart(0); await reader.goToCell('B1');
           check(reader.state.cellFormula.includes('A1'), 'Reading lost the formula');
-          worksheets = { selected: true, formulaPreserved: true, crossPartSelectionPreserved: true };
+          worksheets = { selected: true, formulaPreserved: true, stalePartRejected, selectionPreservedAfterStalePart: true };
         }
         const sourceAfterSha256 = await digest(input);
         check(sourceAfterSha256 === sourceSha256, 'Borrowed input bytes were changed or detached');

@@ -288,7 +288,9 @@ export class OfficeEngine {
   /** Direct tiles preserve the active view, navigation state and selection. */
   render(request: OfficeDocumentTileRequest): BrowserTile {
     this.requireOpen()
+    this.flush()
     const part = this.state.parts[integer(request.part, this.state.parts.length - 1)]!
+    if (request.part !== this.state.part) throw new BrowserRenderError('stale-part', 'The Office tile belongs to an inactive worksheet or slide.')
     try {
       return renderRegion(this.module, this.document, { ...request, pageIndex: 0 }, [{ ...part, x: 0, y: 0,
         part: this.state.documentType === 'text' ? -1 : request.part }], () => new BrowserRenderError('render-failed', 'Office tile rendering failed.'))

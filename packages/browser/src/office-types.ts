@@ -50,7 +50,7 @@ export interface OfficeDocumentNavigation {
   readonly extend?: boolean
   readonly word?: boolean
 }
-/** One view-relative region. Pixel density does not change document layout. */
+/** One region of the current part. Pixel density does not change document layout. */
 export interface OfficeDocumentTileRequest extends OfficeDocumentRectangle { readonly part: number; readonly scale: number }
 /** A null rectangle invalidates an entire part; negative part means every part. */
 export type OfficeDocumentEvent =
@@ -71,6 +71,7 @@ export interface OfficeDocument {
   setViewport(rectangle: OfficeDocumentRectangle, scale: number): Promise<void>
   /** Coalesces pending widths; superseded callers observe the newest applied layout. */
   setLayout(request: OfficeDocumentLayoutRequest): Promise<OfficeDocumentLayoutResult>
+  /** Only the current part can be painted; queued requests for a former part reject with stale-part without changing selection. */
   renderTile(request: OfficeDocumentTileRequest, signal?: AbortSignal): Promise<BrowserTile>
   dispose(): Promise<void>
 }
