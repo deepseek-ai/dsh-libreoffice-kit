@@ -11,15 +11,15 @@ export function verifyBrowserPreview(directory, receipt) {
   const candidate = readJson(join(directory, 'browser-preview.json'));
   assert(candidate.schemaVersion === 1 && candidate.kind === 'browser-preview', 'Invalid browser preview candidate');
   assert(/^[a-f0-9]{40}$/.test(candidate.sourceCommit) && typeof candidate.sourceDirty === 'boolean', 'Missing preview source identity');
-  assert(JSON.stringify(Object.keys(candidate.packages ?? {}).sort()) === '["browser","fonts"]', 'Preview requires only browser and portable-font packages');
+  assert(JSON.stringify(Object.keys(candidate.packages ?? {}).sort()) === '["kit","wasm"]', 'Preview requires only the existing main and WASM packages');
   for (const [kind, record] of Object.entries(candidate.packages)) {
-    assert(record.name === `@deepseek-ai/libreoffice-kit-${kind}` && /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(record.version)
+    assert(record.name === (kind === 'kit' ? '@deepseek-ai/libreoffice-kit' : '@deepseek-ai/libreoffice-kit-wasm') && /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(record.version)
       && record.file === tarballName(record), 'Noncanonical preview package');
     assert(Number.isSafeInteger(record.bytes) && record.bytes > 0 && statSync(join(directory, record.file)).size === record.bytes
       && /^[a-f0-9]{64}$/.test(record.sha256) && sha256(join(directory, record.file)) === record.sha256, `Preview archive checksum differs: ${kind}`);
   }
-  assert(candidate.packages.browser.version === candidate.packages.fonts.version, 'Browser and portable fonts versions differ');
-  assert(Array.isArray(candidate.dependencies), 'Missing portable-font dependency closure');
+  assert(candidate.packages.kit.version === candidate.packages.wasm.version, 'Main and WASM versions differ');
+  assert(Array.isArray(candidate.dependencies), 'Missing runtime dependency closure');
   const names = new Set();
   for (const record of candidate.dependencies) {
     assert(typeof record.name === 'string' && /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(record.name)
@@ -30,7 +30,7 @@ export function verifyBrowserPreview(directory, receipt) {
   }
   if (receipt !== undefined) {
     assert(receipt.sourceDirty === candidate.sourceDirty, 'Preview receipt source state differs');
-    verifyBrowserReceipt(receipt, { browserSha256: candidate.packages.browser.sha256, fontsSha256: candidate.packages.fonts.sha256,
+    verifyBrowserReceipt(receipt, { browserSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256,
       sourceCommit: candidate.sourceCommit, allowDirty: true });
   }
   return candidate;

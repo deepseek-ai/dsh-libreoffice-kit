@@ -41,7 +41,7 @@ export async function verifyNpmOidc({ env = process.env, fetchImpl = fetch, pack
     throw new Error('Invalid GitHub OIDC request URL');
   }
   tokenUrl.searchParams.set('audience', audience);
-  const allowed = new Set([kitManifest().name, ...releaseTargets([]).map(platform => `${enginePrefix}-${platform}`), `${enginePrefix}-browser`, `${enginePrefix}-fonts`]);
+  const allowed = new Set([kitManifest().name, ...releaseTargets([]).map(platform => `${enginePrefix}-${platform}`)]);
   if (!Array.isArray(packages) || packages.length === 0 || new Set(packages).size !== packages.length || packages.some(name => !allowed.has(name)))
     throw new Error('npm OIDC verification requires declared package names');
   for (const name of packages) {

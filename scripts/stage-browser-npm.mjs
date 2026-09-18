@@ -1,4 +1,4 @@
-/** Stage the exact browser/font Release archives; compilation and npm approval are separate. */
+/** Stage the exact main/WASM Release archives; compilation and npm approval are separate. */
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -12,7 +12,7 @@ import { isMain, readJson, sourceRepository, tarballName } from './platform-matr
 import { assert, sha256 } from './verify-artifacts.mjs';
 
 function versionForTag(tag) {
-  const match = /^(?:libreoffice-kit-browser-)?v(\d+\.\d+\.\d+-[\w.-]+)$/.exec(tag ?? '');
+  const match = /^(?:libreoffice-kit-)?v(\d+\.\d+\.\d+-[\w.-]+)$/.exec(tag ?? '');
   assert(match, 'Browser staging requires a browser prerelease source tag');
   return match[1];
 }
@@ -29,8 +29,8 @@ export function validateBrowserNpmCandidate(directory, tag) {
   assert(candidate.schemaVersion === 1 && candidate.kind === 'browser-preview'
     && /^[a-f0-9]{40}$/.test(candidate.sourceCommit) && candidate.sourceDirty === false,
   'Browser npm staging requires a clean source identity');
-  assert(JSON.stringify(Object.keys(candidate.packages ?? {}).sort()) === '["browser","fonts"]',
-    'Browser npm staging requires only browser and portable fonts');
+  assert(JSON.stringify(Object.keys(candidate.packages ?? {}).sort()) === '["kit","wasm"]',
+    'Browser npm staging requires only the existing main and WASM packages');
   assert(receipt.schemaVersion === 1 && receipt.kind === 'browser-editor' && receipt.passed === true
     && receipt.sourceCommit === candidate.sourceCommit && receipt.sourceDirty === false
     && receipt.installedOutsideRepository === true && receipt.npmOffline === true
@@ -44,15 +44,15 @@ export function validateBrowserNpmCandidate(directory, tag) {
     `Missing browser/native edit-save-reopen evidence: ${format}`);
   }
   for (const name of ['browser-preview.json', 'editor.json']) auditBytes(readFileSync(join(directory, name)), name);
-  const packages = ['fonts', 'browser'].map(kind => {
+  const packages = ['wasm', 'kit'].map(kind => {
     const record = candidate.packages[kind];
-    assert(record?.name === `@deepseek-ai/libreoffice-kit-${kind}` && record.version === version
+    assert(record?.name === (kind === 'kit' ? '@deepseek-ai/libreoffice-kit' : '@deepseek-ai/libreoffice-kit-wasm') && record.version === version
       && record.file === tarballName(record) && /^[a-f0-9]{64}$/.test(record.sha256), 'Invalid browser npm archive identity');
     const path = join(directory, record.file);
     const stat = statSync(path);
     assert(stat.isFile() && Number.isSafeInteger(record.bytes) && record.bytes > 0 && stat.size === record.bytes
       && sha256(path) === record.sha256, `Browser npm archive checksum differs: ${kind}`);
-    assert(receipt[kind === 'browser' ? 'archiveSha256' : 'fontsSha256'] === record.sha256,
+    assert(receipt[kind === 'kit' ? 'archiveSha256' : 'wasmSha256'] === record.sha256,
       `Browser npm archive differs from qualification: ${kind}`);
     const { manifest } = auditNpmArchive(path);
     const repository = typeof manifest.repository === 'string' ? manifest.repository : manifest.repository?.url;
@@ -62,9 +62,16 @@ export function validateBrowserNpmCandidate(directory, tag) {
       || [npmRegistry, npmRegistry.slice(0, -1)].includes(manifest.publishConfig.registry), 'Unexpected browser npm registry');
     assert(typeof repository === 'string' && repository.replace(/^git\+/, '').replace(/\.git\/?$/, '').replace(/\/$/, '')
       === `https://github.com/${sourceRepository}`, 'Browser npm package repository differs');
-    assert(manifest.os === undefined && manifest.cpu === undefined && manifest.libc === undefined
-      && !Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies })
-        .some(name => name.startsWith('@deepseek-ai/libreoffice-kit')), 'Browser npm package must be portable and independent of native engines');
+    assert(manifest.os === undefined && manifest.cpu === undefined && manifest.libc === undefined,
+      'Kit packages must install on every supported host');
+    const engineNames = Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies })
+      .filter(name => name.startsWith('@deepseek-ai/libreoffice-kit'));
+    assert(kind === 'kit'
+      ? JSON.stringify(engineNames) === '["@deepseek-ai/libreoffice-kit-wasm"]'
+        && manifest.dependencies?.['@deepseek-ai/libreoffice-kit-wasm'] === version
+        && !Object.keys(manifest.optionalDependencies ?? {}).length
+        && !Object.keys(manifest.peerDependencies ?? {}).length
+      : engineNames.length === 0, 'The main API requires only its exact WASM dependency');
     return { name: record.name, version, path, integrity: `sha512-${createHash('sha512').update(readFileSync(path)).digest('base64')}` };
   });
   return { sourceCommit: candidate.sourceCommit, version, packages };
@@ -81,8 +88,8 @@ export async function stageBrowserNpmRelease(tag, directory, { env = process.env
   const release = JSON.parse(result.stdout);
   assert(release.tag_name === tag && release.draft === false && release.prerelease === true,
     'Browser npm staging requires the published prerelease');
-  const files = ['browser-preview.json', 'editor.json', ...['browser', 'fonts'].map(kind =>
-    tarballName({ name: `@deepseek-ai/libreoffice-kit-${kind}`, version }))];
+  const files = ['browser-preview.json', 'editor.json', ...['wasm', 'kit'].map(kind =>
+    tarballName({ name: kind === 'kit' ? '@deepseek-ai/libreoffice-kit' : '@deepseek-ai/libreoffice-kit-wasm', version }))];
   mkdirSync(directory, { recursive: true });
   assert(readdirSync(directory).length === 0, 'Browser npm staging destination must be empty');
   for (const name of files) {

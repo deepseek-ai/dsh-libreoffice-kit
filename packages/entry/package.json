@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
-  "description": "Convert and recalculate Office documents with prebuilt LibreOffice",
+  "description": "WASM Office editing, direct document images, and conversion for Node and browsers",
   "version": "0.0.2-rc4",
   "publishConfig": {
     "access": "public"
@@ -35,7 +35,27 @@
       "types": "./lib/types/document.d.ts",
       "default": "./lib/document.js"
     },
-    "./cli": "./lib/cli.js"
+    "./cli": "./lib/cli.js",
+    "./browser-assets": {
+      "types": "./lib/types/browser-assets.d.ts",
+      "default": "./lib/browser-assets.js"
+    },
+    "./internal/rendering": {
+      "types": "./lib/types/rendering.d.ts",
+      "default": "./lib/rendering.js"
+    },
+    "./internal/engine-rendering": {
+      "types": "./lib/types/engine-rendering.d.ts",
+      "default": "./lib/engine-rendering.js"
+    },
+    "./internal/sheet-geometry": {
+      "types": "./lib/types/sheet-geometry.d.ts",
+      "default": "./lib/sheet-geometry.js"
+    },
+    "./browser": {
+      "types": "./lib/browser/types/index.d.ts",
+      "import": "./lib/browser/index.js"
+    }
   },
   "files": [
     "README.zh.md",
@@ -51,7 +71,14 @@
     "assets/font-subset.wasm",
     "assets/font-subset.json",
     "sources/font-subset/",
-    "licenses/font-subset/"
+    "licenses/font-subset/",
+    "lib/browser-assets.js",
+    "lib/rendering.js",
+    "lib/engine-rendering.js",
+    "lib/sheet-geometry.js",
+    "lib/browser/",
+    "sources/browser/",
+    "licenses/javascript/"
   ],
   "dependencies": {
     "@unicode/unicode-17.0.0": "2.0.7",

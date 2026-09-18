@@ -13,7 +13,7 @@ import { chromium } from 'playwright';
 import { editorFixture } from '../test/browser-editor-fixture.mjs';
 import { verifyBrowserPreview } from './verify-browser-preview.mjs';
 import { verifyBrowserPackage } from './build-browser.mjs';
-import { verifyFontPackage } from './build-fonts.mjs';
+import { verifyFontSubset } from './build-font-subset.mjs';
 import { npm, run } from './pack-utils.mjs';
 import { root, readJson } from './platform-matrix.mjs';
 import { assert } from './verify-artifacts.mjs';
@@ -43,11 +43,13 @@ try {
     dependencies: Object.fromEntries(packages.map(pkg => [pkg.name, `file:${join(candidateDirectory, pkg.file)}`])),
   }));
   npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', '--omit=optional'], consumer, temporary);
-  const directory = join(consumer, 'node_modules/@deepseek-ai/libreoffice-kit-browser');
-  const fontsDirectory = join(consumer, 'node_modules/@deepseek-ai/libreoffice-kit-fonts');
-  verifyBrowserPackage(directory, candidate.packages.browser.version);
-  verifyFontPackage(fontsDirectory, candidate.packages.fonts.version);
-  const { createFontSource } = await import(pathToFileURL(join(fontsDirectory, 'lib/font-source.js')));
+  const directory = join(consumer, 'node_modules/@deepseek-ai/libreoffice-kit');
+  const engineDirectory = join(consumer, 'node_modules/@deepseek-ai/libreoffice-kit-wasm');
+  verifyBrowserPackage(directory, engineDirectory);
+  verifyFontSubset(directory);
+  const { createFontSource } = await import(pathToFileURL(join(directory, 'lib/font-source.js')));
+  const { resolveBrowserAssets } = await import(pathToFileURL(join(directory, 'lib/browser-assets.js')));
+  const browserAssets = await resolveBrowserAssets();
   source = createFontSource();
   const fontRequests = [];
   server = createServer(async (request, response) => {
@@ -69,6 +71,16 @@ try {
         response.end(await source.read(url.pathname.slice(7)));
       } else if (url.pathname.startsWith('/fixture/')) {
         response.end(editorFixture(url.pathname.slice(9)));
+      } else if (url.pathname === '/assets.json') {
+        response.setHeader('Content-Type', 'application/json');
+        response.end(JSON.stringify({ programDirectory: browserAssets.programDirectory,
+          files: Object.fromEntries(Object.keys(browserAssets.files).map(key => [key, { path: key }])) }));
+      } else if (url.pathname.startsWith('/asset/')) {
+        const key = url.pathname.slice(7);
+        const file = browserAssets.files[key];
+        assert(file, 'Unknown browser asset');
+        response.setHeader('Content-Type', ['worker', 'loader'].includes(key) ? 'text/javascript' : key === 'wasm' ? 'application/wasm' : 'application/octet-stream');
+        response.end(await readFile(file.path));
       } else if (url.pathname.startsWith('/browser/')) {
         const file = resolve(directory, url.pathname.slice(9));
         assert(file.startsWith(`${directory}/`), 'Browser resource escapes the package');
@@ -114,10 +126,10 @@ try {
     const result = await page.evaluate(async ({ origin, format, fontFallbacks }) => {
       const check = (condition, message) => { if (!condition) throw new Error(message); };
       check(crossOriginIsolated, 'Editor is not cross-origin isolated');
-      const { openEditor } = await import(`${origin}/browser/lib/index.js`);
-      const manifest = await (await fetch(`${origin}/browser/assets.json`)).json();
+      const { openEditor } = await import(`${origin}/browser/lib/browser/index.js`);
+      const manifest = await (await fetch(`${origin}/assets.json`)).json();
       const assets = { programDirectory: manifest.programDirectory };
-      for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/browser/${file.path}`;
+      for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;
       const options = { extension: format, assets, fontFallbacks, timeoutMs: 120000,
         maxLoadedFontBytes: 256 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024,
         resolveFonts: async (input, signal) => {
@@ -316,7 +328,7 @@ try {
   assert(newCharacterFonts, 'Editing did not request a font for newly inserted Chinese text');
   const receipt = { schemaVersion: 1, kind: 'browser-editor', passed: formats.length === 3,
     sourceCommit: candidate.sourceCommit, sourceDirty: candidate.sourceDirty,
-    archiveSha256: candidate.packages.browser.sha256, fontsSha256: candidate.packages.fonts.sha256,
+    archiveSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256,
     installedOutsideRepository: true, npmOffline: true, externalNetworkRequests: external.length,
     crossOriginIsolated: true, workerDisposal: true, newCharacterFonts, formats: results,
     memory: { platform: process.platform, architecture: process.arch,

@@ -5,6 +5,7 @@ import { isMain, kitDirectory, kitManifest, root, tarballName } from './platform
 import { npmEnvironment, pnpm } from './pack-utils.mjs';
 import { auditNpmArchive } from './publication-privacy.mjs';
 import { assert } from './verify-artifacts.mjs';
+import { buildBrowserSources, verifyBrowserPackage } from './build-browser.mjs';
 import { verifyFontSubset } from './build-font-subset.mjs';
 
 /** Runtime entries every adapter build must produce; `files` publishes exactly these bundles. */
@@ -35,6 +36,8 @@ export function buildKitSources() {
 export function packKit(destination, work) {
   const { directory, manifest } = buildKitSources();
   verifyFontSubset(directory);
+  buildBrowserSources(false);
+  verifyBrowserPackage();
   const target = resolve(destination);
   mkdirSync(target, { recursive: true });
   pnpm(['--dir', directory, 'pack', '--pack-destination', target],

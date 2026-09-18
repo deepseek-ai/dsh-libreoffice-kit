@@ -5,12 +5,11 @@ import { readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { create } from 'fontkit';
-import { createFontSource } from '@deepseek-ai/libreoffice-kit-fonts';
+import { createFontSource } from '@deepseek-ai/libreoffice-kit/fonts';
 
 const require = createRequire(import.meta.url);
-assert.deepEqual(readdirSync('node_modules/@deepseek-ai').sort(), ['libreoffice-kit-fonts']);
-assert.throws(() => require.resolve('@deepseek-ai/libreoffice-kit/package.json'), { code: 'MODULE_NOT_FOUND' });
-const entry = realpathSync(require.resolve('@deepseek-ai/libreoffice-kit-fonts/package.json'));
+assert.deepEqual(readdirSync('node_modules/@deepseek-ai').sort(), ['libreoffice-kit', 'libreoffice-kit-wasm']);
+const entry = realpathSync(require.resolve('@deepseek-ai/libreoffice-kit/package.json'));
 assert(entry.startsWith(`${resolve('node_modules')}/`));
 const source = createFontSource({ fontDirectories: [resolve('fixtures')], fontFallbacks: [['sans-serif', 'Roboto']] });
 const points = [0x41, 0x42, 0x03a9];
@@ -30,5 +29,5 @@ try {
   }
   assert(points.every(point => coverage.has(point)));
 } finally { await source.dispose(); }
-writeFileSync('font-smoke.json', `${JSON.stringify({ passed: true, package: '@deepseek-ai/libreoffice-kit-fonts', installedOutsideRepository: true,
-  network: 'offline', libreOfficeEnginesInstalled: false, coveredCodePoints: points, subsetBytes: totalBytes, disposed: true }, null, 2)}\n`);
+writeFileSync('font-smoke.json', `${JSON.stringify({ passed: true, package: '@deepseek-ai/libreoffice-kit/fonts', installedOutsideRepository: true,
+  network: 'offline', wasmInstalled: true, coveredCodePoints: points, subsetBytes: totalBytes, disposed: true }, null, 2)}\n`);
