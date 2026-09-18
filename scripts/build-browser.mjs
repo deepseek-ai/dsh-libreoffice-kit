@@ -15,6 +15,9 @@ const helpers = ['rendering', 'engine-rendering', 'sheet-geometry'];
 /** Compile browser-only JavaScript without copying any engine bytes into the main package. */
 export function buildBrowserSources(buildEntry = true) {
   if (buildEntry) buildKitSources();
+  // TypeScript does not remove declarations for deleted source files.
+  rmSync(join(source, 'lib/types'), { recursive: true, force: true });
+  rmSync(join(source, 'lib/tsconfig.tsbuildinfo'), { force: true });
   pnpm(['exec', 'tsc', '-b', 'packages/browser'], { cwd: root });
   pnpm(['exec', 'tsdown'], { cwd: source });
   const target = join(directory, 'lib/browser');
@@ -23,6 +26,7 @@ export function buildBrowserSources(buildEntry = true) {
   for (const name of ['index.js', 'worker.js']) cpSync(regularFile(source, `lib/${name}`), join(target, name));
   for (const name of readdirSync(join(source, 'lib/types')).filter(name => name.endsWith('.d.ts')))
     cpSync(join(source, 'lib/types', name), join(target, 'types', name));
+  rmSync(join(directory, 'sources/browser'), { recursive: true, force: true });
   for (const path of ['packages/browser/src', 'packages/browser/package.json', 'packages/browser/tsconfig.json', 'packages/browser/tsdown.config.ts', 'scripts/build-browser.mjs']) {
     const dest = join(directory, 'sources/browser', path);
     mkdirSync(dirname(dest), { recursive: true }); cpSync(join(root, path), dest, { recursive: true });
@@ -50,6 +54,10 @@ export function verifyBrowserPackage(target = directory, engineDirectory = join(
     'Browser entry must be in the matching main package');
   for (const file of ['lib/browser/index.js', 'lib/browser/worker.js', 'lib/browser/types/index.d.ts', 'lib/browser-assets.js']) regularFile(target, file);
   for (const helper of helpers) regularFile(target, `lib/${helper}.js`);
+  const declarations = join(target, 'lib/browser/types');
+  const declarationText = readdirSync(declarations).filter(name => name.endsWith('.d.ts')).map(name => readFileSync(join(declarations, name), 'utf8')).join('\n');
+  assert(declarationText.includes('openOfficeDocument') && !declarationText.includes('openEditor')
+    && !readdirSync(declarations).some(name => name.startsWith('editor')), 'Browser package retains a removed editing SDK');
   const receipt = readJson(regularFile(target, 'lib/browser/assets.json'));
   const worker = receipt.files?.worker;
   assert(receipt.schemaVersion === 1 && worker?.path === 'lib/browser/worker.js'
@@ -58,7 +66,7 @@ export function verifyBrowserPackage(target = directory, engineDirectory = join(
   const engine = readJson(join(engineDirectory, 'prebuilds.json')).engine;
   const module = new WebAssembly.Module(readFileSync(join(engineDirectory, engine.wasm)));
   const exports = new Set(WebAssembly.Module.exports(module).map(entry => entry.name));
-  for (const name of ['dsh_lok_document_paint', 'dsh_lok_document_composition', 'dsh_lok_document_create_view', 'dsh_lok_document_part_info', 'dsh_pdf_open', 'dsh_pdf_paint'])
+  for (const name of ['dsh_lok_document_paint', 'dsh_lok_document_configure_view', 'dsh_lok_document_composition', 'dsh_lok_document_create_view', 'dsh_lok_document_part_info', 'dsh_pdf_open', 'dsh_pdf_paint'])
     assert(exports.has(name) || exports.has(`_${name}`), `WASM has no browser export: ${name}`);
   return receipt;
 }

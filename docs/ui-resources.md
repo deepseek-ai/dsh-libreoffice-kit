@@ -19,14 +19,14 @@ shared [policy](../engine/ui-resource-policy.mjs) checks their presence. Native
 packaging removes every other `.ui` file below this root. It does not remove other
 file types or layouts outside this root. Existing toolbar, menubar and image policies still apply.
 
-The shared WASM image also powers persistent browser editing and retains ordinary
+The shared WASM image also powers persistent browser reading and retains ordinary
 `.ui` layouts beyond this conversion allowlist. A 2026-09-18 editor smoke reproduced
 an abort during the first Writer event pump with the six-layout image. The same
 compiled module passed DOCX editing with the complete data image; restoring the
 ordinary layouts fixes this packaging regression. Notebookbars, toolbars, menus
 and image archives remain excluded. A conversion-only minimization result does
-not qualify removal from the editor. Run `scripts/smoke-browser-editor.mjs` against
-packed archives for DOCX/XLSX/PPTX editing, saving and reopening before release.
+not qualify removal from the reading runtime. Run `scripts/smoke-browser-preview.mjs` against
+packed archives for DOCX/XLSX/PPTX reading, selection/copy, Writer layouts and disposal before release. The rc5 SDK removal does not justify additional `.ui` pruning: ordinary VCL idle work still uses these resources.
 
 The initial five-layout policy omitted Writer comments. A real-engine test on
 2026-09-17 confirmed that a standard commented DOCX loaded with the baseline WASM
@@ -112,8 +112,8 @@ payload and is not a releasable package; stage it again with the normal recipe.
 
 Review the result and update `requiredUiResources` and `reviewedUiCoreRevision`.
 The mandatory allowlist must cover both backends: a resource removable by native
-minimization may still be required by WASM conversion. WASM editor layouts are
-retained separately and require editing qualification before any further pruning.
+minimization may still be required by WASM conversion. Ordinary WASM layouts are
+retained separately and require reading-runtime qualification before any further pruning.
 A smaller native result does not justify removing Writer's annotation layout without a WASM comment conversion check.
 The reviewed revision is evidence scope; `engine/core` remains the only source
 pin. Stage freshly qualified native packages on each release host and repackage

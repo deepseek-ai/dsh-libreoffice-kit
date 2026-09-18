@@ -1,19 +1,40 @@
-# LibreOffice browser renderer and editor
+# LibreOffice browser reading sessions
 
-`@deepseek-ai/libreoffice-kit/browser` loads original Office bytes in a dedicated Worker and draws Writer pages or normal Impress slides through LibreOfficeKit tile APIs. It does not export or parse a PDF. All page coordinates are CSS pixels at 96 DPI; `scale` controls output pixel density. Returned pixels are owned, unassociated RGBA bytes for `ImageData`.
+`@deepseek-ai/libreoffice-kit/browser` loads original Office bytes in a dedicated Worker and paints directly through LibreOfficeKit. Office tiles never pass through PDF. Coordinates use CSS pixels at 96 DPI; `scale` controls pixel density. Returned unassociated RGBA bytes are owned by the caller and can be used with `ImageData`.
 
-Serve the five resources declared in `assets.json` with their original bytes and expose their URLs through `BrowserEngineAssets`. The package has no operating-system restriction. The application must provide a secure, cross-origin-isolated context (`COOP: same-origin`, `COEP: credentialless`) and a Content Security Policy permitting its engine Worker, nested pthread Workers and WebAssembly. The loader starts its pthreads from the same loader URL; the worker bundle has no external JavaScript imports.
+## Office documents
 
-`openDocument({ extension: 'pdf', ... }, signal)` opens a standalone PDF with PDFium in a dedicated Worker. Its fixed pages and serialized tiles are read-only. PDFium preloads the configured original fonts; the Host request explicitly uses `mode: 'full'`. Embedded fonts take priority. The browser owns viewport, cache and PNG assembly.
+`openOfficeDocument(options, signal)` opens DOC/DOCX, XLS/XLSX or PPT/PPTX once and retains a **read-only** document model. The API exposes state subscriptions, tiles, viewport updates, primary-pointer selection, navigation keys, Select All, plain-text copying, worksheet/slide selection and bounded A1 navigation. Impress copies the complete text of selected text objects or groups; it does not enter text editing or select substrings inside objects. Hiding a tab should retain its model; disposing it joins its Worker and pthreads.
 
-Office uses a retained `openEditor` model for both viewing and editing. DOC/XLS/PPT require `readOnly: true`; DOCX/XLSX/PPTX can also use this mode for read-only image inspection. Office font requests use reusable subsets and canonical family names; explicit full-font PDF requests preserve original TTF/OTF/TTC bytes. No production fonts are bundled. Disposal joins the owning Worker and pthreads; hiding an Office tab should retain its model.
+There is no editable mode, `openEditor`, raw key/text/IME input, arbitrary UNO command, paste, cut, snapshot save or browser capture API. The Worker validates the same restricted operations and configures the LibreOffice view as read-only. Internal virtual-file-system writes are still required to load source bytes and fonts. The browser API has no host file-write service; the separate Node/CLI conversion and recalculation APIs retain their explicit output operations.
 
-`openEditor(options, signal)` opens DOCX, XLSX and PPTX with the same resource and font inputs. It retains an editable LibreOffice model, accepts keyboard, mouse, IME and UNO commands, publishes state and invalidated rectangles, and exports OOXML snapshots. Edits redraw tiles directly without a PDF intermediate. The [editing API](../../docs/browser-editing.md) defines geometry, ordered input, snapshot saves and application ownership; the editor does not supply a toolbar, file persistence or collaborative editing.
+```ts
+const document = await openOfficeDocument({ ...resourcesAndFonts, data, extension: 'docx' })
+const unsubscribe = document.subscribe(event => {
+  if (event.type === 'invalidate') invalidateTiles(event.part, event.rectangle)
+})
+await document.setLayout({ mode: 'continuous', width: contentWidth / zoom })
+await document.setViewport({ x: 0, y: 0, width: 600, height: 800 }, devicePixelRatio * zoom)
+// Supply current-part rectangles from document.state and cache their pixels.
+const tile = await document.renderTile({ part: 0, x: 0, y: 0, width: 256, height: 256, scale: devicePixelRatio * zoom })
+unsubscribe()
+await document.dispose()
+```
 
-Build with `node scripts/build-browser.mjs --stage` after staging the verified WASM engine. The main package owns the browser bundles; `resolveBrowserAssets()` from `@deepseek-ai/libreoffice-kit/browser-assets` resolves and verifies the assets split across the main and WASM packages. The engine bytes are not duplicated in this private source workspace's npm output.
+Writer starts in `paginated` layout. `setLayout({mode: 'continuous', width, anchor?})` reflows body text to the supplied content width; caller padding is outside this width. An optional point in the previous layout resolves to a body-text rectangle in the new layout. When no body anchor is returned, applications may restore normalized reading progress. The returned geometry includes one continuous rectangle, without synthetic page gaps. Wide fixed tables or drawings can extend beyond the requested width.
 
-The Host font API is `@deepseek-ai/libreoffice-kit/fonts`. Both APIs ship in the existing main package. The [preview candidate](../../docs/building.md) packs only main and WASM, plus a separate offline third-party dependency closure for qualification.
+`setViewport` changes scrolling and raster zoom only. Equal layout widths are deduplicated and pending layout requests coalesce to the latest width. DPR changes must update pixel density without changing the document width. `layoutGeneration` changes when layout changes; `renderGeneration` changes for invalidated geometry or pixels, including newly resolved fonts. Cache entries and in-flight results must be checked against the invalidation state. No extra view is created for capture or measurement; measuring an inactive worksheet does not move the active selection.
 
-Run `node scripts/smoke-browser-editor.mjs --candidate <packed-browser-directory> --native <soffice> --output <receipt.json>` for editing qualification. It installs the archived packages outside the checkout with an offline npm registry, edits all three OOXML formats, saves and reopens them through both WASM and native LibreOffice, observes new-character font loading, and awaits Worker exit. Its small fixtures and warm-input timings do not establish arbitrary-document fidelity or a universal latency bound.
+## PDF, resources and fonts
 
-The Worker bundles fflate, saxes and xmlchars; their notices are included under `licenses/javascript/`. The saxes 6.0.0 npm archive omits its license, so `third-party/saxes-6.0.0-LICENSE` preserves the [upstream versioned license](https://github.com/lddubeau/saxes/blob/v6.0.0/LICENSE).
+`openDocument({ extension: 'pdf', ... }, signal)` retains the existing PDFium browser API. Its fixed pages and serialized tiles are read-only. PDFium preloads the configured original fonts with explicit `mode: 'full'`; embedded fonts take priority. Applications own viewport, cache and PNG assembly.
+
+Serve the resources declared in `assets.json` unchanged through `BrowserEngineAssets`. A secure cross-origin-isolated context is required (`COOP: same-origin`, `COEP: credentialless`), with a Content Security Policy permitting the engine Worker, nested pthread Workers and WebAssembly. The loader starts pthreads from the same loader URL; the Worker bundle has no external JavaScript imports.
+
+`@deepseek-ai/libreoffice-kit/fonts` provides the shared Host font service. Office requests reusable subsets with canonical family names; PDFium requests original TTF/OTF/TTC bytes. The platform/script fallback rules and optional uncovered-code-point diagnostics are shared by Node, CLI and browser. Production fonts are not bundled. The main package owns `./browser`, `./browser-assets` and `./fonts`; the existing `-wasm` dependency owns the engine resources. No extra npm package is required.
+
+## Building and qualification
+
+Build with `node scripts/build-browser.mjs --stage` after staging the version-matched WASM engine. `resolveBrowserAssets()` from `@deepseek-ai/libreoffice-kit/browser-assets` resolves and verifies resources from the two installed packages. Qualification must install archived packages outside the checkout and cover three-format reading, selection/copy, refusal of editing operations, Writer layouts, source-byte preservation and Worker disposal. Unit fixtures do not establish real-document fidelity or input latency.
+
+The Worker bundles fflate, saxes and xmlchars; notices are included under `licenses/javascript/`. The saxes 6.0.0 archive omits its license, so `third-party/saxes-6.0.0-LICENSE` preserves the [upstream versioned license](https://github.com/lddubeau/saxes/blob/v6.0.0/LICENSE).

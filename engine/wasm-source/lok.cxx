@@ -19,6 +19,7 @@
 
 extern "C" LibreOfficeKit* libreofficekit_hook_2(const char*, const char*);
 extern "C" bool dsh_lok_yield();
+extern "C" char* dsh_lok_configure_view_core(LibreOfficeKitDocument*, int, int, int, int, int);
 
 EM_JS(void, dsh_lok_callback, (int type, const char* payload), {
     if (Module['dshOnCallback']) Module['dshOnCallback'](type, payload ? UTF8ToString(payload) : '');
@@ -192,6 +193,21 @@ int dsh_lok_document_viewport(LibreOfficeKitDocument* document, int pixels, int 
     }, 0);
 }
 
+/** Lock the active browser view to read-only and configure Writer's reading
+ * layout. Width is the available document width, including its border.
+ * Coordinates and returned geometry are twips. Negative anchor
+ * coordinates omit position restoration. The caller frees the returned JSON. */
+char* dsh_lok_document_configure_view(LibreOfficeKitDocument* document, int readOnly,
+                                     int layout, int width, int anchorX, int anchorY)
+{
+    return guarded([&] {
+        if (!document || readOnly != 1 || (layout != 0 && layout != 1)
+            || (layout == 1 && width <= 0))
+            throw std::runtime_error("Invalid read-only document layout");
+        return dsh_lok_configure_view_core(document, readOnly, layout, width, anchorX, anchorY);
+    }, static_cast<char*>(nullptr));
+}
+
 /** Part metadata includes Calc's actual data area, visibility, and RTL layout. */
 char* dsh_lok_document_part_info(LibreOfficeKitDocument* document, int part)
 {
@@ -264,7 +280,10 @@ char* dsh_lok_document_page_rectangles(LibreOfficeKitDocument* document)
 int dsh_lok_document_size(LibreOfficeKitDocument* document, int part, long* width, long* height)
 {
     return guarded([&] {
-        document->pClass->setPart(document, part);
+        // Writer's part setter navigates to a page and moves its selection.
+        // Measuring the retained reading view must have no navigation effects.
+        if (document->pClass->getDocumentType(document) != LOK_DOCTYPE_TEXT)
+            document->pClass->setPart(document, part);
         document->pClass->getDocumentSize(document, width, height);
         return 1;
     }, 0);

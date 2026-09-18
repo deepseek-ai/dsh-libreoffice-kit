@@ -10,6 +10,7 @@ import type { FontFace, FontMatchRequest } from '../src/fonts.ts'
 import type { Font } from 'fontkit'
 import { createFontLoader, memoryFontConfig, preloadFonts } from '../src/font-loader.ts'
 import { resolveOptions } from '../src/options.ts'
+import { fontScriptGroups, fontPreferences } from '../src/font-preferences.ts'
 
 function fontFace(family: string, characters: string, overrides: Partial<FontFace> = {}): FontFace {
   const coverage = Array.from(characters, character => [character.codePointAt(0) ?? 0, character.codePointAt(0) ?? 0] as [number, number])
@@ -63,8 +64,8 @@ it.each(['', 'en-US', 'zh-CN', 'ko-KR'])('missing Carlito uses Korean body text 
   const result = matchFonts(faces, 'Carlito', {}, attributes)
   expect(result.missingFamily).toBe('Carlito')
   expect(result.fonts.map(face => face.family)).toEqual(['Arial', 'Apple SD Gothic Neo'])
-  expect(matchFonts(faces, 'serif', {}, attributes).fonts.map(face => face.family)).toEqual(['AppleMyungjo', 'Arial'])
-  expect(matchFonts(faces, 'monospace', {}, attributes).fonts.map(face => face.family)).toEqual(['Apple SD Gothic Neo', 'Arial'])
+  expect(matchFonts(faces, 'serif', {}, attributes).fonts.map(face => face.family)).toEqual(['Arial', 'AppleMyungjo'])
+  expect(matchFonts(faces, 'monospace', {}, attributes).fonts.map(face => face.family)).toEqual(['Arial', 'Apple SD Gothic Neo'])
 })
 
 it.each(['Malgun Gothic', 'Noto Sans CJK KR', 'NanumGothic'])('Korean sans fallback uses %s when available', (family) => {
@@ -224,7 +225,7 @@ it('regional priority prefers the requested writing system and stays neutral oth
     fontFace('Noto Sans JP', 'A汉', { path: 'NotoSansJP-Regular.otf' }),
     fontFace('Noto Sans KR', 'A汉', { path: 'NotoSansKR-Regular.otf' }),
     fontFace('Plain Face', 'A汉', { path: 'plain.ttf' })]
-  const select = (language: string) => matchFonts(faces, 'Missing Family', { fontFallbacks: [] }, { language, codePoints: [65] }).fonts[0]?.family
+  const select = (language: string) => matchFonts(faces, 'Missing Family', { fontFallbacks: [] }, { language, codePoints: [0x6c49] }).fonts[0]?.family
   expect(select('ja-JP')).toBe('Noto Sans JP')
   expect(select('ko-KR')).toBe('Noto Sans KR')
   expect(select('zh-TW')).toBe('Source Han Sans TC')
@@ -238,6 +239,37 @@ it('an indexed face is located inside its file or reported as replaced', () => {
   expect(() => indexedFace(parsed as unknown as Parameters<typeof indexedFace>[0], { faceIndex: 0, postscriptName: 'Other Face' }))
     .toThrow(/no longer available/)
   expect(() => indexedFace({ fonts: [] }, { faceIndex: 3, postscriptName: 'Missing Face' })).toThrow(/no longer available/)
+})
+
+it.each(['darwin', 'linux', 'win32'])('script body choices cover multilingual text on %s', (platform) => {
+  const cases = [
+    ['안', 'en-US', 'NanumGothic', 'Malgun Gothic'],
+    ['漢', 'ja-JP', 'Hiragino Sans', 'Meiryo'],
+    ['汉', 'zh-CN', 'PingFang SC', 'Microsoft YaHei'],
+    ['漢', 'zh-TW', 'PingFang TC', 'Microsoft JhengHei'],
+    ['س', 'ar', 'Kacst-Qr', 'Tahoma'],
+    ['न', 'hi', 'Raghindi', 'Nirmala UI'],
+    ['ก', 'th', 'Garuda', 'Tahoma'],
+  ]
+  for (const [text, language, unix, windows] of cases) {
+    const fonts = [fontFace('A Handwriting', text!, { decorative: true }), fontFace(unix!, text!), fontFace(windows!, text!)]
+    const result = new SystemFontCatalog({ faces: fonts, fallbackFamilies: resolveOptions().fontFallbacks, platform })
+      .match(fontMatchRequest({ family: 'Carlito', language: language!, codePoints: Array.from(text!, c => c.codePointAt(0)!) }), new AbortController().signal)
+    expect(result.fonts.map(face => face.family), `${platform}: ${language}`).toEqual([platform === 'win32' || language!.startsWith('zh') ? windows : unix])
+  }
+})
+
+it('script extensions keep Japanese marks with kana and preserve Unicode 17 scalars', () => {
+  expect([...fontScriptGroups([0x3042, 0x30fc, 0x1e6c0])]).toEqual([['Hiragana', [0x3042, 0x30fc]], ['Tai_Yo', [0x1e6c0]]])
+  expect(fontPreferences(fontMatchRequest({ family: 'Carlito', language: 'en-US' }), [], 'Han', ['Han', 'Katakana']).region).toBe('jp')
+  expect(fontPreferences(fontMatchRequest({ family: 'PingFang TC' }), [], 'Han', ['Han']).region).toBe('tc')
+})
+
+it('Urdu body script faces remain eligible and uncovered characters are diagnosed', () => {
+  const faces = [fontFace('Urdu Nastaliq Unicode', 'س', { decorative: true }), fontFace('A Plain', 'س')]
+  const result = matchFonts(faces, 'serif', {}, { language: 'ur', codePoints: [0x633, 0x10ffff] })
+  expect(result.fonts[0]?.family).toBe('Urdu Nastaliq Unicode')
+  expect(result.unresolvedCodePoints).toEqual([0x10ffff])
 })
 
 it('the directory component of an unreadable path is not a font source', () => {

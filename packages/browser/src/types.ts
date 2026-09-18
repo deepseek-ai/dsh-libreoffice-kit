@@ -27,6 +27,8 @@ export interface BrowserFontRequest {
 export interface BrowserFontResult {
   readonly fonts: readonly { readonly id: string; readonly data: Uint8Array; readonly family: string; readonly alias: string; readonly format?: 'ttf' | 'otf' | 'ttc' }[]
   readonly missingFamily?: string
+  /** Missing scalars reported by the Host, independently of a substituted family. */
+  readonly unresolvedCodePoints?: readonly number[]
 }
 
 /** All sizes are CSS pixels at 96 pixels per inch. */
@@ -81,7 +83,7 @@ export interface BrowserDocument {
 }
 
 /** Stable failures callers may map to their own localized product copy. */
-export type BrowserRenderErrorCode = 'unavailable' | 'invalid-document' | 'timeout' | 'font-limit' | 'font-unavailable' | 'disposed' | 'render-failed' | 'snapshot-changed'
+export type BrowserRenderErrorCode = 'unavailable' | 'invalid-document' | 'timeout' | 'font-limit' | 'font-unavailable' | 'disposed' | 'render-failed'
 
 /** A rendering failure with a stable machine-readable category. */
 export class BrowserRenderError extends Error {

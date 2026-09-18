@@ -25,6 +25,8 @@ export interface FontAsset {
 export interface FontResolution {
   readonly fonts: readonly FontAsset[]
   readonly missingFamily?: string
+  /** Scalars no installed font covers; distinct from a successfully substituted family. */
+  readonly unresolvedCodePoints?: readonly number[]
 }
 
 /** Font discovery limits; omitted values use the Node converter's font defaults. */

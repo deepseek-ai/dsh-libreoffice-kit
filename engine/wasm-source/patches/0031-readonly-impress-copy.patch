@@ -1,0 +1,86 @@
+diff --git a/sd/qa/unit/tiledrendering/tiledrendering.cxx b/sd/qa/unit/tiledrendering/tiledrendering.cxx
+index f829b09..c458021 100644
+--- a/sd/qa/unit/tiledrendering/tiledrendering.cxx
++++ b/sd/qa/unit/tiledrendering/tiledrendering.cxx
+@@ -223,6 +223,30 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testGetTextSelection)
+     CPPUNIT_ASSERT(!apitest::helper::transferable::getTextSelection(pXImpressDocument->getSelection(), "text/rtf"_ostr).isEmpty());
+ }
+ 
++CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testKitReadOnlyObjectCopy)
++{
++    SdXImpressDocument* pDocument = createDoc("dummy.odp");
++    uno::Reference<container::XIndexAccess> xPage(pDocument->getDrawPages()->getByIndex(0), uno::UNO_QUERY_THROW);
++    uno::Reference<text::XTextRange> xFirst(xPage->getByIndex(0), uno::UNO_QUERY_THROW);
++    uno::Reference<text::XTextRange> xSecond(xPage->getByIndex(1), uno::UNO_QUERY_THROW);
++    xFirst->setString(u"First selected text"_ustr);
++    xSecond->setString(u"Second selected text"_ustr);
++    sd::ViewShell* pShell = pDocument->GetDocShell()->GetViewShell();
++    SdrView* pView = pShell->GetView();
++    pView->MarkObj(pShell->GetActualPage()->GetObj(0), pView->GetSdrPageView());
++    pView->MarkObj(pShell->GetActualPage()->GetObj(1), pView->GetSdrPageView());
++    pView->GroupMarked();
++    SfxLokHelper::setViewReadOnly(SfxLokHelper::getCurrentView(), true);
++
++    CPPUNIT_ASSERT(!pView->GetTextEditObject());
++    CPPUNIT_ASSERT_EQUAL("First selected text\nSecond selected text"_ostr,
++        apitest::helper::transferable::getTextSelection(pDocument->getSelection(),
++                                                       "text/plain;charset=utf-8"_ostr));
++    CPPUNIT_ASSERT(!pView->GetTextEditObject());
++    pView->UnmarkAllObj();
++    CPPUNIT_ASSERT(!pDocument->getSelection().is());
++}
++
+ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSetGraphicSelection)
+ {
+     SdXImpressDocument* pXImpressDocument = createDoc("shape.odp");
+diff --git a/sd/source/ui/unoidl/unomodel.cxx b/sd/source/ui/unoidl/unomodel.cxx
+index 2bbfaf0..adba1dd 100644
+--- a/sd/source/ui/unoidl/unomodel.cxx
++++ b/sd/source/ui/unoidl/unomodel.cxx
+@@ -88,6 +88,8 @@
+ #include <vcl/ptrstyle.hxx>
+ #include <vcl/themecolors.hxx>
+ #include <vcl/svapp.hxx>
++#include <vcl/unohelp2.hxx>
++#include <svx/svditer.hxx>
+ #include <Outliner.hxx>
+ #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+ 
+@@ -4434,7 +4436,36 @@ uno::Reference<datatransfer::XTransferable> SdXImpressDocument::getSelection()
+     if (!pViewShell)
+         return uno::Reference<datatransfer::XTransferable>();
+ 
+-    return pViewShell->GetSelectionTransferable();
++    auto xSelection = pViewShell->GetSelectionTransferable();
++    if (xSelection.is() || !pViewShell->GetViewShell()->IsLokReadOnlyView())
++        return xSelection;
++
++    // A read-only view cannot enter text edit to create a substring selection.
++    // Copy the selected objects' existing text without creating an EditView,
++    // changing the selection, or opening any editing command path.
++    SdrView* pView = pViewShell->GetView();
++    if (!pView)
++        return {};
++    OUStringBuffer aText;
++    SdrObjListIter aObjects(pView->GetMarkedObjectList(), SdrIterMode::DeepNoGroups);
++    while (aObjects.IsMore())
++    {
++        const SdrObject* pObject = aObjects.Next();
++        if (pObject->IsEmptyPresObj())
++            continue;
++        const OutlinerParaObject* pParagraphs = pObject->GetOutlinerParaObject();
++        if (!pParagraphs)
++            continue;
++        const OUString aObjectText = pParagraphs->GetTextObject().GetText();
++        if (aObjectText.isEmpty())
++            continue;
++        if (!aText.isEmpty())
++            aText.append('\n');
++        aText.append(aObjectText);
++    }
++    if (aText.isEmpty())
++        return {};
++    return new vcl::unohelper::TextDataObject(aText.makeStringAndClear());
+ }
+ 
+ void SdXImpressDocument::setGraphicSelection(int nType, int nX, int nY)

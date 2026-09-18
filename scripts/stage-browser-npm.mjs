@@ -10,6 +10,7 @@ import { verifyNpmOidc } from './verify-npm-oidc.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
 import { isMain, readJson, sourceRepository, tarballName } from './platform-matrix.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
+import { verifyPreviewRuntime } from './verify-preview-runtime.mjs';
 
 function versionForTag(tag) {
   const match = /^(?:libreoffice-kit-)?v(\d+\.\d+\.\d+-[\w.-]+)$/.exec(tag ?? '');
@@ -21,33 +22,19 @@ function gh(args) {
   return spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 15 * 60 * 1000 });
 }
 
-/** Bind public installable archives to clean source and complete installed-editor evidence. */
+/** Bind public installable archives to clean source and complete installed-preview evidence. */
 export function validateBrowserNpmCandidate(directory, tag) {
   const version = versionForTag(tag);
   const candidate = readJson(join(directory, 'browser-preview.json'));
-  const receipt = readJson(join(directory, 'editor.json'));
+  const receipt = readJson(join(directory, 'preview-runtime.json'));
   assert(candidate.schemaVersion === 1 && candidate.kind === 'browser-preview'
     && /^[a-f0-9]{40}$/.test(candidate.sourceCommit) && candidate.sourceDirty === false,
   'Browser npm staging requires a clean source identity');
   assert(JSON.stringify(Object.keys(candidate.packages ?? {}).sort()) === '["kit","wasm"]',
     'Browser npm staging requires only the existing main and WASM packages');
-  assert(receipt.schemaVersion === 1 && receipt.kind === 'browser-editor' && receipt.passed === true
-    && receipt.sourceCommit === candidate.sourceCommit && receipt.sourceDirty === false
-    && receipt.installedOutsideRepository === true && receipt.npmOffline === true
-    && receipt.externalNetworkRequests === 0 && receipt.crossOriginIsolated === true
-    && receipt.workerDisposal === true && receipt.newCharacterFonts === true,
-  'Browser npm staging requires matching isolated installed-editor qualification');
-  for (const format of ['docx', 'xlsx', 'pptx']) {
-    const result = receipt.formats?.[format];
-    assert(result?.saveReopen === true && result.nativeReopen === true && result.disposed === true
-      && Number.isSafeInteger(result.bytes) && result.bytes > 0,
-    `Missing browser/native edit-save-reopen evidence: ${format}`);
-    assert(['unsavedPixels', 'cachedBytesReused', 'missingTilePainted', 'staleGenerationRejected', 'orderedAcrossEdit']
-      .every(key => result.capture?.[key] === true), `Missing installed capture evidence: ${format}`);
-    if (format === 'xlsx') assert(result.capture.sheetSelection?.userSelectionPreserved === true,
-      'Missing independent worksheet capture evidence');
-  }
-  for (const name of ['browser-preview.json', 'editor.json']) auditBytes(readFileSync(join(directory, name)), name);
+  verifyPreviewRuntime(receipt, { sourceCommit: candidate.sourceCommit,
+    kitSha256: candidate.packages.kit?.sha256, wasmSha256: candidate.packages.wasm?.sha256 });
+  for (const name of ['browser-preview.json', 'preview-runtime.json']) auditBytes(readFileSync(join(directory, name)), name);
   const packages = ['wasm', 'kit'].map(kind => {
     const record = candidate.packages[kind];
     assert(record?.name === (kind === 'kit' ? '@deepseek-ai/libreoffice-kit' : '@deepseek-ai/libreoffice-kit-wasm') && record.version === version
@@ -115,7 +102,7 @@ export async function stageBrowserNpmRelease(tag, directory, { env = process.env
   const release = JSON.parse(result.stdout);
   assert(release.tag_name === tag && release.draft === false && release.prerelease === true,
     'Browser npm staging requires the published prerelease');
-  const files = ['browser-preview.json', 'editor.json', ...['wasm', 'kit'].map(kind =>
+  const files = ['browser-preview.json', 'preview-runtime.json', ...['wasm', 'kit'].map(kind =>
     tarballName({ name: kind === 'kit' ? '@deepseek-ai/libreoffice-kit' : '@deepseek-ai/libreoffice-kit-wasm', version }))];
   mkdirSync(directory, { recursive: true });
   assert(readdirSync(directory).length === 0, 'Browser npm staging destination must be empty');

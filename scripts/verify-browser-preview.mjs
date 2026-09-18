@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { isMain, readJson, tarballName } from './platform-matrix.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
 import { verifyBrowserReceipt } from './verify-browser-receipt.mjs';
+import { verifyPreviewRuntime } from './verify-preview-runtime.mjs';
 
 /** This development candidate never requires native-engine archives or conversion receipts. */
 export function verifyBrowserPreview(directory, receipt) {
@@ -30,7 +31,9 @@ export function verifyBrowserPreview(directory, receipt) {
   }
   if (receipt !== undefined) {
     assert(receipt.sourceDirty === candidate.sourceDirty, 'Preview receipt source state differs');
-    verifyBrowserReceipt(receipt, { browserSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256,
+    if (receipt.kind === 'preview-runtime') verifyPreviewRuntime(receipt, { sourceCommit: candidate.sourceCommit,
+      kitSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256, allowDirty: true });
+    else verifyBrowserReceipt(receipt, { browserSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256,
       sourceCommit: candidate.sourceCommit, allowDirty: true });
   }
   return candidate;

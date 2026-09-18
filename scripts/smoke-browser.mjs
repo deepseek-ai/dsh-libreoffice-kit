@@ -167,7 +167,7 @@ try {
     console.log(`Opening ${format}`);
     formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks, expectedInk }) => {
       if (!crossOriginIsolated) throw new Error('Browser is not cross-origin isolated');
-      const { openEditor, openDocument } = await import(`${origin}/browser/lib/browser/index.js`);
+      const { openOfficeDocument, openDocument } = await import(`${origin}/browser/lib/browser/index.js`);
       const manifest = await (await fetch(`${origin}/assets.json`)).json();
       const assets = { programDirectory: manifest.programDirectory };
       for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;
@@ -175,7 +175,7 @@ try {
       const started = performance.now();
       let missingFonts = [];
       const isPdf = format.startsWith('pdf-');
-      const editor = await (isPdf ? openDocument : openEditor)({ readOnly: true, data, extension: isPdf ? 'pdf' : ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
+      const editor = await (isPdf ? openDocument : openOfficeDocument)({ data, extension: isPdf ? 'pdf' : ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
         timeoutMs: 120000, maxLoadedFontBytes: 512 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024, fontFallbacks,
         onMissingFonts: families => { missingFonts = [...families]; },
         resolveFonts: async (request, signal) => {

@@ -1,12 +1,13 @@
 /** Host font metadata snapshots and conversion-local glyph matching over original files. */
-import { fontFamilyPriority, normalize } from './font-config.ts'
+import { normalize } from './font-config.ts'
+import { fontPreferences, fontRegion, fontScriptGroups } from './font-preferences.ts'
 import type { FontMatchRequest } from './font-request.ts'
 export type { FontMatchRequest } from './font-request.ts'
 export { fontFamilyPriority, normalize } from './font-config.ts'
 import { closeSync, constants, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import type { Stats } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, extname, join, posix, win32 } from 'node:path'
+import { extname, join, posix, win32 } from 'node:path'
 import { create } from 'fontkit'
 import type { Font, FontCollection } from 'fontkit'
 
@@ -46,6 +47,8 @@ export interface FontFace {
 export interface FontMatchResult {
   readonly fonts: FontFace[]
   readonly missingFamily?: string
+  /** Requested scalars no installed face covers. */
+  readonly unresolvedCodePoints?: readonly number[]
 }
 
 /** One host font snapshot and the ordered fallback groups a conversion supplies. */
@@ -54,6 +57,8 @@ export interface SystemFontCatalogOptions {
   readonly fallbackFamilies: readonly (readonly string[])[]
   /** Whole-file consumers deduplicate collections; subset consumers retain each selected face. */
   readonly deduplicateBy?: 'file' | 'face'
+  /** Platform owning the indexed font snapshot; defaults to the current Host. */
+  readonly platform?: string
 }
 
 /** Host font roots and physical file limits. */
@@ -281,16 +286,6 @@ function inspect(path: string, maxBytes: number): FontFace[] {
   return faces
 }
 
-function regionalPriority(face: FontFace, language: string): number {
-  const locale = language.toLowerCase()
-  const preferred = locale.startsWith('ja') ? ['jp'] : locale.startsWith('ko') ? ['kr']
-    : locale.startsWith('zh') ? (/hant|tw|hk|mo/.test(locale) ? ['tc', 'hk'] : ['sc']) : []
-  if (preferred.length === 0)
-    return 0
-  const name = `${face.family} ${face.postscriptName} ${basename(face.path)}`.toLowerCase()
-  const region = name.match(/(?:cjk|[\s_-])(sc|tc|jp|kr|hk)(?=[\s_.-]|$)/)?.[1]
-  return region === undefined ? 1 : preferred.includes(region) ? 0 : 2
-}
 /**
  * Snapshot eligible local font metadata without retaining font bytes or decoding glyph coverage.
  * @param options - Host font roots and physical file limits.
@@ -332,9 +327,9 @@ export class SystemFontCatalog {
   }
   /**
      * Find installed faces covering the requested family or missing characters.
-     * Exact families precede configured alternatives, symbol families for missing symbols,
-     * generic families, then other glyph-covering faces. Within the same priority,
-     * text faces precede script/decorative faces before comparing locale and style.
+     * Exact families and configured aliases precede script/region body preferences,
+     * then other glyph-covering faces. Unlisted decorative Latin/CJK faces follow
+     * body faces; normal cursive writing systems retain their typographic traditions.
      * @param request - VCL family/style attributes and Unicode scalars missing from its current font.
      * @param signal - cancellation checked between synchronous font reads.
      * @returns selected files or physical faces according to deduplicateBy; absent glyphs remain unresolved.
@@ -349,39 +344,44 @@ export class SystemFontCatalog {
             && !this.faces.some(face => face.aliases.includes(normalize(primary)))) {
       missingFamily = primary
     }
-    const priority = fontFamilyPriority(requested, this.options.fallbackFamilies, request.pitch,
-      request.codePoints.some(point => /\p{Symbol}/u.test(String.fromCodePoint(point)))).map(normalize)
-    const missing = new Set(request.codePoints)
-    const ranked = this.faces.map((face) => {
-      const rank = priority.findIndex(family => face.aliases.includes(family))
-      const region = regionalPriority(face, request.language)
-      const style = (request.style && normalize(request.style) === normalize(face.style) ? -1 : 0)
-                + (request.italic === 3 || (request.italic !== 0) === face.italic ? 0 : 100)
-                + (request.pitch === 0 || (request.pitch === 1) === face.fixed ? 0 : 50)
-                + Math.abs((VCL_WEIGHTS[request.weight] ?? 400) - face.weight) / 100
-                + (request.width === 0 ? 0 : Math.abs(request.width - face.width))
-      return { face, rank: rank < 0 ? priority.length : rank, region, style }
-    }).sort((left, right) => left.rank - right.rank || Number(left.face.decorative) - Number(right.face.decorative)
-            || left.region - right.region || left.style - right.style
-            || left.face.path.localeCompare(right.face.path, 'en') || left.face.faceIndex - right.face.faceIndex)
-    const selected = []
-    const files = new Set()
-    for (const { face } of ranked) {
-      signal.throwIfAborted()
-      const covered = covers(face, [...missing])
-      if (missing.size > 0 && covered.length === 0)
-        continue
-      const identity = this.options.deduplicateBy === 'face' ? `${face.path}#${face.faceIndex}` : face.path
-      if (!files.has(identity)) {
-        selected.push(face)
-        files.add(identity)
+    const groups = fontScriptGroups(request.codePoints)
+    if (groups.size === 0) groups.set('Common', [])
+    const selected: FontFace[] = []
+    const files = new Set<string>()
+    const unresolved: number[] = []
+    for (const [script, points] of groups) {
+      const preference = fontPreferences(request, this.options.fallbackFamilies, script, groups.keys(), this.options.platform)
+      const missing = new Set(points)
+      const ranked = this.faces.map((face) => {
+        const explicit = preference.explicit.findIndex(name => face.aliases.includes(name))
+        const rank = preference.candidates.findIndex(name => face.aliases.includes(name))
+        const region = fontRegion(face.family)
+        const locale = preference.region === undefined ? 0 : region === preference.region
+          || (preference.region === 'hk' && region === 'tc') ? 0 : region === undefined ? 1 : 2
+        const style = (request.style && normalize(request.style) === normalize(face.style) ? -1 : 0)
+          + (request.italic === 3 || (request.italic !== 0) === face.italic ? 0 : 100)
+          + (request.pitch === 0 || (request.pitch === 1) === face.fixed ? 0 : 50)
+          + Math.abs((VCL_WEIGHTS[request.weight] ?? 400) - face.weight) / 100
+          + (request.width === 0 ? 0 : Math.abs(request.width - face.width))
+        return { face, explicit: explicit < 0 ? preference.explicit.length : explicit,
+          region: explicit < 0 ? locale : 0, rank: explicit < 0 ? rank < 0 ? preference.candidates.length : rank : 0,
+          decorative: explicit < 0 && preference.penalizeDecorative && face.decorative ? 1 : 0, style }
+      }).sort((a, b) => a.explicit - b.explicit || a.region - b.region || a.rank - b.rank
+        || a.decorative - b.decorative || a.style - b.style
+        || a.face.path.localeCompare(b.face.path, 'en') || a.face.faceIndex - b.face.faceIndex)
+      for (const { face } of ranked) {
+        signal.throwIfAborted()
+        const covered = covers(face, [...missing])
+        if (missing.size > 0 && covered.length === 0) continue
+        const identity = this.options.deduplicateBy === 'face' ? `${face.path}#${face.faceIndex}` : face.path
+        if (!files.has(identity)) { selected.push(face); files.add(identity) }
+        for (const point of covered) missing.delete(point)
+        if (missing.size === 0) break
       }
-      for (const point of covered)
-        missing.delete(point)
-      if (missing.size === 0)
-        break
+      unresolved.push(...missing)
     }
-    return { fonts: selected, ...(missingFamily === undefined ? {} : { missingFamily }) }
+    return { fonts: selected, ...(missingFamily === undefined ? {} : { missingFamily }),
+      ...(unresolved.length === 0 ? {} : { unresolvedCodePoints: unresolved }) }
   }
 }
 

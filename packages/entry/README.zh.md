@@ -41,15 +41,15 @@ CLI 相对路径按工作目录解析，成功在 stdout 输出一个 JSON，失
 
 ## 字体与 PDF 范围
 
-Node 端在限制范围内发现系统字体，精确 family 优先于回退配置；默认韩文无衬线/衬线回退优先使用正文字体，不依赖文档声明语言。未列入偏好组的字体中，OS/2 标记为手写或装饰的字体优先级较低，仍可用于补齐其他字体无法覆盖的字符。导入完整原始字体。安装字体改变后重新创建转换器。`missingFonts` 只报告可读 OOXML 的声明 family，不代表全部缺字或 PDF 字体诊断。
+Node 和 Host 字体服务共用有界系统字体发现与匹配：原字体和显式配置的替代字体优先，其次是对应 Unicode 文字系统、地区及正文类别的候选，最后选择其他覆盖所需字符的字体。Windows 顺序来自固定版本 Chromium，macOS/Linux 使用 Fontconfig 类别顺序，并补充另一来源的候选。Unicode 17 Script/Script_Extensions 数据识别混合文字，不让错误文档语言影响韩文等文字的选择。仅对未明确指定的 Latin/CJK 装饰字体降权，乌尔都文 Nastaliq 等正文传统不受影响。规则不下载或打包字体，仍导入原始字体以保留塑形和编码；安装字体改变后需重新创建转换器。`missingFonts` 报告缺失的声明字体，字体服务的 `unresolvedCodePoints` 单独报告没有任何已安装字体覆盖的字符。使用 `node scripts/generate-font-preferences.mjs` 更新固定来源数据，许可证保留在 `NOTICE`。
 
 `@deepseek-ai/libreoffice-kit/fonts` 的 `createFontSource` 是独立懒加载字体 Worker。默认 `resolve(attributes)` 保留 Office 的 Unicode-script 子集；新增 `resolve({...attributes,mode:'full'})` 返回不暴露主机路径的 `full_…` ID、原 family 和 ttf/otf/ttc 格式。`read(id)` 返回完整原字节，dfont 提取完整单字体 sfnt。来源变化或未知 ID 会拒绝读取。
 
-PDFium 直接图片渲染仍为实验能力，与 PDF.js 和 Office 编辑模型分开。嵌入字体由 PDFium 管理；在首次字体枚举前，按初始 family 和回退组预载有字节上限的完整常规字体。该方案不自动推断所有 PDF 字体，也不修复任意自定义编码。加密 PDF 暂拒绝；上游包装层绘制表单，普通注释和高级 PDF 特性仍需专项验收。
+PDFium 直接图片渲染仍为实验能力，与 PDF.js 和 Office 阅读会话分开。嵌入字体由 PDFium 管理；在首次字体枚举前，按初始 family 和回退组预载有字节上限的完整常规字体。该方案不自动推断所有 PDF 字体，也不修复任意自定义编码。加密 PDF 暂拒绝；上游包装层绘制表单，普通注释和高级 PDF 特性仍需专项验收。
 
 ## 浏览器与字体入口
 
-`@deepseek-ai/libreoffice-kit/browser` 提供常驻 Office 编辑、旧格式只读模型、PDFium 查看和一致性截图。Node 端 `./browser-assets` 校验并解析主包中的 Worker，以及精确版本 WASM 依赖中的资源。Host 将其映射成资源 URL；主包不复制 LibreOffice 大文件。
+`@deepseek-ai/libreoffice-kit/browser` 通过 `openOfficeDocument` 提供常驻 Office 阅读会话、Writer 分页/连续重排、选择复制和独立 PDFium 查看。rc5 浏览器 API 不提供编辑、OOXML 保存快照或 capture；Node/CLI 的转换和重算仍保留显式输出能力。Node 端 `./browser-assets` 校验并解析主包中的 Worker，以及精确版本 WASM 依赖中的资源。Host 将其映射成资源 URL；主包不复制 LibreOffice 大文件。
 
 `./fonts` 提供上文的字体服务。`./font-config` 与 `./document-inspection` 为浏览器和 Node 共用的纯逻辑；`./internal/*` 仅用于内部实现。字体子集采用 Unicode 17 数据和 HarfBuzz 布局闭包，内存缓存淘汰后从未变化的原字体重新生成。
 

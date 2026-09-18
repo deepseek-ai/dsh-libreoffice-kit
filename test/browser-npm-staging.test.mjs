@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { npmFixture } from './archive-fixture.mjs';
 import { sourceRepository, tarballName } from '../scripts/platform-matrix.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
+import { previewRuntimeFixture } from './preview-runtime-fixture.mjs';
 import { stageBrowserNpmRelease, validateBrowserNpmCandidate, validateCliReceipts } from '../scripts/stage-browser-npm.mjs';
 
 function fixture(t, alter = value => value) {
@@ -22,15 +23,10 @@ function fixture(t, alter = value => value) {
     return [kind, { name: manifest.name, version, file, bytes: statSync(join(directory, file)).size, sha256: sha256(join(directory, file)) }];
   }));
   const candidate = { schemaVersion: 1, kind: 'browser-preview', sourceCommit: '1'.repeat(40), sourceDirty: false, packages };
-  const receipt = { schemaVersion: 1, kind: 'browser-editor', sourceCommit: candidate.sourceCommit, sourceDirty: false,
-    passed: true, installedOutsideRepository: true, npmOffline: true, externalNetworkRequests: 0,
-    crossOriginIsolated: true, workerDisposal: true, newCharacterFonts: true,
-    archiveSha256: packages.kit.sha256, wasmSha256: packages.wasm.sha256,
-    formats: Object.fromEntries(['docx', 'xlsx', 'pptx'].map(format => [format, { saveReopen: true, nativeReopen: true, disposed: true, bytes: 100,
-      capture: { unsavedPixels: true, cachedBytesReused: true, missingTilePainted: true, staleGenerationRejected: true, orderedAcrossEdit: true, sheetSelection: { userSelectionPreserved: true } } }])) };
+  const receipt = previewRuntimeFixture(packages.kit.sha256, packages.wasm.sha256, candidate.sourceCommit);
   const save = () => {
     writeFileSync(join(directory, 'browser-preview.json'), JSON.stringify(candidate));
-    writeFileSync(join(directory, 'editor.json'), JSON.stringify(receipt));
+    writeFileSync(join(directory, 'preview-runtime.json'), JSON.stringify(receipt));
   };
   save();
   return { directory, candidate, receipt, save, tag };
@@ -50,11 +46,11 @@ test('browser staging rejects dirty source, mismatched receipt, missing format e
     f => f.receipt.sourceCommit = '2'.repeat(40),
     f => f.receipt.archiveSha256 = '2'.repeat(64),
     f => f.receipt.externalNetworkRequests = 1,
-    f => f.receipt.formats.docx.nativeReopen = false,
-    f => f.receipt.formats.xlsx.saveReopen = false,
+    f => f.receipt.kind = 'browser-editor',
+    f => f.receipt.formats.xlsx.modelUnchanged = false,
     f => f.receipt.formats.pptx.disposed = false,
-    f => f.receipt.formats.docx.capture.cachedBytesReused = false,
-    f => f.receipt.formats.xlsx.capture.sheetSelection.userSelectionPreserved = false,
+    f => f.receipt.formats.docx.layout.reflowed = false,
+    f => f.receipt.formats.xlsx.rejectedOperations['ime-input'] = false,
     f => f.candidate.packages.native = {},
     f => f.candidate.packages.kit.file = '../other.tgz',
   ]) {
@@ -111,7 +107,7 @@ test('installed CLI receipts reject a different candidate or absent platform', t
 function workflow(t) {
   const f = fixture(t);
   const destination = join(f.directory, 'download');
-  const files = ['browser-preview.json', 'editor.json', ...Object.values(f.candidate.packages).map(record => record.file)];
+  const files = ['browser-preview.json', 'preview-runtime.json', ...Object.values(f.candidate.packages).map(record => record.file)];
   const release = { tag_name: f.tag, draft: false, prerelease: true,
     assets: files.map(name => ({ name, state: 'uploaded', size: statSync(join(f.directory, name)).size, digest: `sha256:${sha256(join(f.directory, name))}` })) };
   const calls = [];

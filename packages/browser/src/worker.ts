@@ -8,8 +8,8 @@ import type { OwnerMessage, WorkerMessage, WorkerOptions } from './protocol.ts'
 import type { EnginePage } from './rendering.ts'
 
 import type { EmscriptenModule } from './engine-types.ts'
-import type { BrowserEditorFormat } from './editor-types.ts'
-import { EditorEngine } from './editor-engine.ts'
+import type { OfficeDocumentFormat } from './office-types.ts'
+import { OfficeEngine } from './office-engine.ts'
 import { pdfPages, renderRegion } from './engine-rendering.ts'
 
 interface EngineGlobal extends DedicatedWorkerGlobalScope {
@@ -21,7 +21,7 @@ let office = 0
 let document = 0
 let pdf = 0
 let pages: EnginePage[] = []
-let editor: EditorEngine | undefined
+let reader: OfficeEngine | undefined
 let fatal = false
 let fontFailure: unknown
 let serial = Promise.resolve()
@@ -37,7 +37,7 @@ function error(code: BrowserRenderErrorCode): BrowserRenderError {
   try { return new BrowserRenderError(code, module.UTF8ToString(pointer)) } finally { call('free', [pointer]) }
 }
 
-async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing = false): Promise<void> {
+async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading = false): Promise<void> {
   const { assets } = options
   let metadata: ReturnType<typeof inspectDocument>
   try { metadata = options.extension === 'pdf' ? { families: new Map(), codePoints: [] } : inspectDocument(options.data, options.extension, options) } catch (failure) { throw new BrowserRenderError('invalid-document', failure instanceof Error ? failure.message : String(failure)) }
@@ -48,7 +48,7 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing 
   let resolveFonts: ReturnType<typeof createFontReader> | undefined
   module = await scope.createLibreOfficeModule({
     noInitialRun: true,
-    dshOnCallback(type: number, payload: string) { editor?.callback(type, payload) },
+    dshOnCallback(type: number, payload: string) { reader?.callback(type, payload) },
     mainScriptUrlOrBlob: assets.loaderUrl,
     locateFile(name: string) {
       const basename = name.slice(name.lastIndexOf('/') + 1)
@@ -93,18 +93,18 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing 
   module.FS.writeFile(input, options.data)
   office = module.ccall('dsh_lok_initialize', 'number', ['string', 'string'], [assets.programDirectory, 'file:///dsh/profile'])
   if (!office) throw error('invalid-document')
-  document = module.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, options.readOnly ? 'ReadOnly=true,EnableMacrosExecution=false' : 'EnableMacrosExecution=false'])
+  document = module.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, 'ReadOnly=true,EnableMacrosExecution=false'])
   if (!document || !call('dsh_lok_document_initialize_rendering', [document])) throw error('invalid-document')
   const type = call('dsh_lok_document_type', [document])
   if (type !== (options.extension === 'docx' || options.extension === 'doc' ? 0 : options.extension === 'xlsx' || options.extension === 'xls' ? 1 : 2)) throw new BrowserRenderError('invalid-document', 'The document type does not match its extension.')
-  if (editing) {
-    editor = new EditorEngine(module, document, options.extension as BrowserEditorFormat, options.maxUncompressedBytes,
-      event => send({ type: 'editor-event', event }), failure => {
+  if (reading) {
+    reader = new OfficeEngine(module, document, options.extension as OfficeDocumentFormat,
+      event => send({ type: 'office-event', event }), failure => {
         fatal ||= failure instanceof WebAssembly.RuntimeError
-        send({ type: 'editor-event', event: { type: 'error', code: 'render-failed', message: failure instanceof Error ? failure.message : String(failure) } })
-      }, options.readOnly)
-    await editor.start()
-    pages = editor.state.parts.map((part, index) => ({ ...part, x: 0, y: 0, part: type === 0 ? -1 : index }))
+        send({ type: 'office-event', event: { type: 'error', code: 'render-failed', message: failure instanceof Error ? failure.message : String(failure) } })
+      })
+    await reader.start()
+    pages = reader.state.parts.map((part, index) => ({ ...part, x: 0, y: 0, part: type === 0 ? -1 : index }))
     return
   }
   throw new BrowserRenderError('invalid-document', 'Office documents require a retained session.')
@@ -117,8 +117,8 @@ function render(request: BrowserTileRequest): { width: number; height: number; r
 }
 
 function dispose(): void {
-  editor?.stop()
-  editor = undefined
+  reader?.stop()
+  reader = undefined
   try {
     if (module && !fatal) {
       if (pdf) { const value = pdf; pdf = 0; if (!call('dsh_pdf_destroy', [value])) throw error('render-failed') }
@@ -137,31 +137,26 @@ function dispose(): void {
 
 scope.onmessage = (event: MessageEvent<OwnerMessage>) => {
   const message = event.data
-  if (message.type === 'dispose') { lifetime.abort(); editor?.stop() }
+  if (message.type === 'dispose') { lifetime.abort(); reader?.stop() }
   serial = serial.then(async () => {
     try {
       switch (message.type) {
-        case 'open': await open(message.options, message.channel, message.editing); send({ type: 'opened', id: message.id, pages: pages.map(({ width, height }) => ({ width, height })), ...(editor ? { editor: editor.state } : {}) }); break
+        case 'open': await open(message.options, message.channel, message.office); send({ type: 'opened', id: message.id, pages: pages.map(({ width, height }) => ({ width, height })), ...(reader ? { office: reader.state } : {}) }); break
         case 'tile': { const tile = render(message.request); send({ type: 'tile', id: message.id, tile }, [tile.rgba.buffer]); break }
-        case 'editor-tile': {
-          if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
-          const tile = editor.render(message.request)
+        case 'office-tile': {
+          if (!reader) throw new BrowserRenderError('disposed', 'Office reader is closed.')
+          const tile = reader.render(message.request)
           send({ type: 'tile', id: message.id, tile }, [tile.rgba.buffer])
           break
         }
-        case 'edit': {
-          if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
-          const result = await editor.operation(message.operation)
-          send({ type: 'edited', id: message.id, ...result }, result.snapshot ? [result.snapshot.data.buffer] : [])
-          break
-        }
-        case 'capture': {
-          if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
-          const capture = await editor.capture(message.request)
-          send({ type: 'captured', id: message.id, capture }, capture.tiles.map(tile => tile.rgba.buffer))
+        case 'office-operation': {
+          if (!reader) throw new BrowserRenderError('disposed', 'Office reader is closed.')
+          const result = await reader.operation(message.operation)
+          send({ type: 'office-result', id: message.id, ...result })
           break
         }
         case 'dispose': dispose(); send({ type: 'disposed', id: message.id }); scope.close(); break
+        default: throw new BrowserRenderError('render-failed', 'Unsupported Office Worker request.')
       }
     } catch (failure) {
       fatal ||= failure instanceof WebAssembly.RuntimeError

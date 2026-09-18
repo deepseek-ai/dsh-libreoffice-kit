@@ -8,7 +8,7 @@ kind: "package-library"
 
 ## 当前目标
 
-**使用同一个可移植 WASM 引擎绘制 Office、在浏览器编辑、转换文档并重算表格。** Node API、公共 CLI 和浏览器 API 共享预编译 LibreOffice 引擎。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
+**使用同一个可移植 WASM 引擎绘制 Office、在浏览器阅读、转换文档并重算表格。** Node API、公共 CLI 和浏览器 API 共享预编译 LibreOffice 引擎。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
 
 当前优先保证文档排版和文字可读，让调用方能明确控制可用字体与替换策略，并让应用可以打包引擎、离线运行。精简也服务于这个目标：保留文档导入、排版、绘图和 PDF 导出所需的能力，移除与转换无关的桌面功能和资源。
 
@@ -21,7 +21,7 @@ API 支持二进制 Office、OOXML 和 OpenDocument 格式转换，以及保留�
 支持 macOS、Windows 和 Linux，需要 **Node.js 22.19.0 或更新版本**。主包普通依赖精确版本的 WASM 包：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc4
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc5
 ```
 
 ```js
@@ -49,7 +49,7 @@ try {
 libreoffice-kit render --input /private/work/book.xlsx --output-dir /private/work/images --sheet Sheet1 --range A1:D20
 ```
 
-显式 `convert` 转 PDF 与 `recalculate` 保留；兼容 API `render({inputPath, outputPath})` 仍导出 PDF。操作串行执行，取消和释放等待 Worker 退出。浏览器入口 `@deepseek-ai/libreoffice-kit/browser` 提供常驻编辑和直接截图，详见[编辑 API](docs/browser-editing.md)和 [Node API](packages/entry/README.zh.md)。
+显式 `convert` 转 PDF 与 `recalculate` 保留；兼容 API `render({inputPath, outputPath})` 仍导出 PDF。操作串行执行，取消和释放等待 Worker 退出。浏览器入口 `@deepseek-ai/libreoffice-kit/browser` 提供常驻 Office 阅读、Writer 连续重排和选择复制，详见[阅读 API](docs/browser-editing.md)和 [Node API](packages/entry/README.zh.md)。
 
 ## 字体处理
 

@@ -134,7 +134,8 @@ export class FontSubsetSource {
         fonts.push(await this.describe(face, script))
       }
     }
-    return { fonts, ...(matched.missingFamily === undefined ? {} : { missingFamily: matched.missingFamily }) }
+    return { fonts, ...(matched.missingFamily === undefined ? {} : { missingFamily: matched.missingFamily }),
+      ...(matched.unresolvedCodePoints === undefined ? {} : { unresolvedCodePoints: matched.unresolvedCodePoints }) }
   }
 
   /**

@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Current goal
 
-**Office drawing, browser editing, conversion and spreadsheet recalculation using one portable WASM engine.** The Node API, public CLI and browser API share the same prebuilt LibreOffice engine. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
+**Office drawing, browser reading, conversion and spreadsheet recalculation using one portable WASM engine.** The Node API, public CLI and browser API share the same prebuilt LibreOffice engine. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
 
 The priorities are document layout and readable text, explicit control over available fonts and substitutions, and an engine that applications can bundle and run offline. Size reduction serves that goal: retain the import, layout, drawing, and PDF-export machinery these documents need while removing unrelated desktop features and resources.
 
@@ -21,7 +21,7 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 Requires Node.js **22.19.0 or newer** on macOS, Windows or Linux. The main package requires its exact-version WASM dependency:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc4
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc5
 ```
 
 ```js
@@ -49,7 +49,7 @@ Supply absolute paths in caller-owned private directories; the output directory 
 libreoffice-kit render --input /private/work/book.xlsx --output-dir /private/work/images --sheet Sheet1 --range A1:D20
 ```
 
-Explicit `convert` to PDF and `recalculate` remain available. The compatibility API `render({inputPath, outputPath})` still exports PDF. Operations are serialized and cancellation/disposal join Worker exit. The browser entry at `@deepseek-ai/libreoffice-kit/browser` exposes persistent editing and direct capture; see [editing](docs/browser-editing.md) and the [Node API](packages/entry/README.md).
+Explicit `convert` to PDF and `recalculate` remain available. The compatibility API `render({inputPath, outputPath})` still exports PDF. Operations are serialized and cancellation/disposal join Worker exit. The browser entry at `@deepseek-ai/libreoffice-kit/browser` exposes retained read-only Office sessions, Writer continuous reflow and selection/copy; see [reading sessions](docs/browser-editing.md) and the [Node API](packages/entry/README.md).
 
 ## Font handling
 

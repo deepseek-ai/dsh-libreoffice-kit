@@ -1,9 +1,9 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-browser-internal",
-  "version": "0.0.2-rc4",
+  "version": "0.0.2-rc5",
   "type": "module",
   "license": "MPL-2.0",
-  "description": "Browser Worker LibreOffice rendering and persistent OOXML editing",
+  "description": "Browser Worker LibreOffice reading sessions and PDF rendering",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/deepseek-harness/libreoffice-kit.git",

@@ -1,10 +1,10 @@
-/** Browser Office preview and persistent editing entry points. */
+/** Browser Office preview and retained reading entry points. */
 import { openBrowserConnection } from './connection.ts'
 import { BrowserRenderError } from './types.ts'
 import type { BrowserDocument, BrowserDocumentOptions, BrowserTile, BrowserTileRequest } from './types.ts'
 export { BrowserRenderError } from './types.ts'
-export { openEditor } from './editor.ts'
-export type * from './editor-types.ts'
+export { openOfficeDocument } from './office.ts'
+export type * from './office-types.ts'
 export type { BrowserDocument, BrowserDocumentOptions, BrowserEngineAssets, BrowserFontRequest, BrowserFontResult, BrowserPage, BrowserRenderErrorCode, BrowserTile, BrowserTileRequest } from './types.ts'
 
 /**

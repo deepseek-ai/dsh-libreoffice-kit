@@ -1,46 +1,45 @@
-# Browser Office editing
+# Browser Office reading
 
-`@deepseek-ai/libreoffice-kit/browser` exposes `openEditor` for DOCX, XLSX and PPTX. Each editor owns one LibreOffice instance and a persistent document in a dedicated Worker. Keyboard, mouse, text and IME input mutate that model; LibreOffice reports changed geometry and dirty rectangles for direct Canvas painting. Saving exports OOXML. No PDF is created anywhere in this path.
+`@deepseek-ai/libreoffice-kit/browser` exposes `openOfficeDocument` for DOC/DOCX, XLS/XLSX and PPT/PPTX. Each call owns one LibreOffice model and a dedicated Worker. The model is always read-only and paints directly to tiles without a PDF intermediate. The former `openEditor`, text/IME input, arbitrary commands, paste, save and capture APIs are removed in rc5; no editable compatibility mode remains.
 
-## Open and retain a document
+## Document ownership and selection
 
-Pass the source bytes, `extension`, version-matched `assets`, the asynchronous `resolveFonts` callback, `fontFallbacks`, and explicit resource limits used by [the browser API](../packages/browser/README.md). The engine copies borrowed source bytes before transfer. The application must serve the resources from a secure, cross-origin-isolated page and provide fonts for new text as well as imported content. Editing supports the three OOXML suffixes only; legacy binary Office files retain the read-only preview API.
+Pass source bytes, `extension`, matching `assets`, asynchronous `resolveFonts`, `fontFallbacks` and explicit limits described by [the browser API](../packages/browser/README.md). The connection copies borrowed source bytes before transfer. Serve the resources from a secure, cross-origin-isolated page. Source and font loading still write internal virtual files, but a reading session cannot export replacement OOXML or write a Host file.
 
-The returned editor remains live until `dispose()` or its lifetime signal aborts. Hiding a tab need not end that lifetime. Retained editors keep their complete models and WASM memory even when no Canvas is mounted. Pixel and font budgets do not bound total process memory.
+Retain the session while a tab is hidden. Hiding the display can pause viewport and tile requests without destroying the model. Actual close calls `dispose()` or aborts the lifetime signal; disposal rejects pending work, destroys the document and office and joins the Worker with a bounded shutdown handshake. Pixel/font budgets do not bound the complete engine's memory.
 
-## Input, state and drawing
+- `pointer(event)` accepts primary-button selection with LOK Shift/Control modifiers. `navigate({key, extend?, word?})` accepts only arrow, Home/End and PageUp/PageDown keys. Raw characters, Delete, IME and arbitrary key codes are unavailable.
+- `selectAll()` selects content and `copy()` returns plain text. Writer and Calc support text/cell ranges. Impress copies all text in the selected text objects or groups, with line breaks between paragraphs/objects; it does not enter text-edit mode or support substring selection inside an object.
+- `setPart(index)` selects a worksheet or slide. `goToCell(address)` selects a bounded A1 cell or range on the current worksheet. `state.cellFormula` is informational and cannot be submitted back as an edit.
+- The Worker independently rejects unsupported operations. Kernel loading and view configuration also enforce read-only mode. Node/CLI conversion and recalculation remain separate explicit output APIs.
 
-- `input(event)` accepts LibreOfficeKit key codes, mouse buttons/modifiers, or IME `update` and `end` events. Coordinates are CSS pixels at 96 DPI. VCL key codes are not DOM key codes; applications translate them. Browser MouseEvents carry the click count needed for double-click text editing.
-- `paste(text)` and `copy()` use plain UTF-8 text at the current selection. Rich clipboard transfer is outside this API. `dispatch('.uno:Bold')`, `.uno:Undo`, `.uno:Redo` and typed UNO arguments expose the engine's editing commands. A dispatch completion acknowledges execution; callers observe state/content for its effect. Unknown or inapplicable UNO commands need not change the document.
-- `state` and `subscribe(listener)` expose immutable revision, command, cursor, selection, object and geometry snapshots. Invalidations name a part and rectangle; a null rectangle invalidates the whole part, and part `-1` applies to every part. A throwing subscriber does not interrupt other subscribers.
-- Writer has one continuous part plus its current page rectangles. Calc parts are worksheets; Impress parts are slides. `setPart(index)` changes the active part. Inactive part dimensions retain their last observation until selected so measurement does not commit an in-progress cell edit. `setViewport(rectangle, scale)` informs the engine of the visible region and zoom.
-- `renderTile(request, signal)` returns owned unassociated RGBA pixels without changing the model. The application combines duplicate requests, retains a bounded cache, invalidates intersecting tiles and discards stale results. Aborting one render abandons its result; it does not undo the work or close the editor.
-- `capture({generation, maxPixels, selection, tiles})` is a serialized idle barrier and image batch. It reports `renderGeneration`, selected sheet/data-area regions and immutable tiles. A supplied cached tile requires the matching generation, geometry, scale and byte size; otherwise the caller must repaint. Sheet capture uses an independent read-only drawing view and restores the editing view. Pixel/geometry invalidation during capture rejects with `snapshot-changed`; the application may retry the whole batch once. IME composition completion is coordinated by the application before capture so it never blocks the queued composition-end input.
+## Writer layouts and tiles
 
-The Worker processes inputs in order and pumps the LibreOffice event loop in non-waiting slices between messages. Drawing requests and inputs share that engine thread. Complex layout, formula recalculation, export or a new font can take longer than an ordinary edit; non-blocking ownership does not promise a fixed completion deadline. The configured operation timeout closes an unresponsive editor.
+Writer defaults to `paginated`. `setLayout({mode:'continuous', width, anchor?})` reflows text to the available content width, measured in document CSS pixels at 96 DPI. The application supplies its visual padding outside that width. Width and raster density are independent: pass the available screen width divided by zoom, and reserve DPR for tile density. Fixed tables, images or drawings may extend beyond the available width and need horizontal scrolling.
 
-## Save a snapshot
+An optional `anchor:{x,y}` identifies a point in the previous layout. The engine resolves nearby body text and returns its rectangle in the new layout, without moving selection. If no anchor is returned, the application may restore normalized reading progress. `setLayout({mode:'paginated'})` restores the document's original page geometry. Continuous geometry contains one rectangle rather than synthetic paper gaps.
 
-`save()` returns `{ data, extension, revision }`. It exports the edits ordered before it and does not write a Host file or acknowledge application persistence. The application writes those bytes against the source file's observed version and marks only the returned revision saved after that write succeeds. Input that arrives during the Host write remains dirty. A version conflict must preserve the local model until the user saves a copy or explicitly discards it.
+`setViewport(rectangle, scale)` updates only scrolling and raster zoom. Equal widths do not trigger layout; while one layout is running, newer pending widths replace older pending widths. `layoutGeneration` changes when the layout changes; `renderGeneration` changes on pixel/geometry invalidation, including delayed fonts. Invalidation events identify a part and rectangle; a null rectangle means the whole part, and part `-1` means every part.
+
+`renderTile(request, signal)` returns owned RGBA bytes with no selection/cursor controls baked in. The application deduplicates requests, caches pixels with a bounded budget and discards truly invalid results. Aborting a tile request abandons that consumer's result, rather than closing the document. Keep already-started valid work if another consumer or the cache still needs it. Office image export uses the Node/CLI `render` path, independently of the visible reading session.
 
 ```js
-import { openEditor } from '@deepseek-ai/libreoffice-kit/browser';
+import { openOfficeDocument } from '@deepseek-ai/libreoffice-kit/browser';
 
-const editor = await openEditor(options, documentLifetime);
+const document = await openOfficeDocument(options, documentLifetime);
 try {
-  await editor.input({ type: 'composition', action: 'update', text: '中文编辑' });
-  await editor.input({ type: 'composition', action: 'end', text: '' });
-  const snapshot = await editor.save();
-  // Persist snapshot.data with the Host's version guard before confirming snapshot.revision.
+  await document.setLayout({ mode: 'continuous', width: 600 });
+  await document.selectAll();
+  const selectedText = await document.copy();
+  const tile = await document.renderTile({ part: 0, x: 0, y: 0, width: 256, height: 256, scale: 2 });
+  // Display tile pixels and use selectedText in the application's copy action.
 } finally {
-  await editor.dispose();
+  await document.dispose();
 }
 ```
 
-Applications own dirty-close decisions, file conflicts, undo/format controls and the Canvas overlays. Disposal rejects pending work, destroys the document and office, and terminates pthread Workers, with a bounded shutdown handshake before forced termination.
+## Installed qualification
 
-## Qualification and limits
+Run `scripts/smoke-browser-preview.mjs` against the [packed two-package candidate](building.md). It installs outside the repository, blocks external browser requests, verifies three-format rendering/selection/copy, sends forbidden operations to the real shipped Worker, compares source and document pixels, exercises Writer reflow and waits for Worker exit. `preview-runtime.json` uses a versioned schema and binds results to both archive hashes and the source commit. Dirty receipts remain local development evidence; the npm staging gate requires clean source and complete runtime evidence.
 
-The installed-editor smoke uses the [independent browser/font candidate](building.md). It verifies Chinese text, DOCX formatting and page geometry, Calc sheet/formula changes and recalculation, Impress object transforms, undo/redo, OOXML snapshots, browser reopen, native reopen, font delivery and Worker termination. Receipt hashes bind both archives to their source commit. Dirty-source receipts remain local development evidence.
-
-The API supplies the LibreOffice model rather than a complete Office user interface. Track changes, charts, pivot tables, slide masters and other advanced interactions require additional application controls and qualification. Fonts and engine differences can change layout or OOXML serialization. Warm-input p95 is measured separately from cold open and complex work; the first-stage 100 ms objective is a measurement target, not a compatibility guarantee.
+The SDK supplies reading primitives rather than a complete application interface. Complex layout and new fonts may take longer than normal scrolling. Performance and memory observations describe the measured fixtures and host; they do not establish a universal latency bound.
