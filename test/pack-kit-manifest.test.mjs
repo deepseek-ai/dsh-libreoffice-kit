@@ -10,7 +10,7 @@ import { engineFamilyVersion, verifyKitMetadata } from '../scripts/verify-kit.mj
 function resolvedManifest() {
   const manifest = structuredClone(kitManifest());
   const version = engineFamilyVersion();
-  for (const name of Object.keys(manifest.optionalDependencies)) manifest.optionalDependencies[name] = version;
+  manifest.dependencies[wasmName] = version;
   return manifest;
 }
 
@@ -19,26 +19,25 @@ test('pnpm packs exact engine versions for prepared local archives and keeps dev
   const before = structuredClone(manifest);
   const packed = packKitManifest(manifest);
   const version = engineFamilyVersion();
-  for (const name of Object.keys(manifest.optionalDependencies)) {
-    assert.equal(packed.optionalDependencies[name], version);
-  }
+  assert.equal(packed.dependencies[wasmName], version);
+  assert.equal(packed.optionalDependencies, undefined);
   assert.equal(packed.dependencies.fflate, manifest.dependencies.fflate);
   assert.deepEqual(manifest, before);
-  assert.equal(kitManifest().optionalDependencies[wasmName], 'workspace:*');
+  assert.equal(kitManifest().dependencies[wasmName], 'workspace:*');
   assert.equal(verifyKitMetadata(packed, true), packed);
 });
 
-test('packing rejects stale engine versions and an altered native target set', () => {
+test('packing rejects stale or missing required WASM and optional native engines', () => {
   const wasm = resolvedManifest();
-  wasm.optionalDependencies[wasmName] = '0.0.0';
-  assert.throws(() => packKitManifest(wasm), /engine family version/);
+  wasm.dependencies[wasmName] = '0.0.0';
+  assert.throws(() => packKitManifest(wasm), /required exact-version dependency/);
   const native = resolvedManifest();
-  native.optionalDependencies[Object.keys(native.optionalDependencies)[0]] = '0.0.0';
-  assert.throws(() => packKitManifest(native), /engine family version/);
+  native.optionalDependencies = { '@deepseek-ai/libreoffice-kit-darwin-arm64': engineFamilyVersion() };
+  assert.throws(() => packKitManifest(native), /must not declare optional engines/);
   const missing = resolvedManifest();
-  delete missing.optionalDependencies[Object.keys(missing.optionalDependencies)[0]];
-  assert.throws(() => packKitManifest(missing), /Optional dependency matrix/);
-  assert.equal(verifyKitMetadata(resolvedManifest(), true).optionalDependencies[wasmName], engineFamilyVersion());
+  delete missing.dependencies[wasmName];
+  assert.throws(() => packKitManifest(missing), /required exact-version dependency/);
+  assert.equal(verifyKitMetadata(resolvedManifest(), true).dependencies[wasmName], engineFamilyVersion());
 });
 
 test('the workspace enables the narrow pack hook and unrelated packages retain their dependencies', () => {
