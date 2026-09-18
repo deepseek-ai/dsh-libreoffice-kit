@@ -37,6 +37,16 @@ describe('font transfer validation and document diagnostics', () => {
     expect(exchange.installed.mock.calls).toEqual([['/dsh-fonts/0.font', face.data]])
     expect(exchange.missing.mock.calls).toEqual([[['Source Test']]])
   })
+  it('installs full regular and bold faces under their original shared family for PDFium', () => {
+    const regular = { ...face, id: 'regular', alias: 'Test', format: 'ttf' as const }
+    const bold = { ...regular, id: 'bold', data: new Uint8Array([4, 5, 6]) }
+    const exchange = connection(input => fontFrames({ fonts: [input.weight > 5 ? bold : regular] }))
+    expect(exchange.read(attributes)).toEqual([{ path: '/usr/share/fonts/dsh-pdfium/0.ttf', family: 'Test' }])
+    expect(exchange.read({ ...attributes, weight: 8 })).toEqual([{ path: '/usr/share/fonts/dsh-pdfium/1.ttf', family: 'Test' }])
+    expect(exchange.read({ ...attributes, codePoints: [0x62] })).toEqual([{ path: '/usr/share/fonts/dsh-pdfium/0.ttf', family: 'Test' }])
+    expect(exchange.installed).toHaveBeenCalledTimes(2)
+    expect(exchange.request.mock.calls[0]?.[0]).toMatchObject({ mode: 'full' })
+  })
   it('suppresses bootstrap families and binary-document diagnostics while retaining source-declared failures', () => {
     const response = (missingFamily: string): BrowserFontResult => ({ fonts: [face], missingFamily })
     const bootstrap = connection(() => fontFrames(response('Liberation Sans')))
