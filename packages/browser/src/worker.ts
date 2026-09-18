@@ -73,7 +73,7 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing 
         request => send({ type: 'font', request }), () => send({ type: 'font-next' }),
         (path, bytes) => loaded.FS.writeFile(path, bytes), families => send({ type: 'missing-fonts', families }))
       const initialFamilies = options.extension === 'pdf' ? new Set(options.fontFallbacks.flat()) : new Set(['sans-serif'])
-      for (const family of initialFamilies) resolveFonts({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] })
+      for (const family of initialFamilies) resolveFonts({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [], ...(options.extension === 'pdf' ? { mode: 'full' as const } : {}) })
     }],
     onAbort() { fatal = true },
     print() {}, printErr() {},

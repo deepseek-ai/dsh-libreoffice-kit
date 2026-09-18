@@ -7,7 +7,7 @@ const read = createFontReader(workerData.channel, workerData.timeoutMs, workerDa
   () => parentPort.postMessage({ type: 'next' }),
   (path, bytes) => installed.push({ path, length: bytes.length, first: bytes[0], last: bytes.at(-1) }),
   families => parentPort.postMessage({ type: 'missing', families }));
-const request = { family: 'Test', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] };
+const request = { family: 'Test', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [], ...(workerData.full ? { mode: 'full' } : {}) };
 try {
   const paths = read(request);
   const cached = read(request);

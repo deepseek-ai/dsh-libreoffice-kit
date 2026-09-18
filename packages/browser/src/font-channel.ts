@@ -55,7 +55,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
   }
   return (attributes) => {
     const canonical = aliases.get(normalize(attributes.family))?.family
-    const original = { ...attributes, ...(canonical === undefined ? {} : { family: canonical }), mode: 'full' as const }
+    const original = { ...attributes, ...(canonical === undefined ? {} : { family: canonical }) }
     const key = JSON.stringify(original)
     const cached = requests.get(key)
     if (cached) return cached

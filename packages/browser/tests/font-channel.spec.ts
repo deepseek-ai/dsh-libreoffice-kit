@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { fontFrames, fontViews } from '../src/font-channel.ts'
 import { FONT_CHUNK_BYTES, FONT_HEADER_BYTES, FontState } from '../src/protocol.ts'
 
-async function exchange(mode: 'complete' | 'cancel' | 'limit' | 'expand'): Promise<{ messages: Record<string, unknown>[]; maxChunk: number }> {
+async function exchange(mode: 'complete' | 'cancel' | 'limit' | 'expand' | 'full'): Promise<{ messages: Record<string, unknown>[]; maxChunk: number }> {
   const channel = new SharedArrayBuffer(FONT_HEADER_BYTES + FONT_CHUNK_BYTES)
   const views = fontViews(channel)
   const font = new Uint8Array(FONT_CHUNK_BYTES * 2 + 79).fill(73)
   let frames = fontFrames({ fonts: [{ id: 'same-file', data: font, family: 'Test', alias: 'DSH_test' }, { id: 'same-file', data: font, family: 'Test', alias: 'DSH_test' }], missingFamily: 'Test' })
-  const worker = new Worker(new URL('./font-reader-worker.mjs', import.meta.url), { workerData: { channel, expand: mode === 'expand', limit: mode === 'limit' ? 100 : font.length * (mode === 'expand' ? 2 : 1), timeoutMs: 10_000 }, execArgv: ['--import', 'tsx/esm'] })
+  if (mode === 'full') frames = fontFrames({ fonts: [{ id: 'full-file', data: font, family: 'Test', alias: 'Test', format: 'ttc' }] })
+  const worker = new Worker(new URL('./font-reader-worker.mjs', import.meta.url), { workerData: { channel, full: mode === 'full', expand: mode === 'expand', limit: mode === 'limit' ? 100 : font.length * (mode === 'expand' ? 2 : 1), timeoutMs: 10_000 }, execArgv: ['--import', 'tsx/esm'] })
   const messages: Record<string, unknown>[] = []
   let maxChunk = 0
   try {
@@ -43,8 +44,14 @@ describe('synchronous font delivery from an asynchronous owner', () => {
     const { messages, maxChunk } = await exchange('complete')
     expect(maxChunk).toBe(FONT_CHUNK_BYTES)
     expect(messages.filter(message => message.type === 'font')).toHaveLength(1)
+    expect(messages.find(message => message.type === 'font')?.request).not.toHaveProperty('mode')
     expect(messages.find(message => message.type === 'missing')).toMatchObject({ families: ['Test'] })
     expect(messages.at(-1)).toEqual({ type: 'done', paths: [{ path: '/dsh-fonts/0.font', family: 'DSH_test' }, { path: '/dsh-fonts/0.font', family: 'DSH_test' }], cached: [{ path: '/dsh-fonts/0.font', family: 'DSH_test' }, { path: '/dsh-fonts/0.font', family: 'DSH_test' }], installed: [{ path: '/dsh-fonts/0.font', length: FONT_CHUNK_BYTES * 2 + 79, first: 73, last: 73 }] })
+  })
+  it('keeps explicit PDF full-font requests and mounts original TTC assets for PDFium', async () => {
+    const { messages } = await exchange('full')
+    expect(messages.find(message => message.type === 'font')).toMatchObject({ request: { mode: 'full' } })
+    expect(messages.at(-1)).toMatchObject({ type: 'done', paths: [{ path: '/usr/share/fonts/dsh-pdfium/0.ttc', family: 'Test' }] })
   })
   it('translates an internal shard alias back to the original family for another script', async () => {
     const { messages } = await exchange('expand')
