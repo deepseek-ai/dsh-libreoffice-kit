@@ -12,7 +12,7 @@ export function fontViews(channel: SharedArrayBuffer): { control: Int32Array; by
 
 /** Frames are produced lazily so the transfer channel never duplicates a whole font set. */
 export function* fontFrames(result: BrowserFontResult): Generator<{ state: FontState; bytes: Uint8Array }> {
-  const header: FontHeader = { fonts: result.fonts.map(font => ({ id: font.id, bytes: font.data.byteLength, family: font.family, alias: font.alias })), ...(result.missingFamily === undefined ? {} : { missingFamily: result.missingFamily }) }
+  const header: FontHeader = { fonts: result.fonts.map(font => ({ id: font.id, bytes: font.data.byteLength, family: font.family, alias: font.alias, ...(font.format ? { format: font.format } : {}) })), ...(result.missingFamily === undefined ? {} : { missingFamily: result.missingFamily }) }
   const encoded = new TextEncoder().encode(JSON.stringify(header))
   if (encoded.length > FONT_CHUNK_BYTES) throw new BrowserRenderError('font-limit', 'Font response metadata exceeds the transfer limit.')
   yield { state: FontState.Header, bytes: encoded }
@@ -55,7 +55,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
   }
   return (attributes) => {
     const canonical = aliases.get(normalize(attributes.family))?.family
-    const original = canonical === undefined ? attributes : { ...attributes, family: canonical }
+    const original = { ...attributes, ...(canonical === undefined ? {} : { family: canonical }), mode: 'full' as const }
     const key = JSON.stringify(original)
     const cached = requests.get(key)
     if (cached) return cached
@@ -82,7 +82,8 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
         buffer?.set(frame.data, received)
         received += frame.data.length
       }
-      const face = prior ?? { path: `/dsh-fonts/${installed.size}.font`, family: font.alias }
+      if (font.format !== undefined && !['ttf', 'otf', 'ttc'].includes(font.format)) throw new BrowserRenderError('font-unavailable', 'Invalid full font format.')
+      const face = prior ?? { path: font.format === undefined ? `/dsh-fonts/${installed.size}.font` : `/usr/share/fonts/dsh-pdfium/${installed.size}.${font.format}`, family: font.alias }
       if (buffer) { install(face.path, buffer); installed.set(font.id, face); loadedBytes += buffer.length }
       aliases.set(alias, { id: font.id, family: font.family })
       faces.push(face)

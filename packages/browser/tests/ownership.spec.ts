@@ -28,7 +28,7 @@ class ControlledWorker {
   receive(message: WorkerMessage): void { this.onmessage?.({ data: message } as MessageEvent<WorkerMessage>) }
   terminate(): void { this.terminated = true }
 }
-const options = (): BrowserDocumentOptions => ({ data: new Uint8Array([1, 2, 3]), extension: 'docx', assets: { workerUrl: '/worker.js', loaderUrl: '/soffice.js', dataUrl: '/soffice.data', wasmUrl: '/soffice.wasm', metadataUrl: '/soffice.data.js.metadata', programDirectory: '/instdir/program' }, timeoutMs: 10_000, maxArchiveEntries: 10000, maxUncompressedBytes: 128 * 1024 * 1024, maxLoadedFontBytes: 1024, fontFallbacks: [], resolveFonts: async () => ({ fonts: [] }) })
+const options = (): BrowserDocumentOptions => ({ data: new Uint8Array([1, 2, 3]), extension: 'pdf', assets: { workerUrl: '/worker.js', loaderUrl: '/soffice.js', dataUrl: '/soffice.data', wasmUrl: '/soffice.wasm', metadataUrl: '/soffice.data.js.metadata', programDirectory: '/instdir/program' }, timeoutMs: 10_000, maxArchiveEntries: 10000, maxUncompressedBytes: 128 * 1024 * 1024, maxLoadedFontBytes: 1024, fontFallbacks: [], resolveFonts: async () => ({ fonts: [] }) })
 function supported(): void { vi.stubGlobal('Worker', ControlledWorker); vi.stubGlobal('crossOriginIsolated', true) }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); ControlledWorker.instances = []; ControlledWorker.opening = undefined; ControlledWorker.holdDispose = false; ControlledWorker.throwPost = false })
 
@@ -100,7 +100,7 @@ describe('browser document ownership', () => {
 const tileRequest = { pageIndex: 0, x: 0, y: 0, width: 10, height: 10, scale: 1 }
 const fontRequest = { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }
 
-const editingState: BrowserEditorState = { documentType: 'text', revision: 0, part: 0,
+const editingState: BrowserEditorState = { documentType: 'text', revision: 0, renderGeneration: 0, part: 0,
   parts: [{ name: '', width: 816, height: 1056 }], pages: [], cursor: null, cursorVisible: false,
   selection: [], graphicSelection: null, cellAddress: '', cellFormula: '', commands: {} }
 

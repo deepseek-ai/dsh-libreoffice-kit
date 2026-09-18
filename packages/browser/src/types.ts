@@ -12,6 +12,7 @@ export interface BrowserEngineAssets {
 
 /** VCL attributes passed unchanged to the Host's font matcher. */
 export interface BrowserFontRequest {
+  readonly mode?: 'full'
   readonly family: string
   readonly style: string
   readonly weight: number
@@ -24,7 +25,7 @@ export interface BrowserFontRequest {
 
 /** Immutable per-face font subsets; equal ids and aliases must identify equal bytes. */
 export interface BrowserFontResult {
-  readonly fonts: readonly { readonly id: string; readonly data: Uint8Array; readonly family: string; readonly alias: string }[]
+  readonly fonts: readonly { readonly id: string; readonly data: Uint8Array; readonly family: string; readonly alias: string; readonly format?: 'ttf' | 'otf' | 'ttc' }[]
   readonly missingFamily?: string
 }
 
@@ -51,7 +52,7 @@ export interface BrowserTile {
 /** Caller-owned source bytes are copied before Worker transfer. */
 export interface BrowserDocumentOptions {
   readonly data: Uint8Array
-  readonly extension: 'doc' | 'docx' | 'ppt' | 'pptx'
+  readonly extension: 'pdf'
   readonly assets: BrowserEngineAssets
   /** Maximum time for each load, render, font request, or teardown operation. */
   readonly timeoutMs: number
@@ -80,7 +81,7 @@ export interface BrowserDocument {
 }
 
 /** Stable failures callers may map to their own localized product copy. */
-export type BrowserRenderErrorCode = 'unavailable' | 'invalid-document' | 'timeout' | 'font-limit' | 'font-unavailable' | 'disposed' | 'render-failed'
+export type BrowserRenderErrorCode = 'unavailable' | 'invalid-document' | 'timeout' | 'font-limit' | 'font-unavailable' | 'disposed' | 'render-failed' | 'snapshot-changed'
 
 /** A rendering failure with a stable machine-readable category. */
 export class BrowserRenderError extends Error {

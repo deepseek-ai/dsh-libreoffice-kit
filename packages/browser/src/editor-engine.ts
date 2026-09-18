@@ -3,9 +3,10 @@ import { BrowserRenderError } from './types.ts'
 import type { BrowserTile } from './types.ts'
 import type { EmscriptenModule } from './engine-types.ts'
 import type { EditorOperation } from './protocol.ts'
-import type { BrowserEditorEvent, BrowserEditorFormat, BrowserEditorSnapshot, BrowserEditorState, BrowserEditorTileRequest, BrowserRectangle } from './editor-types.ts'
+import type { BrowserEditorCapture, BrowserEditorCaptureRegion, BrowserEditorCaptureRequest, BrowserEditorEvent, BrowserEditorFormat, BrowserEditorSnapshot, BrowserEditorState, BrowserEditorTileRequest, BrowserRectangle } from './editor-types.ts'
+import { dataArea, parseCellRange, rangeName, sheetPartInfo, sheetRangeRectangle, type SheetGeometry } from '@deepseek-ai/libreoffice-kit/internal/sheet-geometry'
 import { renderRegion } from './engine-rendering.ts'
-import { TWIPS_PER_CSS_PIXEL, writerPages } from './rendering.ts'
+import { tileDimensions, TWIPS_PER_CSS_PIXEL, writerPages } from './rendering.ts'
 
 function rectangle(payload: string): BrowserRectangle | null {
   if (payload.startsWith('{')) {
@@ -39,12 +40,14 @@ export class EditorEngine {
   private modified = false
   private geometryDirty = false
   private stopped = false
+  private renderView = -1
   private commandResult: { name: string; resolve: () => void; reject: (error: unknown) => void } | undefined
 
   constructor(private readonly module: EmscriptenModule, private readonly document: number,
     private readonly format: BrowserEditorFormat, private readonly maxBytes: number,
-    private readonly emit: (event: BrowserEditorEvent) => void, private readonly failure: (error: unknown) => void) {
-    this.state = { documentType: format === 'docx' ? 'text' : format === 'xlsx' ? 'spreadsheet' : 'presentation', revision: 0,
+    private readonly emit: (event: BrowserEditorEvent) => void, private readonly failure: (error: unknown) => void,
+    private readonly readOnly = false) {
+    this.state = { documentType: format === 'docx' || format === 'doc' ? 'text' : format === 'xlsx' || format === 'xls' ? 'spreadsheet' : 'presentation', revision: 0, renderGeneration: 0,
       part: 0, parts: [], pages: [], cursor: null, cursorVisible: false, selection: [], graphicSelection: null,
       cellAddress: '', cellFormula: '', commands: {} }
   }
@@ -91,6 +94,10 @@ export class EditorEngine {
     this.callbacks.length = 0
     this.commandResult?.reject(new BrowserRenderError('disposed', 'Office editor is closed.'))
     this.commandResult = undefined
+    if (this.renderView >= 0) {
+      this.call('dsh_lok_document_destroy_view', [this.document, this.renderView])
+      this.renderView = -1
+    }
   }
 
   private refreshGeometry(): void {
@@ -143,7 +150,7 @@ export class EditorEngine {
           const index = fields[0]?.trim() === 'EMPTY' ? fields[1] : fields[4]
           const part = index !== undefined && /^\s*-?\d+\s*$/.test(index) ? Number(index) : this.state.part
           invalidations.push({ part, rectangle: rectangle(payload) })
-          edited ||= !['paint', 'view', 'save'].includes(phase)
+          edited ||= !['paint', 'view', 'save', 'capture'].includes(phase)
           break
         }
         case 1: this.state = { ...this.state, cursor: rectangle(payload) }; changed = true; break
@@ -182,6 +189,10 @@ export class EditorEngine {
       }
     }
     if (edited && this.modified) { this.state = { ...this.state, revision: this.state.revision + 1 }; changed = true }
+    if (invalidations.length > 0 || this.geometryDirty) {
+      this.state = { ...this.state, renderGeneration: this.state.renderGeneration + 1 }
+      changed = true
+    }
     if (this.geometryDirty) this.refreshGeometry()
     if (changed) this.emit({ type: 'state', state: this.state })
     for (const invalidation of invalidations) this.emit({ type: 'invalidate', ...invalidation, revision: this.state.revision })
@@ -189,6 +200,7 @@ export class EditorEngine {
 
   /** Apply one ordered command and collect the resulting notifications before acknowledgement. */
   async operation(operation: EditorOperation): Promise<{ text?: string; snapshot?: BrowserEditorSnapshot }> {
+    if (this.readOnly && ['input', 'command', 'paste', 'save'].includes(operation.type)) throw new BrowserRenderError('render-failed', 'This Office document is read-only.')
     this.phase = operation.type === 'part' || operation.type === 'viewport' ? 'view' : operation.type === 'save' ? 'save' : 'edit'
     try {
       switch (operation.type) {
@@ -261,6 +273,84 @@ export class EditorEngine {
     try {
       return renderRegion(this.module, this.document, { ...request, pageIndex: 0 }, [{ ...part, x: 0, y: 0,
         part: this.state.documentType === 'text' ? -1 : request.part }], () => new BrowserRenderError('render-failed', 'Office tile rendering failed.'))
-    } finally { this.phase = 'idle' }
+    } finally { this.flush(); this.phase = 'idle' }
+  }
+
+  /** Capture one bounded batch with no input interleaving; cached tiles are checked at the same generation. */
+  async capture(request: BrowserEditorCaptureRequest): Promise<BrowserEditorCapture> {
+    integer(request.maxPixels)
+    if (!request.maxPixels || request.maxPixels > 67_108_864 || request.tiles.length > 4096) {
+      throw new BrowserRenderError('render-failed', 'Office capture exceeds its allocation limit.')
+    }
+    await this.command('.uno:ReportWhenIdle', { idleID: { type: 'string', value: 'capture' } })
+    this.pump()
+    const generation = this.state.renderGeneration
+    if (request.generation !== undefined && request.generation !== generation) throw new BrowserRenderError('snapshot-changed', 'The document changed before capture.')
+    const original = this.call('dsh_lok_document_get_view', [this.document])
+    if (original < 0) throw new BrowserRenderError('render-failed', 'The editor view is unavailable.')
+    this.phase = 'capture'
+    let parts = this.state.parts
+    const tiles: BrowserTile[] = []
+    const regions: BrowserEditorCaptureRegion[] = []
+    try {
+      if (this.renderView < 0) this.renderView = this.call('dsh_lok_document_create_view', [this.document])
+      if (this.renderView < 0 || !this.call('dsh_lok_document_set_view', [this.document, this.renderView])) throw new BrowserRenderError('render-failed', 'The capture view is unavailable.')
+      const pointer = this.call('malloc', [8])
+      if (!pointer) throw new BrowserRenderError('render-failed', 'Office capture geometry allocation failed.')
+      try {
+        parts = this.state.parts.map((part, index) => {
+          this.invoke('size', [index, pointer, pointer + 4])
+          const width = this.module.HEAPU32[pointer / 4]! / TWIPS_PER_CSS_PIXEL
+          const height = this.module.HEAPU32[pointer / 4 + 1]! / TWIPS_PER_CSS_PIXEL
+          if (!(width > 0 && height > 0)) throw new BrowserRenderError('invalid-document', 'Office returned empty capture dimensions.')
+          return { ...part, width, height }
+        })
+      } finally { this.call('free', [pointer]) }
+      if (request.selection !== undefined && this.state.documentType === 'spreadsheet') {
+        const selection = request.selection
+        for (let part = 0; part < parts.length; part++) {
+          const info = sheetPartInfo(this.text('dsh_lok_document_part_info', [this.document, part]))
+          if (selection.sheet !== undefined ? selection.sheet !== info.name : !info.visible) continue
+          this.invoke('part', [part])
+          this.invoke('viewport', [Math.max(1, Math.round(256 * selection.scale)), 256 * TWIPS_PER_CSS_PIXEL, 0, 0, 1, 1])
+          const range = selection.range === undefined ? dataArea(info) : parseCellRange(selection.range)
+          const geometry = JSON.parse(this.text('dsh_lok_document_command_values', [this.document, '.uno:SheetGeometryData'])) as SheetGeometry
+          const rectangle = sheetRangeRectangle(geometry, range, selection.scale)
+          this.text('dsh_lok_document_command_values', [this.document, `.uno:ViewRowColumnHeaders?x=${twips(rectangle.x)}&y=${twips(rectangle.y)}&width=${twips(rectangle.width)}&height=${twips(rectangle.height)}`])
+          regions.push({ part, sheet: info.name, range: rangeName(range), rectangle })
+          parts = parts.map((entry, index) => index === part ? { ...entry, width: Math.max(entry.width, rectangle.x + rectangle.width), height: Math.max(entry.height, rectangle.y + rectangle.height) } : entry)
+        }
+        if (regions.length === 0) throw new BrowserRenderError('invalid-document', 'No worksheet matches the export selection.')
+      } else if (this.state.documentType === 'text') {
+        regions.push(...this.state.pages.map(rectangle => ({ part: 0, rectangle })))
+      } else if (this.state.documentType === 'presentation') {
+        regions.push(...parts.map((part, index) => ({ part: index, rectangle: { x: 0, y: 0, width: part.width, height: part.height } })))
+      }
+      let pixels = 0
+      for (const entry of request.tiles) {
+        const part = parts[integer(entry.request.part, parts.length - 1)]!
+        const page = { ...part, x: 0, y: 0, part: this.state.documentType === 'text' ? -1 : entry.request.part }
+        const region = { ...entry.request, pageIndex: 0 }
+        const size = tileDimensions(region, [page])
+        pixels += size.width * size.height
+        if (pixels > request.maxPixels) throw new BrowserRenderError('render-failed', 'Office capture exceeds its pixel budget.')
+        if (entry.cached !== undefined) {
+          if (request.generation === undefined || entry.cached.width !== size.width || entry.cached.height !== size.height
+            || entry.cached.rgba.byteLength !== size.width * size.height * 4) throw new BrowserRenderError('render-failed', 'Cached Office pixels do not match the capture.')
+          tiles.push(entry.cached)
+        } else {
+          this.invoke('part', [entry.request.part])
+          tiles.push(renderRegion(this.module, this.document, region, [page], () => new BrowserRenderError('render-failed', 'Office capture failed.')))
+        }
+      }
+    } finally {
+      this.call('dsh_lok_document_set_view', [this.document, original])
+      this.pump()
+      this.phase = 'idle'
+    }
+    await this.command('.uno:ReportWhenIdle', { idleID: { type: 'string', value: 'capture-complete' } })
+    this.pump()
+    if (this.state.renderGeneration !== generation) throw new BrowserRenderError('snapshot-changed', 'The document changed during capture.')
+    return { state: { ...this.state, parts }, tiles, regions }
   }
 }

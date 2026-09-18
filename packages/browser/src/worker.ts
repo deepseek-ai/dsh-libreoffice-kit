@@ -5,13 +5,12 @@ import { createFontReader } from './font-channel.ts'
 import { BrowserRenderError } from './types.ts'
 import type { BrowserRenderErrorCode, BrowserTileRequest } from './types.ts'
 import type { OwnerMessage, WorkerMessage, WorkerOptions } from './protocol.ts'
-import { TWIPS_PER_CSS_PIXEL, writerPages } from './rendering.ts'
 import type { EnginePage } from './rendering.ts'
 
 import type { EmscriptenModule } from './engine-types.ts'
 import type { BrowserEditorFormat } from './editor-types.ts'
 import { EditorEngine } from './editor-engine.ts'
-import { renderRegion } from './engine-rendering.ts'
+import { pdfPages, renderRegion } from './engine-rendering.ts'
 
 interface EngineGlobal extends DedicatedWorkerGlobalScope {
   createLibreOfficeModule(overrides: Record<string, unknown>): Promise<EmscriptenModule>
@@ -20,6 +19,7 @@ const scope = globalThis as unknown as EngineGlobal
 let module: EmscriptenModule | undefined
 let office = 0
 let document = 0
+let pdf = 0
 let pages: EnginePage[] = []
 let editor: EditorEngine | undefined
 let fatal = false
@@ -40,7 +40,7 @@ function error(code: BrowserRenderErrorCode): BrowserRenderError {
 async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing = false): Promise<void> {
   const { assets } = options
   let metadata: ReturnType<typeof inspectDocument>
-  try { metadata = inspectDocument(options.data, options.extension, options) } catch (failure) { throw new BrowserRenderError('invalid-document', failure instanceof Error ? failure.message : String(failure)) }
+  try { metadata = options.extension === 'pdf' ? { families: new Map(), codePoints: [] } : inspectDocument(options.data, options.extension, options) } catch (failure) { throw new BrowserRenderError('invalid-document', failure instanceof Error ? failure.message : String(failure)) }
   const response = await fetch(assets.dataUrl, { credentials: 'same-origin', signal: lifetime.signal })
   if (!response.ok) throw new BrowserRenderError('unavailable', `LibreOffice data request failed: ${response.status}`)
   const data = await response.arrayBuffer()
@@ -66,60 +66,54 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, editing 
       try { return resolveFonts(request) } catch (failure) { fontFailure = failure; throw failure }
     },
     preRun: [(loaded: EmscriptenModule) => {
-      for (const path of ['/dsh/profile', '/dsh/font-cache', '/dsh-fonts']) loaded.FS.mkdirTree(path)
+      for (const path of ['/dsh/profile', '/dsh/font-cache', '/dsh-fonts', '/usr/share/fonts/dsh-pdfium']) loaded.FS.mkdirTree(path)
       loaded.FS.writeFile('/dsh/fonts.conf', new TextEncoder().encode(memoryFontConfig(options.fontFallbacks, metadata.families.values())))
       Object.assign(loaded.ENV, { HOME: '/dsh/profile', TMPDIR: '/tmp', FONTCONFIG_FILE: '/dsh/fonts.conf', LOK_HOST_ALLOWLIST: '^$' })
       resolveFonts = createFontReader(channel, options.timeoutMs, options.maxLoadedFontBytes, metadata.families,
         request => send({ type: 'font', request }), () => send({ type: 'font-next' }),
         (path, bytes) => loaded.FS.writeFile(path, bytes), families => send({ type: 'missing-fonts', families }))
-      resolveFonts({ family: 'sans-serif', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] })
+      const initialFamilies = options.extension === 'pdf' ? new Set(options.fontFallbacks.flat()) : new Set(['sans-serif'])
+      for (const family of initialFamilies) resolveFonts({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] })
     }],
     onAbort() { fatal = true },
     print() {}, printErr() {},
   })
+  if (options.extension === 'pdf') {
+    const pointer = call('malloc', [options.data.byteLength])
+    if (!pointer) throw error('invalid-document')
+    try {
+      new Uint8Array(module.HEAPU32.buffer, pointer, options.data.byteLength).set(options.data)
+      pdf = module.ccall('dsh_pdf_open', 'number', ['number', 'number', 'string'], [pointer, options.data.byteLength, ''])
+    } finally { call('free', [pointer]) }
+    if (!pdf) throw error('invalid-document')
+    pages = pdfPages(module, pdf, () => error('invalid-document'))
+    return
+  }
   const input = `/dsh/document.${options.extension}`
   module.FS.writeFile(input, options.data)
   office = module.ccall('dsh_lok_initialize', 'number', ['string', 'string'], [assets.programDirectory, 'file:///dsh/profile'])
   if (!office) throw error('invalid-document')
-  document = module.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, editing ? 'EnableMacrosExecution=false' : 'Batch=true,EnableMacrosExecution=false'])
+  document = module.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, options.readOnly ? 'ReadOnly=true,EnableMacrosExecution=false' : 'EnableMacrosExecution=false'])
   if (!document || !call('dsh_lok_document_initialize_rendering', [document])) throw error('invalid-document')
   const type = call('dsh_lok_document_type', [document])
-  if (type !== (options.extension === 'doc' || options.extension === 'docx' ? 0 : options.extension === 'xlsx' ? 1 : 2)) throw new BrowserRenderError('invalid-document', 'The document type does not match its extension.')
+  if (type !== (options.extension === 'docx' || options.extension === 'doc' ? 0 : options.extension === 'xlsx' || options.extension === 'xls' ? 1 : 2)) throw new BrowserRenderError('invalid-document', 'The document type does not match its extension.')
   if (editing) {
     editor = new EditorEngine(module, document, options.extension as BrowserEditorFormat, options.maxUncompressedBytes,
       event => send({ type: 'editor-event', event }), failure => {
         fatal ||= failure instanceof WebAssembly.RuntimeError
         send({ type: 'editor-event', event: { type: 'error', code: 'render-failed', message: failure instanceof Error ? failure.message : String(failure) } })
-      })
+      }, options.readOnly)
     await editor.start()
     pages = editor.state.parts.map((part, index) => ({ ...part, x: 0, y: 0, part: type === 0 ? -1 : index }))
     return
   }
-  if (type === 0) {
-    const pointer = call('dsh_lok_document_page_rectangles', [document])
-    if (!pointer) throw error('invalid-document')
-    try { pages = writerPages(module.UTF8ToString(pointer)) } finally { call('free', [pointer]) }
-  } else if (type === 2) {
-    const count = call('dsh_lok_document_parts', [document])
-    if (count <= 0) throw error('invalid-document')
-    const pointer = call('malloc', [8])
-    if (!pointer) throw error('invalid-document')
-    try {
-      for (let part = 0; part < count; part++) {
-        if (!call('dsh_lok_document_size', [document, part, pointer, pointer + 4])) throw error('invalid-document')
-        const width = module.HEAPU32[pointer / 4]!
-        const height = module.HEAPU32[pointer / 4 + 1]!
-        if (width <= 0 || height <= 0 || width > 0x7fffffff || height > 0x7fffffff) throw error('invalid-document')
-        pages.push({ x: 0, y: 0, width: width / TWIPS_PER_CSS_PIXEL, height: height / TWIPS_PER_CSS_PIXEL, part })
-      }
-    } finally { call('free', [pointer]) }
-  } else throw new BrowserRenderError('invalid-document', 'The file is not a Writer or Impress document.')
+  throw new BrowserRenderError('invalid-document', 'Office documents require a retained session.')
 }
 
 function render(request: BrowserTileRequest): { width: number; height: number; rgba: Uint8ClampedArray } {
   if (fatal) throw new BrowserRenderError('render-failed', 'LibreOffice Worker has aborted.')
-  if (!document || !module) throw new BrowserRenderError('disposed', 'The document is closed.')
-  return renderRegion(module, document, request, pages, () => error('render-failed'))
+  if (!pdf || !module) throw new BrowserRenderError('disposed', 'The document is closed.')
+  return renderRegion(module, pdf, request, pages, () => error('render-failed'), true)
 }
 
 function dispose(): void {
@@ -127,6 +121,7 @@ function dispose(): void {
   editor = undefined
   try {
     if (module && !fatal) {
+      if (pdf) { const value = pdf; pdf = 0; if (!call('dsh_pdf_destroy', [value])) throw error('render-failed') }
       if (document) { const value = document; document = 0; if (!call('dsh_lok_document_destroy', [value])) throw error('render-failed') }
       if (office) { const value = office; office = 0; if (!call('dsh_lok_destroy', [value])) throw error('render-failed') }
     }
@@ -134,6 +129,7 @@ function dispose(): void {
     module?.PThread.terminateAllThreads()
     module = undefined
     document = 0
+    pdf = 0
     office = 0
     pages = []
   }
@@ -157,6 +153,12 @@ scope.onmessage = (event: MessageEvent<OwnerMessage>) => {
           if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
           const result = await editor.operation(message.operation)
           send({ type: 'edited', id: message.id, ...result }, result.snapshot ? [result.snapshot.data.buffer] : [])
+          break
+        }
+        case 'capture': {
+          if (!editor) throw new BrowserRenderError('disposed', 'Office editor is closed.')
+          const capture = await editor.capture(message.request)
+          send({ type: 'captured', id: message.id, capture }, capture.tiles.map(tile => tile.rgba.buffer))
           break
         }
         case 'dispose': dispose(); send({ type: 'disposed', id: message.id }); scope.close(); break

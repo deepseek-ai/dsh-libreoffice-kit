@@ -348,3 +348,54 @@ it('reports a failed tile while retaining the editable document', async () => {
   expect(() => f.editor.render({ part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 })).toThrow('Office tile rendering failed.')
   expect(await f.editor.operation({ type: 'copy' })).toEqual({ text: 'First' })
 })
+
+it('tracks visual generations without inventing saved edits and rejects a stale capture', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.editor.callback(0, '0, 0, 150, 150, 0')
+  await vi.advanceTimersByTimeAsync(16)
+  expect(f.editor.state.revision).toBe(0)
+  expect(f.editor.state.renderGeneration).toBe(1)
+  await expect(f.editor.capture({ generation: 0, maxPixels: 1, tiles: [] })).rejects.toMatchObject({ code: 'snapshot-changed' })
+})
+
+it('captures cached pixels in a separate view and restores the editable view', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_get_view', 3)
+  f.overrides.set('dsh_lok_document_create_view', 4)
+  const cached = { width: 1, height: 1, rgba: new Uint8ClampedArray([1, 2, 3, 255]) }
+  const result = await f.editor.capture({ generation: 0, maxPixels: 1, tiles: [
+    { request: { part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 }, cached },
+  ] })
+  expect(result.tiles).toEqual([cached])
+  expect(result.state.renderGeneration).toBe(0)
+  const calls = vi.mocked(f.module.ccall).mock.calls
+  expect(calls.filter(([name]) => name === 'dsh_lok_document_set_view').map(([, , , args]) => args[1])).toEqual([4, 3])
+  expect(calls.some(([name]) => name === 'dsh_lok_document_paint')).toBe(false)
+  f.editor.stop()
+  expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_destroy_view', 'number', ['number', 'number'], [1, 4])
+})
+
+it('rejects pixels invalidated during capture and restores its view before failing', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_get_view', 3)
+  f.overrides.set('dsh_lok_document_create_view', 4)
+  f.overrides.set('dsh_lok_document_paint', () => { f.editor.callback(0, 'EMPTY, 0'); return 1 })
+  f.overrides.set('dsh_lok_document_tile_mode', 0)
+  await expect(f.editor.capture({ generation: 0, maxPixels: 1, tiles: [
+    { request: { part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 } },
+  ] })).rejects.toMatchObject({ code: 'snapshot-changed' })
+  expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_set_view', 'number', ['number', 'number'], [1, 3])
+  expect(f.editor.state.revision).toBe(0)
+})
+
+it.each(['doc', 'xls', 'ppt'] as const)('keeps legacy %s read-only while retaining its render model', async format => {
+  const f = fixture(format)
+  const editor = new EditorEngine(f.module, 1, format, 1024, () => {}, () => {}, true)
+  await expect(editor.operation({ type: 'paste', text: 'change' })).rejects.toThrow('read-only')
+  await expect(editor.operation({ type: 'save' })).rejects.toThrow('read-only')
+  expect(editor.state.documentType).toBe(format === 'doc' ? 'text' : format === 'xls' ? 'spreadsheet' : 'presentation')
+  editor.stop()
+})

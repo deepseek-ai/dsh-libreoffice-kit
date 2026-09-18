@@ -2,10 +2,10 @@
 import type { BrowserDocumentOptions, BrowserPage, BrowserRenderErrorCode, BrowserTile } from './types.ts'
 
 /** Formats qualified for editing and saving in their original container. */
-export type BrowserEditorFormat = 'docx' | 'xlsx' | 'pptx'
+export type BrowserEditorFormat = 'doc' | 'docx' | 'xls' | 'xlsx' | 'ppt' | 'pptx'
 
 /** Editor source, engine resources and Host font service. */
-export type BrowserEditorOptions = Omit<BrowserDocumentOptions, 'extension'> & { readonly extension: BrowserEditorFormat }
+export type BrowserEditorOptions = Omit<BrowserDocumentOptions, 'extension'> & { readonly extension: BrowserEditorFormat; readonly readOnly?: boolean }
 
 /** Document coordinates in CSS pixels at 96 DPI, independent of zoom. */
 export interface BrowserRectangle extends BrowserPage { readonly x: number; readonly y: number }
@@ -17,6 +17,8 @@ export interface BrowserEditorPart extends BrowserPage { readonly name: string }
 export interface BrowserEditorState {
   readonly documentType: 'text' | 'spreadsheet' | 'presentation'
   readonly revision: number
+  /** Changes whenever document pixels or geometry are invalidated, independently of saved edits. */
+  readonly renderGeneration: number
   readonly part: number
   readonly parts: readonly BrowserEditorPart[]
   /** Writer's visible page rectangles within its continuous document. */
@@ -42,6 +44,29 @@ export type BrowserCommandArguments = Readonly<Record<string, { readonly type: '
 
 /** One view-relative render request. */
 export interface BrowserEditorTileRequest extends BrowserRectangle { readonly part: number; readonly scale: number }
+
+/** One bounded, serialized capture; cached pixels must be current at generation. */
+export interface BrowserEditorCaptureRequest {
+  readonly generation?: number
+  readonly maxPixels: number
+  readonly selection?: { readonly sheet?: string; readonly range?: string; readonly scale: number }
+  readonly tiles: readonly { readonly request: BrowserEditorTileRequest; readonly cached?: BrowserTile }[]
+}
+
+/** Immutable pixels and geometry observed before a later input can run. */
+export interface BrowserEditorCapture {
+  readonly state: BrowserEditorState
+  readonly tiles: readonly BrowserTile[]
+  readonly regions: readonly BrowserEditorCaptureRegion[]
+}
+
+/** A Writer page, slide, or bounded worksheet data area ready for raster export. */
+export interface BrowserEditorCaptureRegion {
+  readonly part: number
+  readonly rectangle: BrowserRectangle
+  readonly sheet?: string
+  readonly range?: string
+}
 
 /** A complete Office export, associated with the edits it includes. */
 export interface BrowserEditorSnapshot { readonly data: Uint8Array<ArrayBuffer>; readonly revision: number; readonly extension: BrowserEditorFormat }
@@ -72,6 +97,8 @@ export interface BrowserEditor {
   setViewport(rectangle: BrowserRectangle, scale: number): Promise<void>
   /** Render without changing the document; callers own caching and invalidation. */
   renderTile(request: BrowserEditorTileRequest, signal?: AbortSignal): Promise<BrowserTile>
+  /** Capture bounded tiles under one render generation; an empty list is an idle barrier. */
+  capture(request: BrowserEditorCaptureRequest, signal?: AbortSignal): Promise<BrowserEditorCapture>
   /** Export the current revision. Only a successful Host write confirms it saved. */
   save(): Promise<BrowserEditorSnapshot>
   /** Await engine and Worker disposal; repeated calls share completion. */

@@ -40,6 +40,11 @@ export async function openEditor(options: BrowserEditorOptions, signal?: AbortSi
       if (response.type !== 'tile') throw new BrowserRenderError('render-failed', 'LibreOffice returned an unexpected tile response.')
       return response.tile
     },
+    async capture(request, captureSignal) {
+      const response = await connection.request({ type: 'capture', request }, captureSignal)
+      if (response.type !== 'captured') throw new BrowserRenderError('render-failed', 'LibreOffice returned an unexpected capture response.')
+      return response.capture
+    },
     async save() {
       const response = await edit({ type: 'save' })
       if (!response.snapshot) throw new BrowserRenderError('render-failed', 'LibreOffice returned no saved document bytes.')
