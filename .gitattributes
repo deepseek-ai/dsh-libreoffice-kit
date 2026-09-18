@@ -1,2 +1,4 @@
+# Build recipes are hashed and verified on every host against the same receipt.
+*.mjs text eol=lf
 # Unified patches retain upstream whitespace in context and nested patch data.
 engine/**/*.patch -whitespace -text
