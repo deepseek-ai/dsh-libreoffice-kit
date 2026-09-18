@@ -21,7 +21,7 @@ API 支持二进制 Office、OOXML 和 OpenDocument 格式转换，以及保留�
 支持 macOS、Windows 和 Linux，需要 **Node.js 22.19.0 或更新版本**。主包普通依赖精确版本的 WASM 包：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc5
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc6
 ```
 
 ```js

@@ -42,6 +42,8 @@ export class OfficeEngine {
   private stopped = false
   private layoutWidth = 0
   private viewport = ''
+  private captureView: number | undefined
+  private readingView: number | undefined
   private commandResult: { name: string; resolve: () => void; reject: (error: unknown) => void } | undefined
 
   constructor(private readonly module: EmscriptenModule, private readonly document: number,
@@ -71,6 +73,18 @@ export class OfficeEngine {
   /** Enforce the native read-only view before accepting any input. */
   async start(): Promise<void> {
     this.requireOpen()
+    if (this.state.documentType === 'presentation') {
+      const view = this.call('dsh_lok_document_get_view', [this.document])
+      try {
+        const created = this.call('dsh_lok_document_create_view', [this.document])
+        if (created < 0) throw new BrowserRenderError('render-failed', 'LibreOffice could not create a slide capture view.')
+        this.captureView = created
+        this.invoke('initialize_rendering')
+        this.configure({ mode: 'paginated' })
+        this.pump()
+      } finally { this.invoke('set_view', [view]) }
+      this.readingView = view
+    }
     this.configure({ mode: 'paginated' })
     this.invoke('listen')
     this.refreshGeometry()
@@ -126,12 +140,15 @@ export class OfficeEngine {
     } finally { this.call('free', [pointer]) }
   }
   private pump(): void {
+    if (this.readingView !== undefined) this.invoke('set_view', [this.readingView])
     const deadline = performance.now() + 8
     for (let pass = 0; pass < 8; pass++) {
       const result = this.call('dsh_lok_pump')
       if (result < 0) throw new BrowserRenderError('render-failed', 'LibreOffice event processing failed.')
       if (!result || performance.now() >= deadline) break
     }
+    // Deferred native focus events can activate the capture view while pumping.
+    if (this.readingView !== undefined) this.invoke('set_view', [this.readingView])
     this.flush()
   }
   private flush(): void {
@@ -189,6 +206,7 @@ export class OfficeEngine {
   /** The Worker permits only these typed reading operations, including at runtime. */
   async operation(operation: OfficeOperation): Promise<{ text?: string; layout?: OfficeDocumentLayoutResult }> {
     this.requireOpen()
+    if (this.readingView !== undefined) this.invoke('set_view', [this.readingView])
     if (!operation || typeof operation !== 'object') throw new BrowserRenderError('render-failed', 'Invalid Office reading operation.')
     switch (operation.type) {
       case 'pointer': {
@@ -288,12 +306,18 @@ export class OfficeEngine {
   /** Direct tiles preserve the active view, navigation state and selection. */
   render(request: OfficeDocumentTileRequest): BrowserTile {
     this.requireOpen()
+    if (this.readingView !== undefined) this.invoke('set_view', [this.readingView])
     this.flush()
     const part = this.state.parts[integer(request.part, this.state.parts.length - 1)]!
-    if (request.part !== this.state.part) throw new BrowserRenderError('stale-part', 'The Office tile belongs to an inactive worksheet or slide.')
+    const capture = request.part !== this.state.part
+    if (capture && this.state.documentType !== 'presentation') throw new BrowserRenderError('stale-part', 'The Office tile belongs to an inactive worksheet.')
     try {
+      if (capture) this.invoke('set_view', [this.captureView!])
       return renderRegion(this.module, this.document, { ...request, pageIndex: 0 }, [{ ...part, x: 0, y: 0,
         part: this.state.documentType === 'text' ? -1 : request.part }], () => new BrowserRenderError('render-failed', 'Office tile rendering failed.'))
-    } finally { this.flush() }
+    } finally {
+      if (this.readingView !== undefined) this.invoke('set_view', [this.readingView])
+      this.flush()
+    }
   }
 }

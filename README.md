@@ -21,7 +21,7 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 Requires Node.js **22.19.0 or newer** on macOS, Windows or Linux. The main package requires its exact-version WASM dependency:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc5
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc6
 ```
 
 ```js

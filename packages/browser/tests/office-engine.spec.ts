@@ -46,7 +46,9 @@ function fixture(format: OfficeDocumentFormat = 'xlsx') {
 }
 it.each(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const)('enforces the read-only paginated view before accepting %s input', async format => {
   const f = fixture(format); await f.reader.start()
-  expect(f.module.ccall).toHaveBeenNthCalledWith(1, 'dsh_lok_document_configure_view', 'number', expect.any(Array), [1, 1, 0, 0, -1, -1])
+  const calls = vi.mocked(f.module.ccall).mock.calls.map(([name]) => name)
+  expect(calls.indexOf('dsh_lok_document_configure_view')).toBeLessThan(calls.indexOf('dsh_lok_document_listen'))
+  expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_configure_view', 'number', expect.any(Array), [1, 1, 0, 0, -1, -1])
   expect(f.reader.state.layout).toBe('paginated')
   expect(f.reader.state).not.toHaveProperty('revision'); expect(f.reader.state).not.toHaveProperty('commands')
 })
@@ -216,14 +218,14 @@ it.each([0, -1, NaN, Infinity, 1e10])('rejects invalid continuous width %s', asy
   expect(f.module.ccall).not.toHaveBeenCalled()
 })
 it.each(['docx', 'pptx'] as const)('renders %s directly without creating another view or touching file output', async format => {
-  const f = fixture(format); await f.reader.start()
+  const f = fixture(format); await f.reader.start(); vi.mocked(f.module.ccall).mockClear()
   const tile = f.reader.render({ part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 })
   expect(tile).toEqual({ width: 1, height: 1, rgba: new Uint8ClampedArray(4) })
   expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_paint', 'number', expect.any(Array), [1, 4, format === 'docx' ? -1 : 0, 1, 1, 0, 0, 15, 15])
   expect(vi.mocked(f.module.ccall).mock.calls.some(([name]) => /create_view|save|paste|composition/.test(name))).toBe(false)
   expect(f.module.FS.readFile).not.toHaveBeenCalled(); expect(f.module.FS.writeFile).not.toHaveBeenCalled()
 })
-it.each(['xlsx', 'pptx'] as const)('rejects queued old-part %s tiles before native painting and retains the new selection', async format => {
+it.each(['xlsx'] as const)('rejects queued old-part %s tiles before native painting and retains the new selection', async format => {
   const f = fixture(format); await f.reader.start()
   const previousRequest = { part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 }
   const completed = f.reader.render(previousRequest)
@@ -311,4 +313,34 @@ it('does not revive a stopped session when a previously scheduled callback arriv
   const callback = timer.mock.calls.at(-1)![0] as () => void
   f.reader.stop(); vi.mocked(f.module.ccall).mockClear(); callback()
   expect(f.module.ccall).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0)
+})
+
+it('restores the reading view after capture paints and deferred native focus changes', async () => {
+  const f = fixture('pptx')
+  let current = 0, focusCapture = false
+  f.overrides.set('dsh_lok_document_get_view', () => current)
+  f.overrides.set('dsh_lok_document_create_view', () => { current = 1; return current })
+  f.overrides.set('dsh_lok_document_set_view', args => { current = Number(args[1]); return 1 })
+  f.overrides.set('dsh_lok_pump', () => { if (focusCapture) { current = 1; focusCapture = false }; return 0 })
+  await f.reader.start()
+  const selection = f.reader.state.selection
+  f.overrides.set('dsh_lok_document_paint', () => { expect(current).toBe(1); return 1 })
+  f.reader.render({ part: 1, x: 0, y: 0, width: 1, height: 1, scale: 1 })
+  expect(current).toBe(0)
+  expect(f.reader.state.part).toBe(0)
+  expect(f.reader.state.selection).toBe(selection)
+  focusCapture = true
+  await vi.advanceTimersByTimeAsync(16)
+  expect(current).toBe(0)
+  f.overrides.set('dsh_lok_document_command', args => {
+    expect(current).toBe(0)
+    f.reader.callback(16, JSON.stringify({ commandName: args[1], success: true }))
+    return 1
+  })
+  current = 1
+  await f.reader.operation({ type: 'select-all' })
+  expect(current).toBe(0)
+  f.overrides.set('dsh_lok_document_paint', 0)
+  expect(() => f.reader.render({ part: 1, x: 0, y: 0, width: 1, height: 1, scale: 1 })).toThrow()
+  expect(current).toBe(0)
 })
