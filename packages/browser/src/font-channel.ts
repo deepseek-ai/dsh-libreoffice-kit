@@ -72,7 +72,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
       if (prior && prior.family !== font.alias) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting aliases.')
       const alias = normalize(font.alias)
       const previousAlias = aliases.get(alias)
-      if (previousAlias && (previousAlias.id !== font.id || previousAlias.family !== font.family)) throw new BrowserRenderError('font-unavailable', 'Font alias identifies conflicting subsets.')
+      if (previousAlias && (previousAlias.family !== font.family || (font.format === undefined && previousAlias.id !== font.id))) throw new BrowserRenderError('font-unavailable', 'Font alias identifies conflicting subsets.')
       if (!prior && loadedBytes + font.bytes > maxLoadedFontBytes) throw new BrowserRenderError('font-limit', 'Imported fonts exceed maxLoadedFontBytes.')
       const buffer = prior ? undefined : new Uint8Array(font.bytes)
       let received = 0
