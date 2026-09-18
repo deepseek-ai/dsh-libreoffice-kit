@@ -3,6 +3,9 @@ import type { FontMatchRequest } from './font-request.ts'
 
 export type { FontMatchRequest } from './font-request.ts'
 
+/** Full mode preserves font names, encoding and all glyphs for PDFium. */
+export interface FontResolveRequest extends FontMatchRequest { readonly mode?: 'subset' | 'full' }
+
 /** Content identity of one deterministic physical-face Unicode-script subset. */
 export type FontAssetId = string & { readonly __fontAssetId: unique symbol }
 
@@ -13,6 +16,9 @@ export interface FontAsset {
   readonly family: string
   /** Browser-only VCL identity distinguishing subsets with the same original family/style. */
   readonly alias: string
+  /** Full assets preserve original names; subset remains the default. */
+  readonly mode?: 'full'
+  readonly format?: 'ttf' | 'otf' | 'ttc'
 }
 
 /** Matched font subsets and an unavailable requested family, when applicable. */
@@ -41,7 +47,7 @@ export interface FontSource {
    * @param signal - Checked before dispatch and before publishing the result.
    * @returns subset content identities with no Host paths.
    */
-  resolve(request: FontMatchRequest, signal?: AbortSignal): Promise<FontResolution>
+  resolve(request: FontResolveRequest, signal?: AbortSignal): Promise<FontResolution>
   /**
    * Read or regenerate a selected subset while its original font remains unchanged.
    * @param id - Identity returned by resolve in this source lifetime.
@@ -55,7 +61,7 @@ export interface FontSource {
 
 /** Parent-to-worker operations; neither message contains a caller-selected file path. */
 export type FontCommand =
-  | { readonly id: number; readonly kind: 'resolve'; readonly request: FontMatchRequest }
+  | { readonly id: number; readonly kind: 'resolve'; readonly request: FontResolveRequest }
   | { readonly id: number; readonly kind: 'read'; readonly asset: FontAssetId }
 
 /** Worker replies retain their operation discriminator across structured cloning. */

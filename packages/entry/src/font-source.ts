@@ -1,9 +1,9 @@
 /** Lazy Node font service, independent of native or WASM engine installation. */
 import { Worker } from 'node:worker_threads'
 import { resolveOptions } from './options.ts'
-import type { FontAssetId, FontCommand, FontMatchRequest, FontReply, FontResolution, FontSource, FontSourceOptions } from './font-source-types.ts'
+import type { FontAssetId, FontCommand, FontResolveRequest, FontReply, FontResolution, FontSource, FontSourceOptions } from './font-source-types.ts'
 
-export type { FontAsset, FontAssetId, FontMatchRequest, FontResolution, FontSource, FontSourceOptions } from './font-source-types.ts'
+export type { FontAsset, FontAssetId, FontMatchRequest, FontResolveRequest, FontResolution, FontSource, FontSourceOptions } from './font-source-types.ts'
 
 /**
  * Create a font catalog without loading a LibreOffice engine or reading fonts yet.
@@ -74,7 +74,7 @@ export function createFontSource(options: FontSourceOptions = {}): FontSource {
   }
   return {
     fontFallbacks: resolved.fontFallbacks,
-    async resolve(request: FontMatchRequest, signal?: AbortSignal): Promise<FontResolution> {
+    async resolve(request: FontResolveRequest, signal?: AbortSignal): Promise<FontResolution> {
       const reply = await call({ id: ++nextId, kind: 'resolve', request }, signal)
       if (reply.kind !== 'resolved') throw new Error('The font Worker returned the wrong operation.')
       return reply.value

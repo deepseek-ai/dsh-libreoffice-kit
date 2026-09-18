@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { create } from 'fontkit'
 import { indexSystemFonts, indexedFace, readFont, SystemFontCatalog } from './fonts.ts'
-import type { FontFace, FontIndexOptions, FontMatchRequest } from './fonts.ts'
-import type { FontAsset, FontAssetId, FontResolution } from './font-source-types.ts'
+import type { FontFace, FontIndexOptions } from './fonts.ts'
+import type { FontAsset, FontAssetId, FontResolution, FontResolveRequest } from './font-source-types.ts'
+import { fontFileFormat, fullFontFile } from './font-full.ts'
 import { FONT_SUBSET_VERSION, subsetFont } from './harfbuzz-subset.ts'
 import { FONT_PARTITION_VERSION, fontScriptCodePoints, requestedFontScripts } from './unicode-scripts.ts'
 
@@ -61,6 +62,12 @@ export class FontSubsetSource {
   }
 
   private async generate(face: FontFace, script: string, expectedHash?: string): Promise<{ bytes: Uint8Array; sourceHash: string }> {
+    if (script === 'full') {
+      const result = fullFontFile(face)
+      if (expectedHash !== undefined && result.sourceHash !== expectedHash) throw new Error('The selected font content changed.')
+      unchanged(face)
+      return result
+    }
     const original = readFont(face)
     const sourceHash = hash(original)
     if (expectedHash !== undefined && sourceHash !== expectedHash) throw new Error('The selected font content changed.')
@@ -83,9 +90,11 @@ export class FontSubsetSource {
       return { ...previous.asset, family: face.family }
     }
     const { bytes, sourceHash } = await this.generate(face, script)
-    const id = hash(bytes) as FontAssetId
+    const id = `${script === 'full' ? 'full_' : ''}${hash(bytes)}` as FontAssetId
     const key = `${sourceHash}/${face.faceIndex}/${ALGORITHM}/${script}`
-    const asset: FontAsset = { id, bytes: bytes.byteLength, family: face.family, alias: `DSH_${id}` }
+    const asset: FontAsset = { id, bytes: bytes.byteLength, family: face.family,
+      alias: script === 'full' ? face.family : `DSH_${id}`,
+      ...(script === 'full' ? { mode: 'full' as const, format: fontFileFormat(bytes) } : {}) }
     const selection = { asset, face, script, sourceHash, key }
     this.selected.set(id, selection)
     this.partitions.set(partition, selection)
@@ -98,7 +107,8 @@ export class FontSubsetSource {
    * @param request - Requested family/style attributes and Unicode scalars.
    * @returns reusable subset identities; unavailable characters remain unresolved.
    */
-  async resolve(request: FontMatchRequest): Promise<FontResolution> {
+  async resolve(request: FontResolveRequest): Promise<FontResolution> {
+    if (request.mode !== undefined && request.mode !== 'subset' && request.mode !== 'full') throw new TypeError('Unknown font asset mode.')
     const snapshot = indexSystemFonts(this.options, this.snapshot)
     if (this.catalog === undefined || snapshot.length !== this.snapshot.length || snapshot.some((face, index) => face !== this.snapshot[index])) {
       const current = new Set(snapshot.map(fileIdentity))
@@ -118,6 +128,7 @@ export class FontSubsetSource {
     const matched = this.catalog.match(request, new AbortController().signal)
     const fonts: FontAsset[] = []
     for (const face of matched.fonts) {
+      if (request.mode === 'full') { fonts.push(await this.describe(face, 'full')); continue }
       const points = request.codePoints.filter(point => face.coverage?.some(([first, last]) => point >= first && point <= last))
       for (const script of await requestedFontScripts(points)) {
         fonts.push(await this.describe(face, script))
@@ -138,7 +149,7 @@ export class FontSubsetSource {
     let bytes = this.cached.get(selected.key)
     if (bytes === undefined) {
       bytes = (await this.generate(selected.face, selected.script, selected.sourceHash)).bytes
-      if (hash(bytes) !== id) throw new Error('The font subset identity changed during regeneration.')
+      if (`${selected.script === 'full' ? 'full_' : ''}${hash(bytes)}` !== id) throw new Error('The font subset identity changed during regeneration.')
     }
     this.retain(selected.key, bytes)
     return Uint8Array.from(bytes)
