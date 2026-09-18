@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
   "description": "Convert and recalculate Office documents with prebuilt LibreOffice",
-  "version": "0.0.2-rc2",
+  "version": "0.0.2-rc3",
   "publishConfig": {
     "access": "public"
   },
@@ -60,11 +60,7 @@
     "saxes": "6.0.0"
   },
   "optionalDependencies": {
-    "@deepseek-ai/libreoffice-kit-darwin-arm64": "workspace:*",
-    "@deepseek-ai/libreoffice-kit-darwin-x64": "workspace:*",
-    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*",
-    "@deepseek-ai/libreoffice-kit-win32-arm64": "workspace:*",
-    "@deepseek-ai/libreoffice-kit-win32-x64": "workspace:*"
+    "@deepseek-ai/libreoffice-kit-wasm": "workspace:*"
   },
   "bin": {
     "libreoffice-kit": "./lib/cli.js"

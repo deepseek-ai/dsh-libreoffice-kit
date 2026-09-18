@@ -9,10 +9,10 @@ import { npm } from '../scripts/pack-utils.mjs';
 
 // Tiny package archives exercise npm's real OS/CPU selection without engine binaries or registry access.
 for (const [os, cpu, expected] of [
-  ['darwin', 'arm64', 'darwin-arm64'], ['darwin', 'x64', 'darwin-x64'],
-  ['win32', 'arm64', 'win32-arm64'], ['win32', 'x64', 'win32-x64'],
+  ['darwin', 'arm64', undefined], ['darwin', 'x64', undefined],
+  ['win32', 'arm64', undefined], ['win32', 'x64', undefined],
   ['linux', 'x64', 'wasm'], ['linux', 'arm64', 'wasm'],
-]) test(`npm installs only ${expected} for ${os}/${cpu}`, t => {
+]) test(`npm installs only ${expected ?? "no engine"} for ${os}/${cpu}`, t => {
   const work = mkdtempSync(join(tmpdir(), 'kit-platform-install-'));
   t.after(() => rmSync(work, { recursive: true, force: true }));
   const entry = kitManifest();

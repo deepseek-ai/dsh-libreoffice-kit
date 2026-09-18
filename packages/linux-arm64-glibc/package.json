@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-linux-arm64-glibc",
-  "version": "0.0.2-rc2",
+  "version": "0.0.2-rc3",
   "type": "module",
   "license": "MPL-2.0",
   "engines": {
