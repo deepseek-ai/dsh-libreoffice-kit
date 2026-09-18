@@ -10,10 +10,10 @@ diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
          // set AsTemplate explicitly false to be able to load template files
          // as regular files, otherwise we cannot save them; it will try
          // to bring saveas dialog which cannot work with LOK case
-@@ -2955,6 +2957,14 @@
-             comphelper::makePropertyValue(u"AsTemplate"_ustr, false),
-             comphelper::makePropertyValue(u"Silent"_ustr, !aBatch.isEmpty())
-         };
+@@ -2960,6 +2962,14 @@
+ 
+         if (const char* pExemptVerifyHost = ::getenv("LOK_EXEMPT_VERIFY_HOST"))
+             HostFilter::setExemptVerifyHost(OUString(pExemptVerifyHost, strlen(pExemptVerifyHost), RTL_TEXTENCODING_UTF8));
 +
 +        if (!aReadOnly.isEmpty())
 +        {
@@ -23,8 +23,8 @@ diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
 +                = comphelper::makePropertyValue(u"ReadOnly"_ustr, aReadOnly == "true");
 +        }
  
-         OutputDevice::StartTrackingFontMappingUse();
- 
+         const int nThisDocumentId = nDocumentIdCounter++;
+         comphelper::LibreOfficeKit::setDocId(ViewShellDocId(nThisDocumentId));
 diff --git a/include/sfx2/LokControlHandler.hxx b/include/sfx2/LokControlHandler.hxx
 --- a/include/sfx2/LokControlHandler.hxx
 +++ b/include/sfx2/LokControlHandler.hxx
