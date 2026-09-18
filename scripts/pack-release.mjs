@@ -1,5 +1,5 @@
 /** Pack prevalidated engine payloads with npm, preserving native executable modes. */
-import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { assert } from './verify-artifacts.mjs';
 import { verifyRelease } from './verify-release.mjs';
@@ -23,6 +23,11 @@ export function workflowRepositoryUrl(env = process.env) {
 export function stagePackage(dir, destination, manifest, repositoryUrl) {
   mkdirSync(destination);
   for (const file of manifest.files) cpSync(join(dir, file), join(destination, file), { recursive: true });
+  // npm includes root README and license files even when they are outside `files`.
+  // Preserve them when packing from an isolated staging directory too.
+  for (const file of ['README.md', 'README', 'LICENSE', 'LICENSE.md', 'NOTICE']) {
+    if (existsSync(join(dir, file))) cpSync(join(dir, file), join(destination, file));
+  }
   const packed = repositoryUrl === undefined ? manifest : { ...manifest, repository: { ...manifest.repository, url: repositoryUrl } };
   writeFileSync(join(destination, 'package.json'), `${JSON.stringify(packed, null, 2)}\n`);
 }

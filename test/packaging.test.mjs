@@ -118,6 +118,10 @@ test('staged engine tarballs carry workflow identity without changing source byt
     const archived = JSON.parse(run('tar', ['-xOf', join(work, packed.filename), 'package/package.json']));
     assert.deepEqual(archived.repository, { ...manifest.repository, url: repositoryUrl });
     assert.ok(packed.files.some(file => file.path === 'src/index.js'));
+    for (const file of ['LICENSE', 'README.md']) {
+      assert.ok(packed.files.some(entry => entry.path === file), `npm omitted ${file}`);
+      assert.equal(run('tar', ['-xOf', join(work, packed.filename), `package/${file}`]), 'fixture\n');
+    }
     if (process.platform !== 'win32') assert.equal(packed.files.find(file => file.path === 'src/index.js').mode, 0o755);
     const local = `${dir}-local`;
     stagePackage(dir, local, manifest, undefined);
