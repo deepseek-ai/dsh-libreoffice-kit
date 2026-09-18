@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /** Qualify packed original-byte Office rendering in a sandboxed, isolated Chromium. */
+import { existsSync } from 'node:fs';
+import { verifyBrowserPreview } from './verify-browser-preview.mjs';
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { dirname, resolve, extname, join } from 'node:path';
@@ -26,10 +28,11 @@ const { values } = parseArgs({ options: {
 const output = resolve(values.output ?? join(root, '.release/evidence/browser.json'));
 assert(values.candidate, 'Usage: smoke-browser.mjs --candidate <general-release-directory> [--output <receipt.json>]');
 const candidateDirectory = resolve(values.candidate);
-const candidate = readJson(join(candidateDirectory, 'release.json'));
-assert(candidate.schemaVersion === 1 && candidate.platforms?.join(',') === 'wasm'
+const preview = existsSync(join(candidateDirectory, 'browser-preview.json'));
+const candidate = preview ? verifyBrowserPreview(candidateDirectory) : readJson(join(candidateDirectory, 'release.json'));
+assert(preview || candidate.schemaVersion === 1 && candidate.platforms?.join(',') === 'wasm'
   && candidate.browser === undefined && candidate.fonts === undefined, 'Browser qualification requires the existing main and WASM packages');
-const wasm = candidate.packages.find(record => record.platform === 'wasm');
+const wasm = preview ? candidate.packages.wasm : candidate.packages.find(record => record.platform === 'wasm');
 assert(wasm, 'The candidate has no WASM archive');
 const archive = join(candidateDirectory, tarballName(kitManifest()));
 const temporary = await mkdtemp(join(tmpdir(), 'libreoffice-browser-smoke-'));
@@ -38,7 +41,7 @@ let browserAssets;
 let createFontSource;
 let parseFont;
 try {
-  const engineTar = materializeEngineArchive(candidateDirectory, wasm, join(temporary, 'engines'));
+  const engineTar = preview ? join(candidateDirectory, wasm.file) : materializeEngineArchive(candidateDirectory, wasm, join(temporary, 'engines'));
   const dependencies = candidate.dependencies.map(record => {
     const file = join(candidateDirectory, record.file);
     assert(sha256(file) === record.sha256, `Qualification dependency checksum differs: ${record.name}`);
@@ -159,14 +162,14 @@ try {
     currentFormat = format;
     formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks, expectedInk }) => {
       if (!crossOriginIsolated) throw new Error('Browser is not cross-origin isolated');
-      const { openDocument } = await import(`${origin}/browser/lib/browser/index.js`);
+      const { openEditor } = await import(`${origin}/browser/lib/browser/index.js`);
       const manifest = await (await fetch(`${origin}/assets.json`)).json();
       const assets = { programDirectory: manifest.programDirectory };
       for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;
       const data = new Uint8Array(await (await fetch(`${origin}/fixture/${format}`)).arrayBuffer());
       const started = performance.now();
       let missingFonts = [];
-      const doc = await openDocument({ data, extension: ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
+      const editor = await openEditor({ readOnly: true, data, extension: ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
         timeoutMs: 120000, maxLoadedFontBytes: 256 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024, fontFallbacks,
         onMissingFonts: families => { missingFonts = [...families]; },
         resolveFonts: async (request, signal) => {
@@ -181,6 +184,15 @@ try {
         },
       });
       const opened = performance.now();
+      const regions = editor.state.documentType === 'text' ? editor.state.pages.map(page => ({ ...page, part: 0 }))
+        : editor.state.parts.map((part, index) => ({ ...part, x: 0, y: 0, part: index }));
+      const doc = { pages: regions.map(({ width, height }) => ({ width, height })), dispose: editor.dispose,
+        renderTile: (request, signal) => {
+          const page = regions[request.pageIndex];
+          if (!page) throw new Error('Missing page in retained Office model');
+          return editor.renderTile({ part: page.part, x: page.x + request.x, y: page.y + request.y,
+            width: request.width, height: request.height, scale: request.scale }, signal);
+        } };
       try {
         const first = doc.pages[0];
         const region = { pageIndex: 0, x: 0, y: 0, width: first.width, height: first.height, scale: 1 };
@@ -232,7 +244,7 @@ try {
   assert(laterScriptRequests.length >= 3, 'Mixed-script fixture did not exercise font-demand resolution');
   const receipt = { schemaVersion: 1, passed: true, archiveSha256: sha256(archive), wasmSha256: sha256(join(candidateDirectory, wasm.file)),
     installedOutsideRepository: true, network: 'offline',
-    sourceCommit: run('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(), sourceDirty: run('git', ['status', '--porcelain', '--', '.', ':(exclude)packages/*/prebuilds.json'], { cwd: root }).trim().length > 0, isolated: true, fontSubsets: true, disposed: true,
+    sourceCommit: preview ? candidate.sourceCommit : run('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(), sourceDirty: preview ? candidate.sourceDirty : run('git', ['status', '--porcelain', '--', '.', ':(exclude)packages/*/prebuilds.json'], { cwd: root }).trim().length > 0, isolated: true, fontSubsets: true, disposed: true,
     engine: 'libreofficekit-tiles', runtime: values.electron ? 'electron' : 'chromium', crossOriginIsolated: true, hostOriginalBytes: true, workerDisposal: true,
     formats, fontRequests: requests.length, mixedScriptRequests: laterScriptRequests.length };
   await mkdir(dirname(output), { recursive: true }); await writeFile(output, `${JSON.stringify(receipt, null, 2)}\n`);
