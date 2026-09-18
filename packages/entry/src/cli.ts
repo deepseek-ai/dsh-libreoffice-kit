@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     'font-directory': { type: 'string', multiple: true }, 'initial-font-family': { type: 'string', multiple: true },
     'font-fallbacks': { type: 'string' },
     'output-dir': { type: 'string' }, pages: { type: 'string' }, range: { type: 'string' },
-    dpi: { type: 'string' }, 'max-pages': { type: 'string' }, 'max-pixels': { type: 'string' },
+    dpi: { type: 'string' }, 'max-pages': { type: 'string' }, 'max-pixels': { type: 'string' }, 'max-dimension': { type: 'string' },
     ...Object.fromEntries(Object.keys(numericOptions).map(key => [key, { type: 'string' as const }])),
   } })
   const command = positionals[0] ?? ''
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ runtime: await discoverRuntime(), conversions: CONVERSION_FORMATS,
       imageRendering: { inputs: IMAGE_FORMATS, output: 'png', officeBackend: 'libreoffice', pdfBackend: 'pdfium',
         pages: 'one-based physical pages or slides; all by default', worksheets: 'exact sheet plus optional A1 range; all visible data areas by default',
-        maxPages: 100, maxPixels: 16777216 },
+        maxPages: 100, maxPixels: 16777216, maxDimension: 8192 },
       csv: { sheet: 'exact name; required when the input has multiple worksheets', encoding: 'UTF-8', delimiter: ',' },
       recalculation: { inputs: ['xls', 'xlsx', 'ods'], outputs: ['xlsx', 'ods'], preservesFormulas: true },
       options: { limits: Object.keys(numericOptions), fonts: ['font-directory', 'initial-font-family', 'font-fallbacks'] },
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     if (typeof values['output-dir'] !== 'string' || values.output !== undefined) throw new TypeError('render requires --output-dir and does not accept --output.')
   } else {
     if (typeof values.output !== 'string') throw new TypeError('--input and --output are required.')
-    if (['output-dir', 'pages', 'range', 'dpi', 'max-pages', 'max-pixels'].some(key => key in values)) throw new TypeError('Image selection options require the render command.')
+    if (['output-dir', 'pages', 'range', 'dpi', 'max-pages', 'max-pixels', 'max-dimension'].some(key => key in values)) throw new TypeError('Image selection options require the render command.')
   }
   const options: ConverterOptions = {}
   for (const [flag, key] of Object.entries(numericOptions)) {
@@ -74,6 +74,7 @@ async function main(): Promise<void> {
         ...(values.dpi === undefined ? {} : { dpi: Number(values.dpi) }),
         ...(values['max-pages'] === undefined ? {} : { maxPages: Number(values['max-pages']) }),
         ...(values['max-pixels'] === undefined ? {} : { maxPixels: Number(values['max-pixels']) }),
+        ...(values['max-dimension'] === undefined ? {} : { maxDimension: Number(values['max-dimension']) }),
       }, controller.signal)
       process.stdout.write(`${JSON.stringify(result)}\n`)
       return

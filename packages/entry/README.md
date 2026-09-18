@@ -25,7 +25,8 @@ const runtime = await discoverRuntime() // installed CLI and API paths; no engin
 
 - Writer, Impress and PDF use distinct, one-based `pages`, preserving the requested order. Omit it or specify `'all'` for all physical pages/slides.
 - Calc uses an exact `sheet` name and optional `range: 'A1:D20'`; a range requires a sheet. Without selectors, every visible sheet's data area is captured. `pages` is rejected for worksheets. Hidden/filtered rows and columns retain their display behavior. The default data area excludes formatting-only cells and standalone drawings; select an explicit range to include additional content. An empty sheet renders A1.
-- `dpi` defaults to 144 and accepts 24–600. `maxPages` defaults to 100, `maxPixels` to 16,777,216 per image. Limits reject the entire request instead of truncating it. Use smaller ranges or DPI for large sheets.
+- `dpi` defaults to 144 and accepts 24–600. Each image is bounded by `maxPixels` (default and maximum 16,777,216) and `maxDimension` (default 8192 pixels per side). Large worksheet regions split on the output-pixel grid in row order. Each fragment retains the requested `sheet`/`range`; its `rectangle` identifies the exact source portion. Writer, Impress and PDF keep whole pages and reject an oversized page.
+- `maxPages` defaults to 100 and limits the total output image count, including worksheet fragments across all selected sheets. The complete batch is checked before painting; limits reject the request instead of truncating it.
 - `maxInputBytes`, aggregate PNG `maxOutputBytes`, font limits, and `timeoutMs` come from `ConverterOptions`. Defaults and all options are in the shipped TypeScript declarations.
 - The manifest identifies `source: 'saved'`, the original `inputPath`, `sourceSha256`, `backend: 'wasm'`, `rasterEngine: 'libreoffice' | 'pdfium'`, total `pageCount`, selected images, dimensions, source rectangles at 96 DPI, and OOXML missing-font diagnostics. For Calc, `pageCount` is the visible sheet count and each image has `sheet`/`range` instead of `page`.
 
@@ -43,7 +44,7 @@ libreoffice-kit convert --input book.xlsx --output table.csv --sheet 'Summary'
 libreoffice-kit recalculate --input book.xlsx --output checked.xlsx
 ```
 
-CLI paths resolve against its working directory. Success writes one JSON object to stdout; failure writes `{code,error}` to stderr and exits with status 1. SIGINT/SIGTERM cancel and await cleanup. `render` accepts `--max-pages`, `--max-pixels`, and the common `--timeout-ms`, `--max-input-bytes`, `--max-output-bytes`, archive/font limits, repeated `--font-directory`/`--initial-font-family`, and JSON `--font-fallbacks`.
+CLI paths resolve against its working directory. Success writes one JSON object to stdout; failure writes `{code,error}` to stderr and exits with status 1. SIGINT/SIGTERM cancel and await cleanup. `render` accepts `--max-pages`, `--max-pixels`, `--max-dimension`, and the common `--timeout-ms`, `--max-input-bytes`, `--max-output-bytes`, archive/font limits, repeated `--font-directory`/`--initial-font-family`, and JSON `--font-fallbacks`.
 
 `convert` supports Writer → PDF/DOCX/ODT/TXT, Calc → PDF/XLSX/ODS/CSV, Impress → PDF/PPTX/ODP. CSV requires an exact sheet for multi-sheet inputs and emits UTF-8 with a comma delimiter. `recalculate` synchronously recalculates XLS/XLSX/ODS and saves XLSX/ODS with formulas and refreshed cached results; it does not validate business logic. Conversion outputs must be fresh exclusive files. Macros and external-link updates remain disabled.
 

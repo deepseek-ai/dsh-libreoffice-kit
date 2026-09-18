@@ -16,10 +16,12 @@ export interface RenderImagesRequest {
   readonly range?: string
   /** Raster DPI. Default 144, range 24–600. */
   readonly dpi?: number
-  /** Batch count limit, never silent truncation. Default: 100. */
+  /** Total output image limit, including worksheet fragments. Never truncates. Default: 100. */
   readonly maxPages?: number
   /** Per-image pixel limit. Default and maximum: 16777216. */
   readonly maxPixels?: number
+  /** Per-image width/height limit in output pixels. Default: 8192. */
+  readonly maxDimension?: number
 }
 export interface RenderedImage {
   readonly index: number
@@ -53,6 +55,7 @@ export interface ImageRenderSpec extends RenderImagesRequest {
   readonly dpi: number
   readonly maxPages: number
   readonly maxPixels: number
+  readonly maxDimension: number
 }
 export function resolveImageRender(request: RenderImagesRequest): ImageRenderSpec {
   if (!request || typeof request.inputPath !== 'string' || typeof request.outputDir !== 'string'
@@ -76,11 +79,13 @@ export function resolveImageRender(request: RenderImagesRequest): ImageRenderSpe
   const dpi = request.dpi ?? 144
   const maxPages = request.maxPages ?? 100
   const maxPixels = request.maxPixels ?? MAX_TILE_PIXELS
+  const maxDimension = request.maxDimension ?? 8192
   if (!Number.isFinite(dpi) || dpi < 24 || dpi > 600) throw new TypeError('dpi must be between 24 and 600.')
   if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 10000) throw new TypeError('maxPages must be an integer between 1 and 10000.')
   if (!Number.isSafeInteger(maxPixels) || maxPixels < 1 || maxPixels > MAX_TILE_PIXELS) throw new TypeError('maxPixels must be between 1 and 16777216.')
+  if (!Number.isSafeInteger(maxDimension) || maxDimension < 1 || maxDimension > MAX_TILE_PIXELS) throw new TypeError('maxDimension must be between 1 and 16777216.')
   if (pages !== 'all' && pages.length > maxPages) throw new ConversionError('output-too-large', 'Selected page count exceeds maxPages.')
-  return { kind: 'images', inputPath, outputDir, extension, dpi, maxPages, maxPixels,
+  return { kind: 'images', inputPath, outputDir, extension, dpi, maxPages, maxPixels, maxDimension,
     ...(calc ? {} : { pages: pages === 'all' ? 'all' : [...pages] }), ...(request.sheet === undefined ? {} : { sheet: request.sheet }), ...(range === undefined ? {} : { range }) }
 }
 export function selectedPages(pages: 'all' | readonly number[] | undefined, count: number, limit: number): number[] {
