@@ -88,12 +88,14 @@ diff --git a/svx/source/svdraw/svddrgv.cxx b/svx/source/svdraw/svddrgv.cxx
 diff --git a/sw/source/uibase/docvw/edtwin.cxx b/sw/source/uibase/docvw/edtwin.cxx
 --- a/sw/source/uibase/docvw/edtwin.cxx
 +++ b/sw/source/uibase/docvw/edtwin.cxx
-@@ -5205,7 +5205,7 @@
+@@ -5205,7 +5205,9 @@
                                  if ( aContentAtPos.aFnd.pFieldmark != nullptr)
                                  {
                                      Fieldmark *fieldBM = const_cast< Fieldmark* > ( aContentAtPos.aFnd.pFieldmark );
 -                                    if ( fieldBM->GetFieldname( ) == ODF_FORMCHECKBOX )
-+                                    if (!bIsViewReadOnly && fieldBM->GetFieldname() == ODF_FORMCHECKBOX)
++                                    if (!m_rView.GetDocShell()->IsReadOnly()
++                                        && !m_rView.IsLokReadOnlyView()
++                                        && fieldBM->GetFieldname() == ODF_FORMCHECKBOX)
                                      {
                                          CheckboxFieldmark& rCheckboxFm = dynamic_cast<CheckboxFieldmark&>(*fieldBM);
                                          rCheckboxFm.SetChecked(!rCheckboxFm.IsChecked());
