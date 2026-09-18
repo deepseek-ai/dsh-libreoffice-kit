@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-fonts",
-  "version": "0.0.2-editor.1",
+  "version": "0.0.2-rc2",
   "type": "module",
   "license": "MPL-2.0",
   "description": "Portable Host font matching and HarfBuzz WASM subsets",

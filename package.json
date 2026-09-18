@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-workspace",
-  "version": "0.0.2-editor.1",
+  "version": "0.0.2-rc2",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
@@ -11,7 +11,7 @@
   "scripts": {
     "build:adapter": "node scripts/build-kit.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:packaging": "node --test test/packaging.test.mjs test/selection.test.mjs test/release-publish.test.mjs test/publish-npm-release.test.mjs test/npm-oidc.test.mjs test/browser-preview-packaging.test.mjs",
+    "test:packaging": "node --test test/packaging.test.mjs test/selection.test.mjs test/release-publish.test.mjs test/publish-npm-release.test.mjs test/npm-oidc.test.mjs test/browser-preview-packaging.test.mjs test/browser-npm-staging.test.mjs",
     "verify:metadata": "node scripts/verify-release.mjs --metadata-only",
     "gha:matrix": "node scripts/github-matrix.mjs",
     "release:verify": "node scripts/verify-release.mjs",
