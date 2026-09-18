@@ -20,5 +20,5 @@ const platforms = release.platforms.map((platform) => {
   return receipt;
 });
 const browser = readJson(join(directory, 'evidence/browser.json'));
-verifyBrowserReceipt(browser, { browserSha256: release.browser.sha256, adapterSha256, sourceCommit });
+verifyBrowserReceipt(browser, { browserSha256: adapterSha256, wasmSha256: release.packages.find(record => record.platform === 'wasm').sha256, sourceCommit });
 writeFileSync(join(directory, 'verification.json'), `${JSON.stringify({ sourceCommit, releaseManifestSha256, platforms, browser }, null, 2)}\n`);

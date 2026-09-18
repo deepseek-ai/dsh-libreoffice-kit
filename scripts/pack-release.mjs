@@ -1,7 +1,7 @@
 /** Pack prevalidated engine payloads with npm, preserving native executable modes. */
-import { cpSync, globSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, globSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { assert, sha256 } from './verify-artifacts.mjs';
+import { assert } from './verify-artifacts.mjs';
 import { verifyRelease } from './verify-release.mjs';
 import { npm, scratch } from './pack-utils.mjs';
 import { isMain, kitDirectory, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
@@ -63,18 +63,10 @@ export function packRelease(destination, platforms, repo = root) {
       packages.push({ name: manifest.name, version: manifest.version, platform, ...packEngineArchive(gzip, destination, manifest) });
       rmSync(gzip);
     }
-    const browserDirectory = join(repo, 'packages/browser');
-    const browserManifest = readJson(join(browserDirectory, 'package.json'));
-    const stagedBrowser = join(work, 'browser');
-    stagePackage(browserDirectory, stagedBrowser, browserManifest, repositoryUrl);
-    npm(['pack', '--json', '--ignore-scripts', '--pack-destination', destination], stagedBrowser, work);
-    const browserFile = tarballName(browserManifest);
-    const browser = { name: browserManifest.name, version: browserManifest.version, file: browserFile,
-      sha256: sha256(join(destination, browserFile)), bytes: statSync(join(destination, browserFile)).size };
     const dependencies = packDependencies(kitDirectory(repo), join(destination, 'dependencies'), work);
-    const result = { schemaVersion: 1, version: checked.version, platforms, packages, browser, dependencies };
+    const result = { schemaVersion: 1, version: checked.version, platforms, packages, dependencies };
     writeFileSync(join(destination, 'release.json'), `${JSON.stringify(result, null, 2)}\n`);
-    writeFileSync(join(destination, 'publish-order.txt'), `${[...packages, browser].map((entry) => entry.file).join('\n')}\n`);
+    writeFileSync(join(destination, 'publish-order.txt'), `${packages.map((entry) => entry.file).join('\n')}\n`);
     return result;
   } finally { rmSync(work, { recursive: true, force: true }); }
 }

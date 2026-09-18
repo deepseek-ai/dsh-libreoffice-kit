@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { browserFixture, browserReceiptFixture } from './release-browser-fixture.mjs';
+import { browserReceiptFixture } from './release-browser-fixture.mjs';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,14 +31,14 @@ function fixture(t, changeManifest = manifest => manifest) {
     rmSync(gzip);
     return record;
   });
-  const release = { schemaVersion: 1, version, platforms, packages, browser: browserFixture(directory), dependencies: [] };
+  const release = { schemaVersion: 1, version, platforms, packages, dependencies: [] };
   const save = (file, value) => writeFileSync(join(directory, file), `${JSON.stringify(value)}\n`);
   save('release.json', release);
   const releaseManifestSha256 = sha256(join(directory, 'release.json'));
   const adapterFile = tarballName(adapterManifest);
   writeFileSync(join(directory, adapterFile), npmFixture(adapterManifest, { 'package/lib/index.js': 'export const fixture = true;' }));
   const adapter = { sha256: sha256(join(directory, adapterFile)) };
-  save('verification.json', { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, browser: browserReceiptFixture(release.browser, adapter.sha256, env.GITHUB_SHA), platforms: platforms.map(platform => ({
+  save('verification.json', { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, browser: browserReceiptFixture(adapter.sha256, release.packages.find(record => record.platform === 'wasm').sha256, env.GITHUB_SHA), platforms: platforms.map(platform => ({
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
@@ -366,14 +366,14 @@ test('the Node API never accepts a gzip-only equivalence exception', async () =>
   }, download: async () => { assert.fail('only qualified engines may compare inner tar bytes'); } }), /already exists with different bytes/);
 });
 
-test('a rehashed browser replacement cannot replace the qualified archive', async t => {
+test('a rehashed main-package browser replacement cannot replace the qualified archive', async t => {
   const { directory, destination, env, publication, savePublication } = fixture(t);
-  const record = publication.packages.at(-2);
-  assert.equal(record.name, '@deepseek-ai/libreoffice-kit-browser');
+  const record = publication.packages.at(-1);
+  assert.equal(record.name, '@deepseek-ai/libreoffice-kit');
   const file = join(destination, record.file);
-  writeFileSync(file, npmFixture(record, { 'package/lib/index.js': 'different browser' }));
+  writeFileSync(file, npmFixture(record, { 'package/lib/browser/index.js': 'different browser' }));
   record.bytes = statSync(file).size;
   record.sha256 = sha256(file);
   savePublication();
-  await assert.rejects(validateNpmPublication(directory, destination, env), /Browser\/Node API differs/);
+  await assert.rejects(validateNpmPublication(directory, destination, env), /Node API differs/);
 });

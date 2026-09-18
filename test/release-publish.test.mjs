@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { browserFixture, browserReceiptFixture } from './release-browser-fixture.mjs';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { browserReceiptFixture } from './release-browser-fixture.mjs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
@@ -43,7 +43,7 @@ function fixture(t, platforms = releaseTargets([])) {
     rmSync(gzip);
     return record;
   });
-  const release = { schemaVersion: 1, version, platforms, packages, browser: browserFixture(directory), dependencies: [] };
+  const release = { schemaVersion: 1, version, platforms, packages, dependencies: [] };
   const save = (file, value) => writeFileSync(join(directory, file), `${JSON.stringify(value)}\n`);
   save('release.json', release);
   const releaseManifestSha256 = sha256(join(directory, 'release.json'));
@@ -55,7 +55,7 @@ function fixture(t, platforms = releaseTargets([])) {
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
   })) };
-  evidence.browser = browserReceiptFixture(release.browser, adapter.sha256, env.GITHUB_SHA);
+  evidence.browser = browserReceiptFixture(adapter.sha256, release.packages.find(record => record.platform === 'wasm')?.sha256 ?? 'f'.repeat(64), env.GITHUB_SHA);
   save('verification.json', evidence);
   return { directory, release, evidence, env, save };
 }
@@ -187,12 +187,12 @@ test('the artifact index describes every engine tarball and the assets list rece
   assert.equal(manifest.source.commit, '1'.repeat(40));
   assert.equal(manifest.source.verificationSha256, sha256(join(directory, 'verification.json')));
   assert.deepEqual(manifest.packages.map(record => record.file), release.packages.map(record => record.file));
-  for (const record of [...manifest.packages, manifest.browser, manifest.adapter]) {
+  for (const record of [...manifest.packages, manifest.adapter]) {
     assert.equal(record.sha256, sha256(join(directory, record.file)));
     assert.ok(record.bytes > 0);
   }
   assert.deepEqual(publicationAssets(release), [
-    ...release.packages.map(record => record.file), release.browser.file, tarballName(kitManifest()),
+    ...release.packages.map(record => record.file), tarballName(kitManifest()),
     'artifact-manifest.json', 'SHA256SUMS', 'release.json', 'verification.json',
   ]);
   assert.match(readFileSync(join(directory, 'SHA256SUMS'), 'utf8'), new RegExp(`^${manifest.packages[0].sha256}  ${manifest.packages[0].file}$`, 'm'));
@@ -292,7 +292,7 @@ test('publication rechecks archive contents even when all candidate hashes agree
     if (platform.wasm) platform.wasm.adapter.sha256 = sha256(file);
     if (platform.native) platform.native.adapter.sha256 = sha256(file);
   }
-  evidence.browser.adapterSha256 = sha256(file);
+  evidence.browser.archiveSha256 = sha256(file);
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /personal home path/);
 });
@@ -301,7 +301,7 @@ test('npm preparation preserves qualified installation bytes and writes engine-f
   const { directory, env, release } = fixture(t);
   const destination = join(directory, 'public-npm');
   const result = prepareNpmRelease(directory, destination, env);
-  assert.deepEqual(result.packages.map(record => record.name), [...release.packages.map(record => record.name), release.browser.name, kitManifest().name]);
+  assert.deepEqual(result.packages.map(record => record.name), [...release.packages.map(record => record.name), kitManifest().name]);
   for (const record of result.packages) {
     assert.equal(sha256(join(destination, record.file)), record.sha256);
     assert.equal(auditNpmArchive(join(destination, record.file)).manifest.name, record.name);
@@ -329,6 +329,7 @@ function legacyCandidate(candidate, files = {}) {
   }
   save('release.json', release);
   evidence.releaseManifestSha256 = sha256(join(directory, 'release.json'));
+  evidence.browser.wasmSha256 = release.packages.find(record => record.platform === 'wasm').sha256;
   save('verification.json', evidence);
 }
 
@@ -359,7 +360,7 @@ test('npm legacy transfer handling still rejects private inner contents and repo
     if (platform.wasm) platform.wasm.adapter.sha256 = sha256(adapter);
     if (platform.native) platform.native.adapter.sha256 = sha256(adapter);
   }
-  evidence.browser.adapterSha256 = sha256(adapter);
+  evidence.browser.archiveSha256 = sha256(adapter);
   save('verification.json', evidence);
   const destination = join(directory, 'npm');
   assert.throws(() => prepareNpmRelease(directory, destination, env), error => {
@@ -372,24 +373,19 @@ test('npm legacy transfer handling still rejects private inner contents and repo
   assert.equal(existsSync(destination), false);
 });
 
-test('browser publication rejects missing, renamed and changed archives', t => {
+test('publication rejects a third standalone browser or font package', t => {
   const { directory, release, env, save } = fixture(t);
-  const browser = structuredClone(release.browser);
-  for (const mutation of [undefined, { ...browser, file: '../browser.tgz' }, { ...browser, version: '99.0.0' }]) {
-    release.browser = mutation;
-    save('release.json', release);
-    assert.throws(() => validatePublication(directory, env), /browser package/);
+  for (const field of ['browser', 'fonts']) {
+    const extra = { ...release, [field]: { name: `@deepseek-ai/libreoffice-kit-${field}` } };
+    save('release.json', extra);
+    assert.throws(() => validatePublication(directory, env), /Standalone browser\/font packages/);
   }
-  release.browser = browser;
-  save('release.json', release);
-  writeFileSync(join(directory, browser.file), 'changed browser');
-  assert.throws(() => validatePublication(directory, env), /Invalid browser tarball/);
 });
 
 test('browser qualification requires matching archives and all rendering, isolation, subset and disposal results', t => {
   const { directory, env, evidence, save } = fixture(t);
   const receipt = structuredClone(evidence.browser);
-  for (const [field, value] of [['archiveSha256', '0'.repeat(64)], ['adapterSha256', '0'.repeat(64)],
+  for (const [field, value] of [['archiveSha256', '0'.repeat(64)], ['wasmSha256', '0'.repeat(64)],
     ['sourceCommit', '0'.repeat(40)], ['sourceDirty', true], ['passed', false], ['isolated', false], ['fontSubsets', false], ['disposed', false]]) {
     evidence.browser = { ...structuredClone(receipt), [field]: value };
     save('verification.json', evidence);
@@ -406,16 +402,25 @@ test('browser qualification requires matching archives and all rendering, isolat
   assert.throws(() => validatePublication(directory, env), /Browser verification/);
 });
 
-test('the browser archive receives the same payload privacy audit as the Node API', t => {
-  const { directory, env, release, evidence, save } = fixture(t);
-  const browser = release.browser;
-  const file = join(directory, browser.file);
-  writeFileSync(file, npmFixture({ name: browser.name, version: browser.version }, { 'package/lib/index.js': '/Users/private-builder/source' }));
-  browser.sha256 = sha256(file);
-  browser.bytes = statSync(file).size;
-  save('release.json', release);
-  evidence.releaseManifestSha256 = sha256(join(directory, 'release.json'));
-  evidence.browser.archiveSha256 = browser.sha256;
+test('browser files within the main archive receive the normal payload privacy audit', t => {
+  const { directory, env, evidence, save } = fixture(t);
+  const main = kitManifest();
+  const file = join(directory, tarballName(main));
+  writeFileSync(file, npmFixture(main, { 'package/lib/browser/index.js': '/Users/private-builder/source' }));
+  const hash = sha256(file);
+  for (const record of evidence.platforms) record[record.platform === 'wasm' ? 'wasm' : 'native'].adapter.sha256 = hash;
+  evidence.browser.archiveSha256 = hash;
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /personal home path/);
+});
+
+test('collection binds browser qualification to the same main and WASM candidate archives', t => {
+  const { directory, evidence, env, save } = fixture(t);
+  mkdirSync(join(directory, 'evidence'));
+  for (const receipt of evidence.platforms) save(`evidence/${receipt.platform}.json`, receipt);
+  save('evidence/browser.json', evidence.browser);
+  run(process.execPath, [join(root, 'scripts/collect-release-evidence.mjs'), directory], { env: { ...process.env, ...env } });
+  assert.deepEqual(readJson(join(directory, 'verification.json')).browser, evidence.browser);
+  save('evidence/browser.json', { ...evidence.browser, wasmSha256: '0'.repeat(64) });
+  assert.throws(() => run(process.execPath, [join(root, 'scripts/collect-release-evidence.mjs'), directory], { env: { ...process.env, ...env } }), /Browser verification|exited/);
 });

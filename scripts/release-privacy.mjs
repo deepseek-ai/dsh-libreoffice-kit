@@ -20,11 +20,6 @@ export function auditReleaseCandidate(directory, release, options = privacyOptio
       if (checked.manifest.name !== record.name || checked.manifest.version !== record.version) throw new Error('Audited engine identity differs from release');
       return { name: record.name, files: checked.files };
     }));
-    packages.push(inspect(release.browser.name, () => {
-      const checked = auditNpmArchive(join(directory, release.browser.file), options);
-      if (checked.manifest.name !== release.browser.name || checked.manifest.version !== release.browser.version) throw new Error('Audited browser identity differs from release');
-      return { name: checked.manifest.name, files: checked.files };
-    }));
     packages.push(inspect(kitManifest().name, () => {
       const adapter = auditNpmArchive(join(directory, tarballName(kitManifest())), options);
       if (adapter.manifest.name !== kitManifest().name || adapter.manifest.version !== kitManifest().version) throw new Error('Audited adapter identity differs from release');

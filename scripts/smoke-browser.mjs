@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Qualify packed original-byte Office rendering in a sandboxed, isolated Chromium. */
 import { createServer } from 'node:http';
-import { readFile, writeFile, mkdir, mkdtemp, rm, realpath, symlink } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { dirname, resolve, extname, join } from 'node:path';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
@@ -13,45 +13,56 @@ import { documentFixture } from '../test/runtime-fixture.mjs';
 import { writerLayoutFixture } from '../test/browser-fixture.mjs';
 import { verifyBrowserPackage } from './build-browser.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
-import { root, readJson } from './platform-matrix.mjs';
-import { verifyFontPackage } from './build-fonts.mjs';
+import { root, readJson, kitManifest, tarballName } from './platform-matrix.mjs';
+import { verifyFontSubset } from './build-font-subset.mjs';
+import { materializeEngineArchive } from './engine-archive.mjs';
 import { verifyKitPackage } from './verify-kit.mjs';
-import { run } from './pack-utils.mjs';
+import { run, npm } from './pack-utils.mjs';
 
 const { values } = parseArgs({ options: {
-  'browser-directory': { type: 'string' }, archive: { type: 'string' }, 'adapter-archive': { type: 'string' }, 'fonts-archive': { type: 'string' }, output: { type: 'string' },
+  candidate: { type: 'string' }, output: { type: 'string' },
   executable: { type: 'string' }, electron: { type: 'string' }, screenshots: { type: 'string' },
 } });
 const output = resolve(values.output ?? join(root, '.release/evidence/browser.json'));
-const archive = values.archive ? resolve(values.archive) : undefined;
-const adapterArchive = values['adapter-archive'] ? resolve(values['adapter-archive']) : undefined;
-const fontsArchive = values['fonts-archive'] ? resolve(values['fonts-archive']) : undefined;
-assert(!(adapterArchive && fontsArchive), 'Choose one Host font archive');
-assert(!archive || adapterArchive || fontsArchive, '--archive qualification requires --fonts-archive or --adapter-archive');
+assert(values.candidate, 'Usage: smoke-browser.mjs --candidate <general-release-directory> [--output <receipt.json>]');
+const candidateDirectory = resolve(values.candidate);
+const candidate = readJson(join(candidateDirectory, 'release.json'));
+assert(candidate.schemaVersion === 1 && candidate.platforms?.join(',') === 'wasm'
+  && candidate.browser === undefined && candidate.fonts === undefined, 'Browser qualification requires the existing main and WASM packages');
+const wasm = candidate.packages.find(record => record.platform === 'wasm');
+assert(wasm, 'The candidate has no WASM archive');
+const archive = join(candidateDirectory, tarballName(kitManifest()));
 const temporary = await mkdtemp(join(tmpdir(), 'libreoffice-browser-smoke-'));
-let directory = resolve(values['browser-directory'] ?? join(root, 'packages/browser'));
-if (archive) {
-  assert(!values['browser-directory'], 'Choose --archive or --browser-directory, not both');
-  run('tar', ['-xzf', archive, '-C', temporary]);
-  directory = join(temporary, 'package');
+const directory = join(temporary, 'consumer/node_modules/@deepseek-ai/libreoffice-kit');
+let browserAssets;
+let createFontSource;
+let parseFont;
+try {
+  const engineTar = materializeEngineArchive(candidateDirectory, wasm, join(temporary, 'engines'));
+  const dependencies = candidate.dependencies.map(record => {
+    const file = join(candidateDirectory, record.file);
+    assert(sha256(file) === record.sha256, `Qualification dependency checksum differs: ${record.name}`);
+    return [record.name, `file:${file}`];
+  });
+  const consumer = join(temporary, 'consumer');
+  await mkdir(consumer);
+  await writeFile(join(consumer, 'package.json'), JSON.stringify({ name: 'office-browser-install-smoke', private: true, type: 'module',
+    overrides: { [wasm.name]: `$${wasm.name}` },
+    dependencies: Object.fromEntries([...dependencies, [wasm.name, `file:${engineTar}`], [kitManifest().name, `file:${archive}`]]),
+  }));
+  npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', '--omit=optional'], consumer, temporary);
+  const engineDirectory = join(consumer, 'node_modules/@deepseek-ai/libreoffice-kit-wasm');
+  verifyKitPackage(directory, true);
+  verifyFontSubset(directory);
+  verifyBrowserPackage(directory, engineDirectory);
+  ({ createFontSource } = await import(pathToFileURL(join(directory, 'lib/font-source.js'))));
+  const { resolveBrowserAssets } = await import(pathToFileURL(join(directory, 'lib/browser-assets.js')));
+  browserAssets = await resolveBrowserAssets();
+  ({ create: parseFont } = createRequire(join(directory, 'package.json'))('fontkit'));
+} catch (error) {
+  await rm(temporary, { recursive: true, force: true });
+  throw error;
 }
-verifyBrowserPackage(directory);
-let adapterDirectory = join(root, 'packages/entry');
-if (adapterArchive || fontsArchive) {
-  const extracted = join(temporary, 'adapter'); await mkdir(extracted);
-  run('tar', ['-xzf', fontsArchive ?? adapterArchive, '-C', extracted]);
-  adapterDirectory = join(extracted, 'package');
-  const manifest = fontsArchive ? verifyFontPackage(adapterDirectory) : verifyKitPackage(adapterDirectory, true);
-  // The qualification runs the archived adapter and subset WASM with the workspace's pinned dependencies.
-  for (const [name, version] of Object.entries(manifest.dependencies)) {
-    const installed = await realpath(join(root, 'packages/entry/node_modules', name));
-    assert(readJson(join(installed, 'package.json')).version === version, `Qualification dependency version differs: ${name}`);
-    const link = join(adapterDirectory, 'node_modules', name); await mkdir(dirname(link), { recursive: true });
-    await symlink(installed, link, 'dir');
-  }
-}
-const { createFontSource } = await import(pathToFileURL(join(adapterDirectory, 'lib/font-source.js')));
-const { create: parseFont } = createRequire(join(root, 'packages/entry/package.json'))('fontkit');
 const source = createFontSource();
 const requests = [];
 const fontCoverage = new Map();
@@ -93,6 +104,16 @@ const server = createServer(async (request, response) => {
       const bytes = fixtures[url.pathname.slice(9)];
       assert(bytes !== undefined, 'Unknown fixture');
       response.setHeader('Content-Type', 'application/octet-stream'); response.end(bytes);
+    } else if (url.pathname === '/assets.json') {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ programDirectory: browserAssets.programDirectory,
+        files: Object.fromEntries(Object.keys(browserAssets.files).map(key => [key, { path: key }])) }));
+    } else if (url.pathname.startsWith('/asset/')) {
+      const key = url.pathname.slice(7);
+      const file = browserAssets.files[key];
+      assert(file, 'Unknown engine asset');
+      response.setHeader('Content-Type', ['worker', 'loader'].includes(key) ? 'text/javascript' : key === 'wasm' ? 'application/wasm' : 'application/octet-stream');
+      response.end(await readFile(file.path));
     } else if (url.pathname.startsWith('/browser/')) {
       const file = resolve(directory, url.pathname.slice(9));
       assert(file.startsWith(`${directory}/`), 'Resource path escapes the browser package');
@@ -138,10 +159,10 @@ try {
     currentFormat = format;
     formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks, expectedInk }) => {
       if (!crossOriginIsolated) throw new Error('Browser is not cross-origin isolated');
-      const { openDocument } = await import(`${origin}/browser/lib/index.js`);
-      const manifest = await (await fetch(`${origin}/browser/assets.json`)).json();
+      const { openDocument } = await import(`${origin}/browser/lib/browser/index.js`);
+      const manifest = await (await fetch(`${origin}/assets.json`)).json();
       const assets = { programDirectory: manifest.programDirectory };
-      for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/browser/${file.path}`;
+      for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;
       const data = new Uint8Array(await (await fetch(`${origin}/fixture/${format}`)).arrayBuffer());
       const started = performance.now();
       let missingFonts = [];
@@ -209,7 +230,8 @@ try {
   }
   const laterScriptRequests = requests.filter(request => request.format === 'mixed' && request.input.codePoints.length > 0);
   assert(laterScriptRequests.length >= 3, 'Mixed-script fixture did not exercise font-demand resolution');
-  const receipt = { schemaVersion: 1, passed: true, ...(archive ? { archiveSha256: sha256(archive) } : {}), ...(adapterArchive ? { adapterSha256: sha256(adapterArchive) } : {}), ...(fontsArchive ? { fontsSha256: sha256(fontsArchive) } : {}),
+  const receipt = { schemaVersion: 1, passed: true, archiveSha256: sha256(archive), wasmSha256: sha256(join(candidateDirectory, wasm.file)),
+    installedOutsideRepository: true, network: 'offline',
     sourceCommit: run('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(), sourceDirty: run('git', ['status', '--porcelain', '--', '.', ':(exclude)packages/*/prebuilds.json'], { cwd: root }).trim().length > 0, isolated: true, fontSubsets: true, disposed: true,
     engine: 'libreofficekit-tiles', runtime: values.electron ? 'electron' : 'chromium', crossOriginIsolated: true, hostOriginalBytes: true, workerDisposal: true,
     formats, fontRequests: requests.length, mixedScriptRequests: laterScriptRequests.length };
