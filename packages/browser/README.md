@@ -35,6 +35,8 @@ Serve the resources declared in `assets.json` unchanged through `BrowserEngineAs
 
 `@deepseek-ai/libreoffice-kit/fonts` provides the shared Host font service. Office requests reusable subsets with canonical family names; PDFium requests original TTF/OTF/TTC bytes. The platform/script fallback rules and optional uncovered-code-point diagnostics are shared by Node, CLI and browser. Production fonts are not bundled. The main package owns `./browser`, `./browser-assets` and `./fonts`; the existing `-wasm` dependency owns the engine resources. No extra npm package is required.
 
+The browser font channel transfers each immutable font asset once per document. Later resolutions reference bytes that the Worker has already installed, including multiple family aliases in one TTC, without repeating the byte transfer or charging the font budget again. Installation failures and incomplete transfers do not create reusable identities. This transport detail does not change the Host font-provider request API.
+
 ## Building and qualification
 
 Build with `node scripts/build-browser.mjs --stage` after staging the version-matched WASM engine. `resolveBrowserAssets()` from `@deepseek-ai/libreoffice-kit/browser-assets` resolves and verifies resources from the two installed packages. Qualification must install archived packages outside the checkout and cover three-format reading, selection/copy, refusal of editing operations, Writer layouts, source-byte preservation and Worker disposal. Unit fixtures do not establish real-document fidelity or input latency.

@@ -80,7 +80,7 @@ describe('browser document ownership', () => {
     const worker = ControlledWorker.instances[0]!
     const opened = worker.messages[0]!
     if (opened.type !== 'open') throw new Error('Expected open')
-    worker.receive({ type: 'font', request: { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] } })
+    worker.receive({ type: 'font', known: [], request: { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] } })
     await vi.waitFor(() => expect(Atomics.load(new Int32Array(opened.channel, 0, 2), 0)).toBe(FontState.Error))
     await document.dispose()
   })
@@ -90,7 +90,7 @@ describe('browser document ownership', () => {
     let fontSignal: AbortSignal | undefined
     const document = await openDocument({ ...input, resolveFonts: (_request, signal) => { fontSignal = signal; return new Promise(() => {}) } })
     const worker = ControlledWorker.instances[0]!
-    worker.receive({ type: 'font', request: { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] } })
+    worker.receive({ type: 'font', known: [], request: { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] } })
     await Promise.resolve()
     await document.dispose()
     expect(fontSignal?.aborted).toBe(true)
@@ -315,6 +315,28 @@ describe('browser transport failures and cancellation', () => {
 })
 
 describe('owner-side asynchronous font delivery', () => {
+  it('returns only a reference header and trailer when the Worker already installed the same font', async () => {
+    supported()
+    const data = new Uint8Array([1, 2, 3])
+    const resolveFonts = vi.fn(async () => ({ fonts: [{ id: 'shared-ttc', family: 'Arial', alias: 'Arial', data, format: 'ttc' as const }] }))
+    const document = await openDocument({ ...options(), resolveFonts })
+    const worker = ControlledWorker.instances[0]!
+    const opened = worker.messages[0] as Extract<OwnerMessage, { type: 'open' }>
+    const { control, bytes } = fontViews(opened.channel)
+    try {
+      worker.receive({ type: 'font', request: fontRequest, known: [{ id: 'shared-ttc', bytes: data.length, format: 'ttc' }] })
+      await vi.waitFor(() => expect(Atomics.load(control, 0)).toBe(FontState.Header))
+      expect(JSON.parse(new TextDecoder().decode(bytes.slice(0, Atomics.load(control, 1))))).toEqual({ fonts: [
+        { id: 'shared-ttc', bytes: data.length, family: 'Arial', alias: 'Arial', format: 'ttc', reference: true },
+      ] })
+      expect(resolveFonts).toHaveBeenCalledExactlyOnceWith(fontRequest, expect.any(AbortSignal))
+      worker.receive({ type: 'font-next' })
+      expect(Atomics.load(control, 0)).toBe(FontState.Done)
+      expect(Atomics.load(control, 1)).toBe(0)
+      worker.receive({ type: 'font-next' })
+      expect(Atomics.load(control, 0)).toBe(FontState.Done)
+    } finally { await document.dispose() }
+  })
   it('publishes one bounded frame per acknowledgement and forwards missing-source diagnostics', async () => {
     supported()
     const missing = vi.fn()
@@ -323,7 +345,7 @@ describe('owner-side asynchronous font delivery', () => {
     const opened = worker.messages[0] as Extract<OwnerMessage, { type: 'open' }>
     const views = fontViews(opened.channel)
     worker.receive({ type: 'font-next' })
-    worker.receive({ type: 'font', request: fontRequest })
+    worker.receive({ type: 'font', known: [], request: fontRequest })
     await vi.waitFor(() => expect(Atomics.load(views.control, 0)).toBe(FontState.Header))
     worker.receive({ type: 'font-next' }); expect(Atomics.load(views.control, 0)).toBe(FontState.Bytes)
     expect([...views.bytes.slice(0, 2)]).toEqual([1, 2])
@@ -331,7 +353,7 @@ describe('owner-side asynchronous font delivery', () => {
     worker.receive({ type: 'font-next' })
     worker.receive({ type: 'missing-fonts', families: ['Absent'] }); expect(missing).toHaveBeenCalledWith(['Absent'])
     const disposal = document.dispose()
-    worker.receive({ type: 'font', request: fontRequest }); worker.receive({ type: 'font-next' }); worker.receive({ type: 'missing-fonts', families: ['Late'] })
+    worker.receive({ type: 'font', known: [], request: fontRequest }); worker.receive({ type: 'font-next' }); worker.receive({ type: 'missing-fonts', families: ['Late'] })
     await disposal; expect(missing).toHaveBeenCalledTimes(1)
   })
   it('reports metadata overflow and primitive provider failures through the shared channel', async () => {
@@ -340,7 +362,7 @@ describe('owner-side asynchronous font delivery', () => {
       const document = await openDocument({ ...options(), resolveFonts })
       const worker = ControlledWorker.instances.at(-1)!
       const opened = worker.messages[0] as Extract<OwnerMessage, { type: 'open' }>
-      worker.receive({ type: 'font', request: fontRequest })
+      worker.receive({ type: 'font', known: [], request: fontRequest })
       await vi.waitFor(() => expect(Atomics.load(fontViews(opened.channel).control, 0)).toBe(FontState.Error))
       await document.dispose()
     }
@@ -351,7 +373,7 @@ describe('owner-side asynchronous font delivery', () => {
     const document = await openDocument({ ...options(), resolveFonts: () => response.promise })
     const worker = ControlledWorker.instances[0]!
     const opened = worker.messages[0] as Extract<OwnerMessage, { type: 'open' }>
-    worker.receive({ type: 'font', request: fontRequest }); await Promise.resolve()
+    worker.receive({ type: 'font', known: [], request: fontRequest }); await Promise.resolve()
     await document.dispose()
     if (reject) response.reject(new Error('late failure')); else response.resolve({ fonts: [] })
     await Promise.resolve(); await Promise.resolve()

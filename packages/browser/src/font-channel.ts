@@ -1,7 +1,7 @@
 /** Bounded frames bridge asynchronous Host font reads and synchronous VCL callbacks. */
 import { normalize } from '@deepseek-ai/libreoffice-kit/font-config'
 import { FONT_CHUNK_BYTES, FONT_HEADER_BYTES, FontState } from './protocol.ts'
-import type { FontHeader } from './protocol.ts'
+import type { FontHeader, FontIdentity } from './protocol.ts'
 import { BrowserRenderError } from './types.ts'
 import type { BrowserFontRequest, BrowserFontResult } from './types.ts'
 
@@ -10,13 +10,21 @@ export function fontViews(channel: SharedArrayBuffer): { control: Int32Array; by
   return { control: new Int32Array(channel, 0, 2), bytes: new Uint8Array(channel, FONT_HEADER_BYTES) }
 }
 
-/** Frames are produced lazily so the transfer channel never duplicates a whole font set. */
-export function* fontFrames(result: BrowserFontResult): Generator<{ state: FontState; bytes: Uint8Array }> {
-  const header: FontHeader = { fonts: result.fonts.map(font => ({ id: font.id, bytes: font.data.byteLength, family: font.family, alias: font.alias, ...(font.format ? { format: font.format } : {}) })), ...(result.missingFamily === undefined ? {} : { missingFamily: result.missingFamily }) }
+/** Only uninstalled content crosses the channel; each family retains its own alias. */
+export function* fontFrames(result: BrowserFontResult, known: readonly FontIdentity[] = []): Generator<{ state: FontState; bytes: Uint8Array }> {
+  const identities = new Map(known.map(font => [font.id, font]))
+  const header: FontHeader = { fonts: result.fonts.map(font => {
+    const identity: FontIdentity = { id: font.id, bytes: font.data.byteLength, ...(font.format ? { format: font.format } : {}) }
+    const prior = identities.get(font.id)
+    if (prior && (prior.bytes !== identity.bytes || prior.format !== identity.format)) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting bytes or formats.')
+    identities.set(font.id, identity)
+    return { ...identity, family: font.family, alias: font.alias, ...(prior ? { reference: true as const } : {}) }
+  }), ...(result.missingFamily === undefined ? {} : { missingFamily: result.missingFamily }) }
   const encoded = new TextEncoder().encode(JSON.stringify(header))
   if (encoded.length > FONT_CHUNK_BYTES) throw new BrowserRenderError('font-limit', 'Font response metadata exceeds the transfer limit.')
   yield { state: FontState.Header, bytes: encoded }
-  for (const font of result.fonts) {
+  for (const [index, font] of result.fonts.entries()) {
+    if (header.fonts[index]!.reference) continue
     for (let offset = 0; offset < font.data.byteLength; offset += FONT_CHUNK_BYTES) {
       yield { state: FontState.Bytes, bytes: font.data.subarray(offset, offset + FONT_CHUNK_BYTES) }
     }
@@ -27,12 +35,12 @@ export function* fontFrames(result: BrowserFontResult): Generator<{ state: FontS
 /** One MEMFS font face registered under a document-local family alias. */
 export interface EngineFontFace { readonly path: string; readonly family: string }
 
-/** The synchronous reader installs immutable subsets before returning their MEMFS paths and aliases. */
+/** The synchronous reader installs immutable font assets before returning their MEMFS paths and aliases. */
 export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, maxLoadedFontBytes: number,
-  declaredFamilies: ReadonlyMap<string, string>, request: (request: BrowserFontRequest) => void, next: () => void,
+  declaredFamilies: ReadonlyMap<string, string>, request: (request: BrowserFontRequest, known: readonly FontIdentity[]) => void, next: () => void,
   install: (path: string, bytes: Uint8Array) => void, missing: (families: readonly string[]) => void): (request: BrowserFontRequest) => EngineFontFace[] {
   const { control, bytes } = fontViews(channel)
-  const installed = new Map<string, { face: EngineFontFace; format: FontHeader['fonts'][number]['format'] }>()
+  const installed = new Map<string, { face: EngineFontFace; bytes: number; format: FontIdentity['format'] }>()
   const aliases = new Map<string, { id: string; family: string }>()
   const requests = new Map<string, EngineFontFace[]>()
   const families = new Set<string>()
@@ -59,7 +67,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
     const key = JSON.stringify(original)
     const cached = requests.get(key)
     if (cached) return cached
-    request(original)
+    request(original, [...installed].map(([id, font]) => ({ id, bytes: font.bytes, ...(font.format ? { format: font.format } : {}) })))
     const first = read()
     if (first.state !== FontState.Header) throw new BrowserRenderError('font-unavailable', 'Expected font transfer metadata.')
     let header: FontHeader
@@ -69,15 +77,17 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
     for (const font of header.fonts) {
       if (typeof font.id !== 'string' || typeof font.family !== 'string' || font.family.length === 0 || typeof font.alias !== 'string' || font.alias.length === 0 || /[\x00\t\r\n]/.test(font.alias) || !Number.isSafeInteger(font.bytes) || font.bytes <= 0) throw new BrowserRenderError('font-unavailable', 'Invalid font file descriptor.')
       if (font.format !== undefined && !['ttf', 'otf', 'ttc'].includes(font.format)) throw new BrowserRenderError('font-unavailable', 'Invalid full font format.')
+      if (font.reference !== undefined && font.reference !== true) throw new BrowserRenderError('font-unavailable', 'Invalid font reference descriptor.')
       const prior = installed.get(font.id)
-      if (prior && (prior.format !== font.format || (font.format === undefined && prior.face.family !== font.alias))) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting aliases or formats.')
+      if (font.reference && !prior) throw new BrowserRenderError('font-unavailable', 'Font reference has not been installed.')
+      if (prior && (prior.bytes !== font.bytes || prior.format !== font.format || (font.format === undefined && prior.face.family !== font.alias))) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting bytes, aliases or formats.')
       const alias = normalize(font.alias)
       const previousAlias = aliases.get(alias)
       if (previousAlias && (previousAlias.family !== font.family || (font.format === undefined && previousAlias.id !== font.id))) throw new BrowserRenderError('font-unavailable', 'Font alias identifies conflicting subsets.')
       if (!prior && loadedBytes + font.bytes > maxLoadedFontBytes) throw new BrowserRenderError('font-limit', 'Imported fonts exceed maxLoadedFontBytes.')
       const buffer = prior ? undefined : new Uint8Array(font.bytes)
       let received = 0
-      while (received < font.bytes) {
+      while (!font.reference && received < font.bytes) {
         const frame = read()
         if (frame.state !== FontState.Bytes || frame.data.length === 0 || received + frame.data.length > font.bytes) throw new BrowserRenderError('font-unavailable', 'Incomplete font file transfer.')
         buffer?.set(frame.data, received)
@@ -86,7 +96,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
       // A full TTC asset can expose multiple families from the same installed bytes.
       // Its requested family must not inherit the first family's alias.
       const face = { path: prior?.face.path ?? (font.format === undefined ? `/dsh-fonts/${installed.size}.font` : `/usr/share/fonts/dsh-pdfium/${installed.size}.${font.format}`), family: font.alias }
-      if (buffer) { install(face.path, buffer); installed.set(font.id, { face, format: font.format }); loadedBytes += buffer.length }
+      if (buffer) { install(face.path, buffer); installed.set(font.id, { face, bytes: buffer.length, format: font.format }); loadedBytes += buffer.length }
       aliases.set(alias, { id: font.id, family: font.family })
       faces.push(face)
     }

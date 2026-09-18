@@ -70,7 +70,7 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading 
       loaded.FS.writeFile('/dsh/fonts.conf', new TextEncoder().encode(memoryFontConfig(options.fontFallbacks, metadata.families.values())))
       Object.assign(loaded.ENV, { HOME: '/dsh/profile', TMPDIR: '/tmp', FONTCONFIG_FILE: '/dsh/fonts.conf', LOK_HOST_ALLOWLIST: '^$' })
       resolveFonts = createFontReader(channel, options.timeoutMs, options.maxLoadedFontBytes, metadata.families,
-        request => send({ type: 'font', request }), () => send({ type: 'font-next' }),
+        (request, known) => send({ type: 'font', request, known }), () => send({ type: 'font-next' }),
         (path, bytes) => loaded.FS.writeFile(path, bytes), families => send({ type: 'missing-fonts', families }))
       const initialFamilies = options.extension === 'pdf' ? new Set(options.fontFallbacks.flat()) : new Set(['sans-serif'])
       for (const family of initialFamilies) resolveFonts({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [], ...(options.extension === 'pdf' ? { mode: 'full' as const } : {}) })

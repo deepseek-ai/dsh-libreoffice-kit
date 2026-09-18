@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createFontReader, fontFrames, fontViews } from '../src/font-channel.ts'
 import { FONT_CHUNK_BYTES, FONT_HEADER_BYTES, FontState } from '../src/protocol.ts'
+import type { FontIdentity } from '../src/protocol.ts'
 import type { BrowserFontRequest, BrowserFontResult } from '../src/types.ts'
 
 const attributes: BrowserFontRequest = { family: 'Test', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }
@@ -8,7 +9,7 @@ const face = { id: 'latin', data: new Uint8Array([1, 2, 3]), family: 'Test', ali
 type Frame = { state: FontState; bytes: Uint8Array; length?: number }
 const frame = (state: FontState, value: unknown): Frame => ({ state, bytes: new TextEncoder().encode(JSON.stringify(value)) })
 
-function connection(response: (request: BrowserFontRequest) => Iterable<Frame>, limit = 64, declared = new Map([['test', 'Source Test']])) {
+function connection(response: (request: BrowserFontRequest, known: readonly FontIdentity[]) => Iterable<Frame>, limit = 64, declared = new Map([['test', 'Source Test']])) {
   const channel = new SharedArrayBuffer(FONT_HEADER_BYTES + FONT_CHUNK_BYTES)
   const { control, bytes } = fontViews(channel)
   let frames: Iterator<Frame>
@@ -21,7 +22,7 @@ function connection(response: (request: BrowserFontRequest) => Iterable<Frame>, 
     Atomics.store(control, 1, next.value.length ?? next.value.bytes.length)
     Atomics.store(control, 0, next.value.state)
   }
-  const request = vi.fn((input: BrowserFontRequest) => { frames = response(input)[Symbol.iterator](); pump() })
+  const request = vi.fn((input: BrowserFontRequest, known: readonly FontIdentity[]) => { frames = response(input, known)[Symbol.iterator](); pump() })
   const read = createFontReader(channel, 1, limit, declared, request, pump, installed, missing)
   return { read, request, installed, missing, control }
 }
@@ -78,6 +79,7 @@ describe('font transfer validation and document diagnostics', () => {
   })
   it.each([
     { id: 1 }, { family: 1 }, { family: '' }, { alias: 1 }, { alias: '' }, { alias: 'bad\tname' }, { bytes: 1.5 }, { bytes: 0 },
+    { reference: false }, { reference: 0 }, { reference: 1 }, { reference: 'true' }, { reference: null }, { reference: {} },
   ])('rejects malformed font descriptors %j', change => {
     expect(() => connection(() => [frame(FontState.Header, { fonts: [{ id: face.id, family: face.family, alias: face.alias, bytes: 3, ...change }] })]).read(attributes)).toThrow('descriptor')
   })
@@ -88,6 +90,51 @@ describe('font transfer validation and document diagnostics', () => {
       expect(() => exchange.read({ ...attributes, codePoints: [0x62] })).toThrow(/conflicting/)
       expect(exchange.installed).toHaveBeenCalledTimes(1)
     }
+  })
+  it('rejects references to a font that has never been installed', () => {
+    const exchange = connection(() => [frame(FontState.Header, { fonts: [{ id: face.id, family: face.family,
+      alias: face.alias, bytes: face.data.length, reference: true }] }), { state: FontState.Done, bytes: new Uint8Array() }])
+    expect(() => exchange.read(attributes)).toThrow(expect.objectContaining({ code: 'font-unavailable' }))
+    expect(exchange.request.mock.calls[0]?.[1]).toEqual([])
+    expect(exchange.installed).not.toHaveBeenCalled()
+  })
+  it.each([{ bytes: 4 }, { format: 'ttf' }, { format: undefined }])(
+    'rejects a known font reference with conflicting immutable metadata %j', change => {
+      const full = { ...face, alias: 'Test', format: 'ttc' as const }
+      const exchange = connection((input, known) => input.codePoints.length
+        ? [frame(FontState.Header, { fonts: [{ id: full.id, family: full.family, alias: full.alias,
+          bytes: full.data.length, format: full.format, reference: true, ...change }] }), { state: FontState.Done, bytes: new Uint8Array() }]
+        : fontFrames({ fonts: [full] }, known))
+      exchange.read({ ...attributes, mode: 'full' })
+      expect(() => exchange.read({ ...attributes, mode: 'full', codePoints: [0x62] })).toThrow(/conflicting/)
+      expect(exchange.request.mock.calls[1]?.[1]).toEqual([{ id: full.id, bytes: full.data.length, format: 'ttc' }])
+      expect(exchange.installed).toHaveBeenCalledExactlyOnceWith('/usr/share/fonts/dsh-pdfium/0.ttc', full.data)
+    })
+  it('does not register or charge a font whose filesystem installation throws', () => {
+    const exchange = connection((_input, known) => fontFrames({ fonts: [face] }, known), face.data.length)
+    exchange.installed.mockImplementationOnce(() => { throw new Error('MEMFS write failed') })
+    expect(() => exchange.read(attributes)).toThrow('MEMFS write failed')
+    expect(exchange.read(attributes)).toEqual([{ path: '/dsh-fonts/0.font', family: face.alias }])
+    expect(exchange.read({ ...attributes, codePoints: [0x62] })).toEqual([{ path: '/dsh-fonts/0.font', family: face.alias }])
+    expect(exchange.request.mock.calls.map(([, known]) => known)).toEqual([[], [], [{ id: face.id, bytes: face.data.length }]])
+    expect(exchange.installed.mock.calls).toEqual([['/dsh-fonts/0.font', face.data], ['/dsh-fonts/0.font', face.data]])
+  })
+  it.each([FontState.Error, FontState.Cancelled])('keeps only successfully installed fonts known after transfer failure %s', failure => {
+    const other = { id: 'arabic', family: 'Other', alias: 'DSH_arabic', data: new Uint8Array([4, 5, 6]) }
+    let failed = false
+    const exchange = connection((_input, known) => {
+      if (failed) return fontFrames({ fonts: [face, other] }, known)
+      failed = true
+      return [frame(FontState.Header, { fonts: [face, other].map(font => ({ id: font.id, family: font.family,
+        alias: font.alias, bytes: font.data.length })) }), { state: FontState.Bytes, bytes: face.data },
+      { state: FontState.Bytes, bytes: other.data.subarray(0, 1) }, { state: failure, bytes: new TextEncoder().encode('Host unavailable') }]
+    }, face.data.length + other.data.length)
+    expect(() => exchange.read(attributes)).toThrow(expect.objectContaining(failure === FontState.Cancelled
+      ? { name: 'AbortError' } : { code: 'font-unavailable' }))
+    expect(exchange.installed).toHaveBeenCalledExactlyOnceWith('/dsh-fonts/0.font', face.data)
+    expect(exchange.read(attributes)).toEqual([{ path: '/dsh-fonts/0.font', family: face.alias }, { path: '/dsh-fonts/1.font', family: other.alias }])
+    expect(exchange.request.mock.calls.map(([, known]) => known)).toEqual([[], [{ id: face.id, bytes: face.data.length }]])
+    expect(exchange.installed.mock.calls).toEqual([['/dsh-fonts/0.font', face.data], ['/dsh-fonts/1.font', other.data]])
   })
   it('rejects the byte limit, truncated bodies, overlong bodies and a missing trailer', () => {
     expect(() => connection(() => fontFrames({ fonts: [face] }), 2).read(attributes)).toThrow('maxLoadedFontBytes')

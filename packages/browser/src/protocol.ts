@@ -30,10 +30,12 @@ export type WorkerMessage =
   | { readonly type: 'office-event'; readonly event: OfficeDocumentEvent }
   | { readonly type: 'disposed'; readonly id: number }
   | { readonly type: 'error'; readonly id: number; readonly code: BrowserRenderErrorCode; readonly message: string; readonly fatal: boolean }
-  | { readonly type: 'font'; readonly request: BrowserFontRequest }
+  | { readonly type: 'font'; readonly request: BrowserFontRequest; readonly known: readonly FontIdentity[] }
   | { readonly type: 'font-next' }
   | { readonly type: 'missing-fonts'; readonly families: readonly string[] }
+/** Immutable bytes already installed in this document's MEMFS. */
+export interface FontIdentity { readonly id: string; readonly bytes: number; readonly format?: 'ttf' | 'otf' | 'ttc' }
 export interface FontHeader {
-  readonly fonts: readonly { readonly id: string; readonly bytes: number; readonly family: string; readonly alias: string; readonly format?: 'ttf' | 'otf' | 'ttc' }[]
+  readonly fonts: readonly (FontIdentity & { readonly family: string; readonly alias: string; readonly reference?: true })[]
   readonly missingFamily?: string
 }

@@ -1,6 +1,7 @@
 /** Refreshable installed-font matching with deterministic, memory-bounded sfnt subsets. */
 import { createHash } from 'node:crypto'
 import { statSync } from 'node:fs'
+import { extname } from 'node:path'
 import { create } from 'fontkit'
 import { indexSystemFonts, indexedFace, readFont, SystemFontCatalog } from './fonts.ts'
 import type { FontFace, FontIndexOptions } from './fonts.ts'
@@ -29,8 +30,8 @@ function unchanged(face: FontFace): void {
   const status = statSync(face.path)
   if (!status.isFile() || STAT_KEYS.some(key => status[key] !== face[key])) throw new Error('The selected font changed; resolve it again.')
 }
-function fileIdentity(face: FontFace): string {
-  return JSON.stringify([face.path, ...STAT_KEYS.map(key => face[key]), face.faceIndex])
+function fileIdentity(face: FontFace, wholeFile = false): string {
+  return JSON.stringify([face.path, ...STAT_KEYS.map(key => face[key]), ...(wholeFile ? [] : [face.faceIndex])])
 }
 
 /** One Worker-owned font index and LRU whose byte budget excludes transient subsetting input/output. */
@@ -83,15 +84,16 @@ export class FontSubsetSource {
 
   private async describe(face: FontFace, script: string): Promise<FontAsset> {
     unchanged(face)
-    const partition = `${fileIdentity(face)}/${script}`
+    // TTC faces share original bytes; dfont resources and subsets remain face-specific.
+    const partition = `${fileIdentity(face, script === 'full' && extname(face.path).toLowerCase() !== '.dfont')}/${script}`
     const previous = this.partitions.get(partition)
     if (previous !== undefined) {
       this.selected.set(previous.asset.id, previous)
-      return { ...previous.asset, family: face.family }
+      return { ...previous.asset, family: face.family, alias: script === 'full' ? face.family : previous.asset.alias }
     }
     const { bytes, sourceHash } = await this.generate(face, script)
     const id = `${script === 'full' ? 'full_' : ''}${hash(bytes)}` as FontAssetId
-    const key = `${sourceHash}/${face.faceIndex}/${ALGORITHM}/${script}`
+    const key = script === 'full' ? id : `${sourceHash}/${face.faceIndex}/${ALGORITHM}/${script}`
     const asset: FontAsset = { id, bytes: bytes.byteLength, family: face.family,
       alias: script === 'full' ? face.family : `DSH_${id}`,
       ...(script === 'full' ? { mode: 'full' as const, format: fontFileFormat(bytes) } : {}) }
@@ -111,7 +113,7 @@ export class FontSubsetSource {
     if (request.mode !== undefined && request.mode !== 'subset' && request.mode !== 'full') throw new TypeError('Unknown font asset mode.')
     const snapshot = indexSystemFonts(this.options, this.snapshot)
     if (this.catalog === undefined || snapshot.length !== this.snapshot.length || snapshot.some((face, index) => face !== this.snapshot[index])) {
-      const current = new Set(snapshot.map(fileIdentity))
+      const current = new Set(snapshot.map(face => fileIdentity(face)))
       for (const [partition, selection] of this.partitions) {
         if (current.has(fileIdentity(selection.face))) continue
         this.partitions.delete(partition)

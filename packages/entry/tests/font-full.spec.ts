@@ -1,21 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { create } from 'fontkit'
 import { FontSubsetSource } from '../src/font-subsets.ts'
 import { fontFileFormat, fullFontFile, preloadPdfFonts } from '../src/font-full.ts'
+import * as fullFonts from '../src/font-full.ts'
 import { indexSystemFonts, SystemFontCatalog } from '../src/fonts.ts'
 import { resolveOptions } from '../src/options.ts'
 import type { FontAssetId } from '../src/font-source-types.ts'
 const fixtures = fileURLToPath(new URL('./fixtures/fonts/', import.meta.url))
 const roots: string[] = []
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
-function fixture(name: string) {
+function fixture(name: string, maxCachedSubsetBytes = 1) {
   const root = mkdtempSync(join(tmpdir(), 'kit-full-font-')); roots.push(root)
   const path = join(root, name); copyFileSync(join(fixtures, name), path)
-  const source = new FontSubsetSource({ directories: [root], fallbackFamilies: [], maxFiles: 20, maxFileBytes: 256 * 1024 * 1024, maxCachedSubsetBytes: 1 })
+  const source = new FontSubsetSource({ directories: [root], fallbackFamilies: [], maxFiles: 20, maxFileBytes: 256 * 1024 * 1024, maxCachedSubsetBytes })
   return { root, path, source }
 }
 const attributes = { family: 'Roboto', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }
@@ -40,6 +41,96 @@ it.each([['Faces.ttc', 'ttc'], ['Face.dfont', 'ttf']])('full %s remains a PDFium
   expect(full.format).toBe(format)
   if (format === 'ttc') expect(Buffer.from(full.bytes)).toEqual(readFileSync(path))
   else expect('familyName' in create(full.bytes)).toBe(true)
+})
+it('shares one full TTC across its physical faces without replacing the requested family or alias', async () => {
+  const original = readFileSync(join(fixtures, 'Faces.ttc'))
+  const { source } = fixture('Faces.ttc', original.length)
+  const generate = vi.spyOn(fullFonts, 'fullFontFile')
+  const result = await source.resolve({ ...attributes, mode: 'full', codePoints: [0x41, 0x928] })
+  expect(result.fonts).toHaveLength(2)
+  expect(result.fonts.map(asset => ({ family: asset.family, alias: asset.alias, format: asset.format }))).toEqual([
+    { family: 'Roboto', alias: 'Roboto', format: 'ttc' },
+    { family: 'Noto Sans Devanagari', alias: 'Noto Sans Devanagari', format: 'ttc' },
+  ])
+  expect(result.fonts[1]!.id).toBe(result.fonts[0]!.id)
+  for (const asset of result.fonts) expect(Buffer.from(await source.read(asset.id))).toEqual(original)
+  const devanagari = await source.resolve({ ...attributes, mode: 'full', family: 'Noto Sans Devanagari', codePoints: [0x928] })
+  expect(devanagari.fonts).toEqual([result.fonts[1]])
+  expect((await source.resolve({ ...attributes, mode: 'full', codePoints: [0x41] })).fonts).toEqual([result.fonts[0]])
+  expect(generate).toHaveBeenCalledOnce()
+})
+it('accounts for identical full TTC bytes once when distinct indexed paths and faces share an asset', async () => {
+  const collectionBytes = readFileSync(join(fixtures, 'Faces.ttc'))
+  const otherBytes = readFileSync(join(fixtures, 'Arabic.ttf'))
+  const { source, root, path } = fixture('Faces.ttc', collectionBytes.length + otherBytes.length)
+  const copy = join(root, 'Copy.ttc')
+  copyFileSync(path, copy)
+  copyFileSync(join(fixtures, 'Arabic.ttf'), join(root, 'Arabic.ttf'))
+  const faces = indexSystemFonts({ directories: [root], maxFiles: 20, maxFileBytes: 10000000 })
+  const otherFace = faces.find(face => basename(face.path) === 'Arabic.ttf')!
+  const firstFace = faces.find(face => basename(face.path) === 'Faces.ttc' && face.faceIndex === 0)!
+  const secondFace = faces.find(face => basename(face.path) === 'Copy.ttc' && face.faceIndex === 1)!
+  expect([otherFace, firstFace, secondFace].every(Boolean)).toBe(true)
+  vi.spyOn(SystemFontCatalog.prototype, 'match').mockReturnValueOnce({ fonts: [otherFace] })
+    .mockReturnValueOnce({ fonts: [firstFace] }).mockReturnValueOnce({ fonts: [secondFace] })
+  const generate = vi.spyOn(fullFonts, 'fullFontFile')
+  const other = (await source.resolve({ ...attributes, mode: 'full', family: otherFace.family })).fonts[0]!
+  const first = (await source.resolve({ ...attributes, mode: 'full', family: firstFace.family })).fonts[0]!
+  const second = (await source.resolve({ ...attributes, mode: 'full', family: secondFace.family })).fonts[0]!
+  expect(second.id).toBe(first.id)
+  expect(second).toMatchObject({ family: 'Noto Sans Devanagari', alias: 'Noto Sans Devanagari' })
+  expect(Buffer.from(await source.read(other.id))).toEqual(otherBytes)
+  expect(Buffer.from(await source.read(second.id))).toEqual(collectionBytes)
+  // The first font still fits beside one physical TTC, even after two face/path selections.
+  expect(generate).toHaveBeenCalledTimes(3)
+})
+it.each(['full', 'subset'] as const)('retains separate %s assets for two resources in one Apple dfont', async mode => {
+  const { source, root, path } = fixture('Face.dfont', 256 * 1024 * 1024)
+  const resources = ['LatinGreek.ttf', 'Devanagari.ttf'].map(name => readFileSync(join(fixtures, name)))
+  const chunks = resources.map(bytes => { const size = Buffer.alloc(4); size.writeUInt32BE(bytes.length); return Buffer.concat([size, bytes]) })
+  const data = Buffer.concat(chunks)
+  const map = Buffer.alloc(38 + 12 * resources.length)
+  const header = Buffer.alloc(16)
+  header.writeUInt32BE(256, 0); header.writeUInt32BE(256 + data.length, 4)
+  header.writeUInt32BE(data.length, 8); header.writeUInt32BE(map.length, 12)
+  header.copy(map)
+  map.writeUInt16BE(28, 24); map.writeUInt16BE(map.length, 26)
+  map.writeUInt16BE(0, 28); map.write('sfnt', 30, 'ascii')
+  map.writeUInt16BE(resources.length - 1, 34); map.writeUInt16BE(10, 36)
+  let offset = 0
+  for (const [index, chunk] of chunks.entries()) {
+    const entry = 38 + index * 12
+    map.writeUInt16BE(128 + index, entry); map.writeUInt16BE(0xffff, entry + 2)
+    map.writeUInt32BE(offset, entry + 4); offset += chunk.length
+  }
+  writeFileSync(path, Buffer.concat([header, Buffer.alloc(240), data, map]))
+  const faces = indexSystemFonts({ directories: [root], maxFiles: 10, maxFileBytes: 10000000 })
+  expect(faces.map(face => [face.faceIndex, face.family])).toEqual([[0, 'Roboto'], [1, 'Noto Sans Devanagari']])
+  const generate = vi.spyOn(fullFonts, 'fullFontFile')
+  const assets = []
+  for (const face of faces) {
+    const asset = (await source.resolve({ ...attributes, family: face.family, codePoints: [0x20], mode })).fonts[0]!
+    assets.push(asset)
+    expect(asset.family).toBe(face.family)
+    expect(asset.alias).toBe(mode === 'full' ? face.family : `DSH_${asset.id}`)
+    const parsed = create(await source.read(asset.id))
+    expect('familyName' in parsed && parsed.familyName).toBe(face.family)
+  }
+  expect(assets[0]!.id).not.toBe(assets[1]!.id)
+  expect(generate).toHaveBeenCalledTimes(mode === 'full' ? 2 : 0)
+})
+it('retires both face selections when their shared TTC is replaced and resolves the new file', async () => {
+  const { source, path } = fixture('Faces.ttc', 256 * 1024 * 1024)
+  const previous = (await source.resolve({ ...attributes, mode: 'full', codePoints: [0x41, 0x928] })).fonts
+  expect(previous).toHaveLength(2)
+  expect(previous[0]!.id).toBe(previous[1]!.id)
+  copyFileSync(join(fixtures, 'LatinGreek.ttf'), path)
+  for (const asset of previous) await expect(source.read(asset.id)).rejects.toThrow(/changed/)
+  const current = (await source.resolve({ ...attributes, mode: 'full', codePoints: [0x41] })).fonts[0]!
+  expect(current).toMatchObject({ family: 'Roboto', alias: 'Roboto', format: 'ttf' })
+  expect(current.id).not.toBe(previous[0]!.id)
+  expect(Buffer.from(await source.read(current.id))).toEqual(readFileSync(path))
+  await expect(source.read(previous[0]!.id)).rejects.toThrow(/not selected/)
 })
 it('preload deduplicates full assets and enforces the byte budget before installation', () => {
   const { root } = fixture('LatinGreek.ttf')

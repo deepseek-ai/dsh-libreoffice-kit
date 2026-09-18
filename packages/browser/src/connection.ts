@@ -66,7 +66,7 @@ export async function openBrowserConnection(options: BrowserDocumentOptions | Of
         if (closed) return
         void Promise.resolve().then(() => options.resolveFonts(message.request, lifetime.signal)).then(result => {
           if (closed) return
-          frames = fontFrames(result)
+          frames = fontFrames(result, message.known)
           pumpFonts()
         }, sendFontError)
         return

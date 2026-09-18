@@ -119,6 +119,21 @@ it('TTC matching retains each physical face and emits independent sfnt files', a
   }
 })
 
+it('keeps identical script partitions separate for different faces of one TTC', async () => {
+  const service = source(scratch('Faces.ttc'))
+  const generate = vi.spyOn(harfbuzz, 'subsetFont')
+  const assets = []
+  for (const family of ['Roboto', 'Noto Sans Devanagari']) {
+    const asset = (await service.resolve(request(family, ' '))).fonts[0]!
+    assets.push(asset)
+    expect(asset.family).toBe(family)
+    expect(font(await service.read(asset.id)).familyName).toBe(family)
+    expect((await service.resolve(request(family, ' '))).fonts).toEqual([asset])
+  }
+  expect(assets[0]!.id).not.toBe(assets[1]!.id)
+  expect(generate.mock.calls.map(([, faceIndex]) => faceIndex)).toEqual([0, 1])
+})
+
 it('Apple dfont resources are extracted before HarfBuzz subsetting', async () => {
   const service = source(scratch('Face.dfont'))
   const result = await service.resolve(request('Roboto', 'A'))

@@ -54,6 +54,8 @@ Node operations and the Host font service use bounded system-font discovery. Exa
 
 `createFontSource` from `@deepseek-ai/libreoffice-kit/fonts` provides an independent lazy Worker service. `resolve(attributes)` retains the Unicode-script subset behavior for interactive Office. `resolve({...attributes, mode:'full'})` returns opaque `full_…` identities, original family names and `format` (`ttf`, `otf`, `ttc`); `read(id)` returns complete original font bytes. Apple dfont resources are extracted as complete sfnt faces. Reads reject unknown or changed sources and do not expose host paths.
 
+Full-mode selections from the same unchanged TTC share one file read and retained byte entry while keeping each selected family's name and alias. The existing cache budget counts unique full assets once; eviction may require a later read to regenerate them. Subsets and dfont resources remain specific to each physical face.
+
 PDFium is an experimental direct raster path, separate from PDF.js and Office reading sessions. Embedded PDF fonts remain PDFium-owned. A fixed, bounded set of regular faces selected from `initialFontFamilies` and fallback groups is mounted before PDFium's first font enumeration. This does not infer every arbitrary PDF font or repair custom encodings. Password-protected PDFs are rejected; forms are rasterized by the upstream PDFium wrapper, while ordinary annotations and advanced PDF features require further qualification.
 
 ## Browser and font entries
