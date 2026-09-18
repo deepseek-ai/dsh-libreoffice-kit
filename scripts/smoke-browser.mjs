@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { chromium, _electron } from 'playwright';
 import { documentFixture } from '../test/runtime-fixture.mjs';
+import { pdfRasterFixtures } from '../test/pdf-raster-fixture.mjs';
 import { writerLayoutFixture } from '../test/browser-fixture.mjs';
 import { verifyBrowserPackage } from './build-browser.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
@@ -80,6 +81,7 @@ const fixtures = {
   pptx: await readFile(join(root, 'test/fixtures/one-slide.pptx')),
   oddPage: writerLayoutFixture('oddPage'), evenPage: writerLayoutFixture('evenPage'), blankPage: writerLayoutFixture('blankPage'),
 };
+for (const fixture of pdfRasterFixtures().filter(fixture => fixture.name !== 'ttc')) fixtures[`pdf-${fixture.name}`] = fixture.bytes;
 const expectedPageInk = { oddPage: [true, true], evenPage: [true, true, true], blankPage: [true, false, true] };
 let currentFormat;
 const server = createServer(async (request, response) => {
@@ -158,18 +160,19 @@ try {
   const workers = new Set();
   page.on('worker', worker => { workers.add(worker); worker.once('close', () => workers.delete(worker)); });
   await page.goto(origin);
-  for (const format of ['doc', 'docx', 'ppt', 'pptx', 'mixed', 'oddPage', 'evenPage', 'blankPage']) {
+  for (const format of Object.keys(fixtures)) {
     currentFormat = format;
     formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks, expectedInk }) => {
       if (!crossOriginIsolated) throw new Error('Browser is not cross-origin isolated');
-      const { openEditor } = await import(`${origin}/browser/lib/browser/index.js`);
+      const { openEditor, openDocument } = await import(`${origin}/browser/lib/browser/index.js`);
       const manifest = await (await fetch(`${origin}/assets.json`)).json();
       const assets = { programDirectory: manifest.programDirectory };
       for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;
       const data = new Uint8Array(await (await fetch(`${origin}/fixture/${format}`)).arrayBuffer());
       const started = performance.now();
       let missingFonts = [];
-      const editor = await openEditor({ readOnly: true, data, extension: ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
+      const isPdf = format.startsWith('pdf-');
+      const editor = await (isPdf ? openDocument : openEditor)({ readOnly: true, data, extension: isPdf ? 'pdf' : ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
         timeoutMs: 120000, maxLoadedFontBytes: 256 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024, fontFallbacks,
         onMissingFonts: families => { missingFonts = [...families]; },
         resolveFonts: async (request, signal) => {
@@ -184,9 +187,9 @@ try {
         },
       });
       const opened = performance.now();
-      const regions = editor.state.documentType === 'text' ? editor.state.pages.map(page => ({ ...page, part: 0 }))
+      const regions = isPdf ? [] : editor.state.documentType === 'text' ? editor.state.pages.map(page => ({ ...page, part: 0 }))
         : editor.state.parts.map((part, index) => ({ ...part, x: 0, y: 0, part: index }));
-      const doc = { pages: regions.map(({ width, height }) => ({ width, height })), dispose: editor.dispose,
+      const doc = isPdf ? editor : { pages: regions.map(({ width, height }) => ({ width, height })), dispose: editor.dispose,
         renderTile: (request, signal) => {
           const page = regions[request.pageIndex];
           if (!page) throw new Error('Missing page in retained Office model');
@@ -240,6 +243,9 @@ try {
     }
     console.log(`${format}: ${formats[format].pages} pages, ${formats[format].paintedPixels} painted pixels`);
   }
+  assert(requests.filter(request => request.format.startsWith('pdf-')).every(request => request.input.mode === 'full'), 'PDFium must preload complete fonts');
+  assert(requests.some(request => request.format.startsWith('pdf-') && request.input.mode === 'full'), 'PDFium did not preload fonts');
+  assert(requests.filter(request => !request.format.startsWith('pdf-')).every(request => request.input.mode === undefined), 'Office unexpectedly loaded complete fonts');
   const laterScriptRequests = requests.filter(request => request.format === 'mixed' && request.input.codePoints.length > 0);
   assert(laterScriptRequests.length >= 3, 'Mixed-script fixture did not exercise font-demand resolution');
   const receipt = { schemaVersion: 1, passed: true, archiveSha256: sha256(archive), wasmSha256: sha256(join(candidateDirectory, wasm.file)),
