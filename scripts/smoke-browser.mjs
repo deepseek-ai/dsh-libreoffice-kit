@@ -162,6 +162,7 @@ try {
   await page.goto(origin);
   for (const format of Object.keys(fixtures)) {
     currentFormat = format;
+    console.log(`Opening ${format}`);
     formats[format] = await page.evaluate(async ({ origin, format, fontFallbacks, expectedInk }) => {
       if (!crossOriginIsolated) throw new Error('Browser is not cross-origin isolated');
       const { openEditor, openDocument } = await import(`${origin}/browser/lib/browser/index.js`);
@@ -255,8 +256,12 @@ try {
     formats, fontRequests: requests.length, mixedScriptRequests: laterScriptRequests.length };
   await mkdir(dirname(output), { recursive: true }); await writeFile(output, `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(`Browser qualification: ${output}`);
+} catch (error) {
+  console.error(`Browser qualification failed during ${currentFormat}:`, error);
+  throw error;
 } finally {
   await browser?.close(); await source.dispose();
+  server.closeAllConnections();
   if (server.listening) await new Promise(resolve => server.close(resolve));
   await rm(temporary, { recursive: true, force: true });
 }
