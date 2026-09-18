@@ -1,7 +1,7 @@
 # Headless UI resource qualification
 
-Native installations and the WASM `soffice.data` image retain only these paths
-under `share/config/soffice.cfg` (`Contents/Resources/config/soffice.cfg` on macOS):
+Native headless installations retain only these `.ui` layouts under
+`share/config/soffice.cfg` (`Contents/Resources/config/soffice.cfg` on macOS):
 
 | Path | Headless consumer |
 | --- | --- |
@@ -15,9 +15,18 @@ under `share/config/soffice.cfg` (`Contents/Resources/config/soffice.cfg` on mac
 Headless conversion still constructs the Calc/Impress and shared `InterimItemWindow`
 shell views. Writer also loads `annotation.ui` for DOCX comments in WASM. Missing
 required layouts can fail document loading or make `VclBuilder` abort. The
-shared [policy](../engine/ui-resource-policy.mjs) checks their presence and removes
-every other `.ui` file below this root. It does not remove other file types or
-layouts outside this root. Existing toolbar, menubar and image policies still apply.
+shared [policy](../engine/ui-resource-policy.mjs) checks their presence. Native
+packaging removes every other `.ui` file below this root. It does not remove other
+file types or layouts outside this root. Existing toolbar, menubar and image policies still apply.
+
+The shared WASM image also powers persistent browser editing and retains ordinary
+`.ui` layouts beyond this conversion allowlist. A 2026-09-18 editor smoke reproduced
+an abort during the first Writer event pump with the six-layout image. The same
+compiled module passed DOCX editing with the complete data image; restoring the
+ordinary layouts fixes this packaging regression. Notebookbars, toolbars, menus
+and image archives remain excluded. A conversion-only minimization result does
+not qualify removal from the editor. Run `scripts/smoke-browser-editor.mjs` against
+packed archives for DOCX/XLSX/PPTX editing, saving and reopening before release.
 
 The initial five-layout policy omitted Writer comments. A real-engine test on
 2026-09-17 confirmed that a standard commented DOCX loaded with the baseline WASM
@@ -27,8 +36,8 @@ The shared policy therefore retains six layouts, the union required by native an
 WASM conversion. `test/runtime-engine.test.mjs` includes a generated commented DOCX
 in installed-engine checks; it runs when `LIBREOFFICE_RUNTIME_ENTRY` is set.
 
-The six-layout policy was checked locally on 2026-09-17 against existing Core
-`bce0998afefdbc355585ca324285661a2170ba77` builds. Counts and sizes depend on the
+The conversion-only six-layout policy was checked locally on 2026-09-17 against
+existing Core `bce0998afefdbc355585ca324285661a2170ba77` builds. Counts and sizes depend on the
 input build and earlier packaging exclusions; the minimizer records exact bytes
 for each run instead of enforcing these totals.
 
@@ -102,9 +111,10 @@ XML and failure logs remain local for diagnosis. The candidate copy has a change
 payload and is not a releasable package; stage it again with the normal recipe.
 
 Review the result and update `requiredUiResources` and `reviewedUiCoreRevision`.
-The shared allowlist must cover both backends: a resource removable by native
-minimization may still be required by WASM. A smaller native result does not justify
-removing Writer's annotation layout without a WASM comment conversion check.
+The mandatory allowlist must cover both backends: a resource removable by native
+minimization may still be required by WASM conversion. WASM editor layouts are
+retained separately and require editing qualification before any further pruning.
+A smaller native result does not justify removing Writer's annotation layout without a WASM comment conversion check.
 The reviewed revision is evidence scope; `engine/core` remains the only source
 pin. Stage freshly qualified native packages on each release host and repackage
 WASM from its verified compilation. Use `--mode verify` with another new output
