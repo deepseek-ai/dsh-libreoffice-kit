@@ -1,18 +1,16 @@
 /** Real engine export matrix, calculation completion, and the public offline CLI. */
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
-import { documentFixture } from './runtime-fixture.mjs';
+import { documentFixture, unzipSync } from './runtime-fixture.mjs';
 
 const entry = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 const exec = promisify(execFile);
-const { unzipSync } = createRequire(new URL('../packages/entry/package.json', import.meta.url))('fflate');
 const fixture = name => readFile(new URL(`./fixtures/${name}`, import.meta.url));
 const xml = (parts, name) => new TextDecoder().decode(parts[name]);
 

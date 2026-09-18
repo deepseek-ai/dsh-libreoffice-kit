@@ -55,17 +55,13 @@ Node operations use bounded system-font discovery. Exact installed families prec
 
 PDFium is an experimental direct raster path, separate from PDF.js and editable Office models. Embedded PDF fonts remain PDFium-owned. A fixed, bounded set of regular faces selected from `initialFontFamilies` and fallback groups is mounted before PDFium's first font enumeration. This does not infer every arbitrary PDF font or repair custom encodings. Password-protected PDFs are rejected; forms are rasterized by the upstream PDFium wrapper, while ordinary annotations and advanced PDF features require further qualification.
 
-## Browser support modules
+## Browser and font entries
 
-`@deepseek-ai/libreoffice-kit/font-config` exports the browser-safe `normalize`, `fontFamilyPriority` and `memoryFontConfig` helpers shared by both WASM adapters. `@deepseek-ai/libreoffice-kit/document-inspection` exports `inspectDocument(bytes, extension, limits)` for the same bounded OOXML and legacy compound-file checks. These subpaths do not initialize an engine or read the Host filesystem; bundlers may include them in browser Workers. The separate `@deepseek-ai/libreoffice-kit-browser` package owns browser document rendering and its OS-independent engine resources.
+`@deepseek-ai/libreoffice-kit/browser` provides persistent Office editing, read-only legacy Office models, PDFium viewing and consistent image capture. `@deepseek-ai/libreoffice-kit/browser-assets` resolves the local browser Worker and validates the assets in the exact-version WASM dependency. Host asset servers expose these resources as opaque URLs; the main package does not duplicate the LibreOffice payload.
 
-For a dependency tree without LibreOffice engine packages, use [`@deepseek-ai/libreoffice-kit-fonts`](../fonts/README.md), which stages the same implementation and exports `createFontSource` from its root.
+`./fonts` provides the Host font service described above. Browser-safe `./font-config` and `./document-inspection` share font configuration and input validation with the Node API. `./internal/*` exports are implementation details used by the bundled browser Worker.
 
-`@deepseek-ai/libreoffice-kit/fonts` exports `createFontSource(options)` for Host-assisted browser font loading without installing a LibreOffice engine. Its lazy Node Worker refreshes installed-font metadata on every match, selects physical faces using the shared fallback preferences, and returns reusable sfnt subsets. `resolve(request)` returns `{ id, bytes, family, alias }` entries; `read(id)` returns their bytes. The original family/style and name tables remain intact; the browser uses the content-derived `DSH_<SHA256>` alias to distinguish subsets. Changed original files reject old reads and require another match. Cancellation discards dispatched results when work settles; `dispose()` terminates and joins the Worker.
-
-Subsets use the complete Unicode 17 Script/Script_Extensions data, including supplementary and unknown/private-use characters. Every script retains Common/Inherited characters, variation selectors, and HarfBuzz layout/composite closure. An empty-character request returns a Common subset that may contain only metadata and `.notdef`. TTC/OTC collections and Apple dfont resources become individual sfnt faces. `maxCachedSubsetBytes` bounds the Worker’s LRU of subset bytes (128 MiB by default); evicted entries regenerate from unchanged originals. This source keeps no disk cache, and the retained-byte limit is not a total Worker memory limit.
-
-The font source requires the packaged HarfBuzz subset WASM, receipt, and notices. [The build recipe](../../engine/font-subset/README.md) pins its sources and enables heap growth for large script partitions; Node API packing validates these resources. The source and tests do not alter the Node converter’s original-font behavior.
+Subsets use Unicode 17 script data and HarfBuzz layout/composite closure. Their bounded in-memory cache can regenerate evicted entries from unchanged originals. [The subset build recipe](../../engine/font-subset/README.md) pins source and redistribution notices.
 
 ## Source and license
 

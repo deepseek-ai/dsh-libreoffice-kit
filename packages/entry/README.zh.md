@@ -46,17 +46,11 @@ Node 端在限制范围内发现系统字体，精确 family 优先于回退配�
 
 PDFium 直接图片渲染仍为实验能力，与 PDF.js 和 Office 编辑模型分开。嵌入字体由 PDFium 管理；在首次字体枚举前，按初始 family 和回退组预载有字节上限的完整常规字体。该方案不自动推断所有 PDF 字体，也不修复任意自定义编码。加密 PDF 暂拒绝；上游包装层绘制表单，普通注释和高级 PDF 特性仍需专项验收。
 
-## 浏览器支持模块
+## 浏览器与字体入口
 
-`@deepseek-ai/libreoffice-kit/font-config` 导出两个 WASM 适配器共用的浏览器安全函数 `normalize`、`fontFamilyPriority` 和 `memoryFontConfig`。`@deepseek-ai/libreoffice-kit/document-inspection` 导出 `inspectDocument(bytes, extension, limits)`，提供相同的 OOXML 限额检查和传统复合文件检查。这些子路径不会初始化引擎或读取 Host 文件系统，可由打包器纳入浏览器 Worker。独立的 `@deepseek-ai/libreoffice-kit-browser` 包负责浏览器文档渲染和不区分操作系统的引擎资源。
+`@deepseek-ai/libreoffice-kit/browser` 提供常驻 Office 编辑、旧格式只读模型、PDFium 查看和一致性截图。Node 端 `./browser-assets` 校验并解析主包中的 Worker，以及精确版本 WASM 依赖中的资源。Host 将其映射成资源 URL；主包不复制 LibreOffice 大文件。
 
-若依赖树无需 LibreOffice 引擎包，请使用 [`@deepseek-ai/libreoffice-kit-fonts`](../fonts/README.zh.md)；它暂存同一份实现，并从包根导出 `createFontSource`。
-
-`@deepseek-ai/libreoffice-kit/fonts` 导出 `createFontSource(options)`，在无需安装 LibreOffice 引擎的情况下为浏览器提供 Host 字体。其惰性 Node Worker 每次匹配都会刷新已安装字体元数据，按共用回退偏好选择物理字面，并返回可复用 sfnt 子集。`resolve(request)` 返回 `{ id, bytes, family, alias }` 条目；`read(id)` 返回其字节。原始 family/style 和名称表保持不变；浏览器用内容派生的 `DSH_<SHA256>` 别名区分子集。原始文件变化后，旧读取会拒绝，需要重新匹配。取消会在已派发工作完成后丢弃结果；`dispose()` 终止 Worker 并等待其退出。
-
-子集使用完整的 Unicode 17 Script/Script_Extensions 数据，包括补充平面和未知／私用区字符。每个文字系统保留 Common/Inherited 字符、变体选择符及 HarfBuzz 排版／复合字形闭包。空字符请求返回 Common 子集，可能仅含元数据和 `.notdef`。TTC/OTC 字体集合和 Apple dfont 资源被提取为单独的 sfnt 字面。`maxCachedSubsetBytes` 限制 Worker 内的子集字节 LRU（默认 128 MiB）；淘汰条目可从未改变的原始文件重新生成。该字体源没有磁盘缓存，保留字节限制也不是 Worker 总内存上限。
-
-字体源需要随包发布的 HarfBuzz 子集 WASM、回执及许可声明。[构建配方](../../engine/font-subset/README.zh.md) 固定其源码，并为大文字系统分区启用堆增长；Node API 打包时验证这些资源。该字体源和测试不会改变 Node 转换器使用原始字体的行为。
+`./fonts` 提供上文的字体服务。`./font-config` 与 `./document-inspection` 为浏览器和 Node 共用的纯逻辑；`./internal/*` 仅用于内部实现。字体子集采用 Unicode 17 数据和 HarfBuzz 布局闭包，内存缓存淘汰后从未变化的原字体重新生成。
 
 ## 源码与许可
 
