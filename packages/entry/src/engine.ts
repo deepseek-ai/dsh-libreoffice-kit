@@ -62,7 +62,6 @@ export type EngineBackend = Engine['backend']
 interface EngineAssets {
   readonly kind?: string
   readonly glibcMinimum?: unknown
-  readonly executable?: unknown
   readonly programDirectory?: unknown
   readonly loader?: unknown
   readonly wasm?: unknown
@@ -121,11 +120,6 @@ function asset(root: string, value: unknown): string {
   return path
 }
 
-function glibcVersion(value: unknown): number[] | undefined {
-  return typeof value === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$/.test(value)
-    && value.split('.').every(part => Number.isSafeInteger(Number(part))) ? value.split('.').map(Number) : undefined
-}
-
 /**
  * Resolve the shared WASM engine on every supported operating system.
  * @param resolvePackage - Package manifest resolver; injectable for selection tests.
@@ -137,39 +131,31 @@ export async function resolveEngine(resolvePackage: (name: string) => string = n
   _packageExists: (name: string) => boolean = installedPackageExists,
   { platform = process.platform, arch = process.arch }: EngineResolutionHost = {}): Promise<Engine> {
   if (!['darwin', 'win32', 'linux'].includes(platform)) throw new Error(`Unsupported LibreOfficeKit host: ${platform}-${arch}`)
-  return readEngine(resolvePackage(`${ENGINE_PREFIX}-wasm`), 'wasm', 'wasm')
+  return readEngine(resolvePackage(`${ENGINE_PREFIX}-wasm`))
 }
 
-async function engineAsset(root: string, value: unknown, name: string, kind: 'file' | 'directory'): Promise<string> {
+async function engineAsset(root: string, value: unknown, name: string): Promise<string> {
   const path = asset(root, value)
   const status = await stat(path)
-  if (kind === 'directory' ? !status.isDirectory() : !status.isFile()) throw new Error(`Installed LibreOfficeKit ${name} is not a ${kind}.`)
-  if (name === 'executable' && process.platform !== 'win32' && !(status.mode & 0o111)) throw new Error('Installed LibreOfficeKit executable is not executable.')
+  if (!status.isFile()) throw new Error(`Installed LibreOfficeKit ${name} is not a file.`)
   return path
 }
 
-async function readEngine(packageFile: string, backend: EngineBackend, target: string): Promise<Engine> {
+async function readEngine(packageFile: string): Promise<WasmEngine> {
   const root = dirname(packageFile)
   const [pkg, manifest] = await Promise.all([
     readFile(packageFile, 'utf8').then(text => JSON.parse(text) as EngineManifest),
     readFile(resolve(root, 'prebuilds.json'), 'utf8').then(text => JSON.parse(text) as EnginePrebuildManifest),
   ])
   const engine = manifest.engine
-  if (pkg.name !== `${ENGINE_PREFIX}-${target}` || pkg.version !== ENGINE_VERSION || manifest.version !== pkg.version || manifest.schemaVersion !== 1 || manifest.status !== 'built'
-    || engine === undefined || engine.kind !== backend || manifest.platform !== target) throw new Error(`Installed LibreOfficeKit ${backend} package has an incompatible or incomplete manifest.`)
-  const minimum = engine.glibcMinimum
-  if (minimum !== undefined && (!target.endsWith('-glibc') || !glibcVersion(minimum))) throw new Error('Installed LibreOfficeKit engine has an invalid glibcMinimum.')
-  const glibcFloor = minimum === undefined ? {} : { glibcMinimum: minimum as string }
-  if (backend === 'native') {
-    const executable = await engineAsset(root, engine.executable, 'executable', 'file')
-    const directory = await engineAsset(root, engine.programDirectory, 'programDirectory', 'directory')
-    return { backend, root, programDirectory: directory, executable, ...glibcFloor }
-  }
+  if (pkg.name !== `${ENGINE_PREFIX}-wasm` || pkg.version !== ENGINE_VERSION || manifest.version !== pkg.version || manifest.schemaVersion !== 1 || manifest.status !== 'built'
+    || engine === undefined || engine.kind !== 'wasm' || manifest.platform !== 'wasm') throw new Error('Installed LibreOfficeKit wasm package has an incompatible or incomplete manifest.')
+  if (engine.glibcMinimum !== undefined) throw new Error('Installed LibreOfficeKit engine has an invalid glibcMinimum.')
   // The WASM engine addresses its program resources inside the module's virtual filesystem.
   const programDirectory = String(engine.programDirectory)
-  const loader = await engineAsset(root, engine.loader, 'loader', 'file')
-  const wasm = await engineAsset(root, engine.wasm, 'wasm', 'file')
-  const data = await engineAsset(root, engine.data, 'data', 'file')
-  const metadata = await engineAsset(root, engine.metadata, 'metadata', 'file')
-  return { backend, root, programDirectory, loader, wasm, data, metadata, ...glibcFloor }
+  const loader = await engineAsset(root, engine.loader, 'loader')
+  const wasm = await engineAsset(root, engine.wasm, 'wasm')
+  const data = await engineAsset(root, engine.data, 'data')
+  const metadata = await engineAsset(root, engine.metadata, 'metadata')
+  return { backend: 'wasm', root, programDirectory, loader, wasm, data, metadata }
 }

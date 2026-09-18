@@ -231,3 +231,22 @@ describe('error categories', () => {
     expect(new ConversionError('failed', 'outer').name).toBe('ConversionError')
   })
 })
+
+it('keeps the diagnostic platform probe callable with host defaults', () => {
+  expect(platformTarget()).toBe(platformTarget(process.platform, process.arch))
+  expect(platformTarget('linux', 'arm64')).toBe(process.report.getReport().header.glibcVersionRuntime ? 'linux-arm64-glibc' : undefined)
+})
+it('rejects directories masquerading as engine assets and native-only manifest properties', async () => {
+  const fixture = await engineFixture()
+  const manifest = join(fixture.wasm, 'prebuilds.json')
+  const base = JSON.parse(readFileSync(manifest, 'utf8'))
+  const resolve = () => resolveEngine(() => join(fixture.wasm, 'package.json'))
+  try {
+    await writeFile(manifest, JSON.stringify({ ...base, engine: { ...base.engine, glibcMinimum: '2.38' } }))
+    await expect(resolve()).rejects.toThrow(/invalid glibcMinimum/)
+    await writeFile(manifest, JSON.stringify(base))
+    await rm(join(fixture.wasm, 'wasm'))
+    await mkdir(join(fixture.wasm, 'wasm'))
+    await expect(resolve()).rejects.toThrow(/wasm is not a file/)
+  } finally { await rm(fixture.directory, { recursive: true, force: true }) }
+})
