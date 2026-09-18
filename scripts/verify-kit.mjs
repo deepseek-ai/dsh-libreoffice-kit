@@ -20,6 +20,7 @@ export function verifyKitMetadata(manifest, packed = false) {
   assert(manifest.version === version, 'The Node API version must equal the kit family version');
   const declared = packed ? version : 'workspace:*';
   assert(manifest.dependencies?.[wasmName] === declared, 'The WASM engine must be a required exact-version dependency');
+  assert(Object.keys(manifest.dependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/libreoffice-kit')).every(name => name === wasmName), 'The released API must depend only on the shared WASM engine');
   assert(Object.keys(manifest.optionalDependencies ?? {}).length === 0, 'The released API must not declare optional engines');
   return manifest;
 }

@@ -72,6 +72,9 @@ test('the packed API requires the exact WASM release without optional engine sel
     invalid.dependencies[wasmName] = value;
     assert.throws(() => verifyKitMetadata(invalid, true), /required exact-version/);
   }
+  const native = structuredClone(manifest);
+  native.dependencies[`${enginePrefix}-darwin-arm64`] = engineFamilyVersion();
+  assert.throws(() => verifyKitMetadata(native, true), /only on the shared WASM engine/);
   for (const name of [wasmName, `${enginePrefix}-darwin-arm64`, 'unrelated-native']) {
     const invalid = structuredClone(manifest);
     invalid.optionalDependencies = { [name]: engineFamilyVersion() };
