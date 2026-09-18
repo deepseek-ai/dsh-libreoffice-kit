@@ -66,11 +66,16 @@ export class EditorEngine {
     if (!this.call(`dsh_lok_document_${name}`, [this.document, ...args])) throw new BrowserRenderError('render-failed', `LibreOffice could not complete ${name}.`)
   }
 
+  private requireOpen(): void {
+    if (this.stopped) throw new BrowserRenderError('disposed', 'Office editor is closed.')
+  }
+
   /** Collect callbacks without reentering LibreOffice from inside its own callback. */
   callback(type: number, payload: string): void { if (!this.stopped) this.callbacks.push({ type, payload, phase: this.phase }) }
 
   /** Register callbacks after document initialization, then begin bounded event slices. */
   async start(): Promise<void> {
+    this.requireOpen()
     this.invoke('listen')
     this.refreshGeometry()
     this.pump()
@@ -210,6 +215,7 @@ export class EditorEngine {
 
   /** Apply one ordered command and collect the resulting notifications before acknowledgement. */
   async operation(operation: EditorOperation): Promise<{ text?: string; snapshot?: BrowserEditorSnapshot }> {
+    this.requireOpen()
     if (this.readOnly && ['input', 'command', 'paste', 'save'].includes(operation.type)) throw new BrowserRenderError('render-failed', 'This Office document is read-only.')
     this.phase = operation.type === 'part' || operation.type === 'viewport' ? 'view' : operation.type === 'save' ? 'save' : 'edit'
     try {
@@ -278,6 +284,7 @@ export class EditorEngine {
 
   /** Painting preserves the active selection and cannot itself mark the document edited. */
   render(request: BrowserEditorTileRequest): BrowserTile {
+    this.requireOpen()
     const part = this.state.parts[integer(request.part, this.state.parts.length - 1)]!
     this.phase = 'paint'
     try {
@@ -288,6 +295,7 @@ export class EditorEngine {
 
   /** Capture one bounded batch with no input interleaving; cached tiles are checked at the same generation. */
   async capture(request: BrowserEditorCaptureRequest): Promise<BrowserEditorCapture> {
+    this.requireOpen()
     integer(request.maxPixels)
     if (!request.maxPixels || request.maxPixels > 67_108_864 || request.tiles.length > 4096) {
       throw new BrowserRenderError('render-failed', 'Office capture exceeds its allocation limit.')
@@ -354,9 +362,17 @@ export class EditorEngine {
         }
       }
     } finally {
-      this.call('dsh_lok_document_set_view', [this.document, original])
-      this.pump()
-      this.phase = 'idle'
+      try {
+        if (!this.call('dsh_lok_document_set_view', [this.document, original])) {
+          throw new BrowserRenderError('render-failed', 'The editor view could not be restored after capture.')
+        }
+        this.pump()
+      } catch (error) {
+        // Further commands must never run against the read-only capture view.
+        this.stop()
+        this.failure(error)
+        throw error
+      } finally { this.phase = 'idle' }
     }
     await this.command('.uno:ReportWhenIdle', { idleID: { type: 'string', value: 'capture-complete' } })
     this.pump()

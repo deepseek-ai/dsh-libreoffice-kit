@@ -578,3 +578,54 @@ it('reports capture paint failure and permits subsequent editing', async () => {
   await expect(f.editor.capture({ maxPixels: 1, tiles: [{ request: captureTile }] })).rejects.toThrow('Office capture failed.')
   await expect(f.editor.operation({ type: 'paste', text: 'continued editing' })).resolves.toEqual({})
 })
+
+it.each(['initial', 'deferred'] as const)('closes capture after the %s editing-view restore fails without waiting for callbacks on the wrong view', async stage => {
+  const f = fixture('docx')
+  await f.editor.start()
+  let view = 3
+  let restores = 0
+  let activateCapture = false
+  f.overrides.set('dsh_lok_document_get_view', () => view)
+  f.overrides.set('dsh_lok_document_create_view', () => { view = 4; activateCapture = true; return 4 })
+  f.overrides.set('dsh_lok_document_set_view', args => {
+    const target = Number(args[1])
+    if (target === 3 && ++restores === (stage === 'initial' ? 1 : 2)) return 0
+    view = target
+    return 1
+  })
+  f.overrides.set('dsh_lok_pump', () => {
+    if (activateCapture) { view = 4; activateCapture = false }
+    return 0
+  })
+  f.overrides.set('dsh_lok_document_command', args => {
+    if (view === 3) f.editor.callback(16, JSON.stringify({ commandName: args[1] }))
+    return 1
+  })
+  let failure: unknown
+  const pending = f.editor.capture({ maxPixels: 1, tiles: [] }).catch(error => { failure = error })
+  await vi.advanceTimersByTimeAsync(16)
+  expect(failure).toMatchObject({ code: 'render-failed', message: stage === 'initial'
+    ? 'The editor view could not be restored after capture.' : 'The editor view could not be restored after event processing.' })
+  await pending
+  expect(f.failed).toHaveBeenCalledExactlyOnceWith(failure)
+  expect(vi.getTimerCount()).toBe(0)
+  expect(vi.mocked(f.module.ccall).mock.calls.filter(([name]) => name === 'dsh_lok_document_destroy_view')).toHaveLength(1)
+  expect(vi.mocked(f.module.ccall).mock.calls.some(([name, , , args]) => name === 'dsh_lok_document_command'
+    && String(args[2]).includes('capture-complete'))).toBe(false)
+  vi.mocked(f.module.ccall).mockClear()
+  await expect(f.editor.operation({ type: 'paste', text: 'queued input' })).rejects.toMatchObject({ code: 'disposed' })
+  expect(f.module.ccall).not.toHaveBeenCalled()
+})
+
+it('rejects queued work after stop without reentering LibreOffice or restarting the timer', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.editor.stop()
+  vi.mocked(f.module.ccall).mockClear()
+  await expect(f.editor.operation({ type: 'copy' })).rejects.toMatchObject({ code: 'disposed' })
+  await expect(f.editor.capture({ maxPixels: 1, tiles: [] })).rejects.toMatchObject({ code: 'disposed' })
+  expect(() => f.editor.render(captureTile)).toThrow('Office editor is closed.')
+  await expect(f.editor.start()).rejects.toMatchObject({ code: 'disposed' })
+  expect(f.module.ccall).not.toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
+})
