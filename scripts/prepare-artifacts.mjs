@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { verifyConfigureInput } from '../engine/native/configure.mjs';
 import { readCoreSource } from '../engine/core-source.mjs';
-import { enginePrefix, isMain, kitManifest, kitNativeTargets, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, targets } from './platform-matrix.mjs';
+import { enginePrefix, isMain, kitManifest, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, targets } from './platform-matrix.mjs';
 import { assert, regularFile, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { run } from './pack-utils.mjs';
 import { fetchReleaseAsset } from './github-release-fetch.mjs';
@@ -24,17 +24,12 @@ const runtimeTargets = {
 };
 const payloadRoots = ['assets', 'bin', 'program', 'sources', 'licenses'];
 
-/** Select each consumer's engine: declared native packages, or WASM for Linux. */
+/** Select the shared WASM engine for every supported consumer runtime. */
 export function artifactPlan(selection = '', repo = root) {
   const selected = selection ? selection.split(',').map(value => value.trim()) : Object.keys(runtimeTargets);
   assert(selected.length > 0 && selected.every(value => Object.hasOwn(runtimeTargets, value)), 'Unknown or empty Office runtime target');
-  const released = kitNativeTargets(kitManifest(repo));
-  for (const value of selected) {
-    if (selection && !value.startsWith('node24-linux-'))
-      assert(released.includes(runtimeTargets[value]), `This release has no engine for ${value}`);
-  }
-  const native = selected.map(value => runtimeTargets[value]).filter(value => released.includes(value));
-  return [...new Set(native), ...(selected.some(value => value.startsWith('node24-linux-')) ? ['wasm'] : [])];
+  assert(kitManifest(repo).dependencies?.[`${enginePrefix}-wasm`], 'The release must declare its shared WASM engine');
+  return ['wasm'];
 }
 
 /** Reject different source pins, helpers or patches even when an engine reuses the package version. */

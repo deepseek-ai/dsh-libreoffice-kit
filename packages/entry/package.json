@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
   "description": "Convert and recalculate Office documents with prebuilt LibreOffice",
-  "version": "0.0.2-rc3",
+  "version": "0.0.2-rc4",
   "publishConfig": {
     "access": "public"
   },
@@ -36,9 +36,7 @@
   "dependencies": {
     "fflate": "0.8.2",
     "fontkit": "2.0.4",
-    "saxes": "6.0.0"
-  },
-  "optionalDependencies": {
+    "saxes": "6.0.0",
     "@deepseek-ai/libreoffice-kit-wasm": "workspace:*"
   },
   "bin": {

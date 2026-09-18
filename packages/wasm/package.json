@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-wasm",
-  "version": "0.0.2-rc3",
+  "version": "0.0.2-rc4",
   "type": "module",
   "license": "MPL-2.0",
   "engines": {
@@ -14,10 +14,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Linux Node WebAssembly OOXML-to-PDF engine assets",
-  "os": [
-    "linux"
-  ],
+  "description": "Shared LibreOffice WebAssembly engine for Node and browser editing and rendering",
   "exports": {
     "./prebuilds.json": "./prebuilds.json",
     "./package.json": "./package.json"

@@ -46,7 +46,7 @@ test('adapter packages retain the license and notices', (t) => {
   assert.equal(verifyKitPackage(directory).name, kitManifest().name);
 });
 
-test('the release declares Linux WASM while native recipes remain available for development', () => {
+test('the release declares required portable WASM while native recipes remain development tooling', () => {
   const matrix = packageMatrix();
   assert.equal(matrix.length, 7);
   for (const row of matrix) verifyEngineMetadata(row.manifest, row.prebuild);
@@ -54,46 +54,29 @@ test('the release declares Linux WASM while native recipes remain available for 
   verifyKitMetadata(manifest);
   assert.deepEqual(kitNativeTargets(manifest), []);
   const missingWasm = structuredClone(manifest);
-  delete missingWasm.optionalDependencies[wasmName];
-  assert.throws(() => verifyKitMetadata(missingWasm), /Optional dependency matrix/);
-  assert.throws(() => verifyKitMetadata(manifest, true), /engine family version/);
+  delete missingWasm.dependencies[wasmName];
+  assert.throws(() => verifyKitMetadata(missingWasm), /required exact-version/);
+  assert.throws(() => verifyKitMetadata(manifest, true), /required exact-version/);
   verifyKitMetadata(packedAdapterManifest(manifest), true);
 });
 
-test('the installed adapter preserves the canonical optional list and pins prepared engine versions', () => {
+test('the packed API requires the exact WASM release without optional engine selection', () => {
   const source = kitManifest();
   const manifest = packedAdapterManifest(source);
-  assert.deepEqual(Object.keys(manifest.optionalDependencies), Object.keys(source.optionalDependencies ?? {}));
-  const version = engineFamilyVersion();
-  const url = () => version;
-  assert.equal(manifest.optionalDependencies[wasmName], url(wasmName));
-  for (const native of kitNativeTargets(source)) assert.equal(manifest.optionalDependencies[`${enginePrefix}-${native}`], url(`${enginePrefix}-${native}`));
+  assert.deepEqual(Object.keys(manifest.optionalDependencies ?? {}), []);
+  assert.equal(manifest.dependencies[wasmName], engineFamilyVersion());
   for (const name of ['fflate', 'fontkit', 'saxes']) assert.equal(manifest.dependencies[name], source.dependencies[name]);
   verifyKitMetadata(manifest, true);
-  const missing = structuredClone(manifest);
-  delete missing.optionalDependencies[wasmName];
-  assert.throws(() => verifyKitMetadata(missing, true), /Optional dependency matrix/);
-  const extra = structuredClone(manifest);
-  extra.optionalDependencies[`${enginePrefix}-linux-x64-glibc`] = engineFamilyVersion();
-  assert.throws(() => verifyKitMetadata(extra, true), /Optional dependency matrix/);
-});
-
-test('adapter engine declarations reject unknown native packages and mismatched ranges', () => {
-  const source = kitManifest();
-  for (const name of [`${enginePrefix}-freebsd-x64`, 'unrelated-native']) {
-    const invalid = structuredClone(source);
-    invalid.optionalDependencies = { [wasmName]: 'workspace:*', [name]: 'workspace:*' };
-    assert.throws(() => verifyKitMetadata(invalid), /Unknown native optional dependency/);
+  for (const value of [undefined, 'workspace:*', '0.0.0', '^' + engineFamilyVersion()]) {
+    const invalid = structuredClone(manifest);
+    invalid.dependencies[wasmName] = value;
+    assert.throws(() => verifyKitMetadata(invalid, true), /required exact-version/);
   }
-  const invalidSource = structuredClone(source);
-  invalidSource.optionalDependencies[`${enginePrefix}-darwin-arm64`] = engineFamilyVersion();
-  assert.throws(() => verifyKitMetadata(invalidSource), /engine family version/);
-  const invalidPacked = packedAdapterManifest(source);
-  invalidPacked.optionalDependencies[wasmName] = '0.0.0';
-  assert.throws(() => verifyKitMetadata(invalidPacked, true, kitNativeTargets(source)), /engine family version/);
-  const requiredWasm = packedAdapterManifest(source);
-  requiredWasm.dependencies[wasmName] = engineFamilyVersion();
-  assert.throws(() => verifyKitMetadata(requiredWasm, true), /must be optional/);
+  for (const name of [wasmName, `${enginePrefix}-darwin-arm64`, 'unrelated-native']) {
+    const invalid = structuredClone(manifest);
+    invalid.optionalDependencies = { [name]: engineFamilyVersion() };
+    assert.throws(() => verifyKitMetadata(invalid, true), /must not declare optional engines/);
+  }
 });
 
 test('workflow repository identity requires a repository and an HTTPS origin', () => {
@@ -177,7 +160,8 @@ test('native manifest rejects OS, CPU, libc, path and receipt mismatches', () =>
   const built = unbuilt(); built.status = 'built';
   assert.throws(() => verifyEngineMetadata(row.manifest, built), /requires source/);
   const wasm = packageMatrix().find((entry) => entry.prebuild.platform === 'wasm');
-  assert.throws(() => verifyEngineMetadata({ ...wasm.manifest, os: undefined }, wasm.prebuild), /only on Linux/);
+  for (const constraint of [{ os: ['linux'] }, { cpu: ['arm64'] }, { libc: ['glibc'] }])
+    assert.throws(() => verifyEngineMetadata({ ...wasm.manifest, ...constraint }, wasm.prebuild), /across operating systems/);
 });
 
 test('glibc minima are optional for old receipts and valid only on glibc targets', () => {
