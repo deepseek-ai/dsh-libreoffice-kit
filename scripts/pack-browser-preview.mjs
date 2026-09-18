@@ -32,10 +32,12 @@ export function packBrowserPreview(destination) {
       packages[kind] = { name: manifest.name, version: manifest.version, file, bytes: statSync(join(destination, file)).size, sha256: sha256(join(destination, file)) };
     }
     const dependencies = packDependencies(join(root, 'packages/entry'), join(destination, 'dependencies'), work);
+    run('tar', ['-cf', join(destination, 'offline-dependencies.tar'), '-C', destination, 'dependencies']);
+    const dependencyArchive = { file: 'offline-dependencies.tar', bytes: statSync(join(destination, 'offline-dependencies.tar')).size, sha256: sha256(join(destination, 'offline-dependencies.tar')) };
     const result = { schemaVersion: 1, kind: 'browser-preview',
       sourceCommit: run('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(),
       sourceDirty: run('git', ['status', '--porcelain', '--', '.', ':(exclude)packages/*/prebuilds.json'], { cwd: root }).trim().length > 0,
-      packages, dependencies };
+      packages, dependencies, dependencyArchive };
     writeFileSync(join(destination, 'browser-preview.json'), `${JSON.stringify(result, null, 2)}\n`);
     return result;
   } finally { rmSync(work, { recursive: true, force: true }); }

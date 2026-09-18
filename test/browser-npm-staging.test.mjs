@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { npmFixture } from './archive-fixture.mjs';
 import { sourceRepository, tarballName } from '../scripts/platform-matrix.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
-import { stageBrowserNpmRelease, validateBrowserNpmCandidate } from '../scripts/stage-browser-npm.mjs';
+import { stageBrowserNpmRelease, validateBrowserNpmCandidate, validateCliReceipts } from '../scripts/stage-browser-npm.mjs';
 
 function fixture(t, alter = value => value) {
   const directory = mkdtempSync(join(tmpdir(), 'browser-npm-stage-'));
@@ -78,6 +78,33 @@ test('browser staging rejects archives that would publish privately, to another 
   }
 });
 
+function cliReceipts(f) {
+  const directory = join(f.directory, 'cli');
+  mkdirSync(directory);
+  for (const platform of ['darwin', 'linux', 'win32']) {
+    writeFileSync(join(directory, `cli-${platform}-x64.json`), JSON.stringify({
+      schemaVersion: 1, kind: 'installed-cli', passed: true, platform, arch: 'x64',
+      sourceCommit: f.candidate.sourceCommit, archiveSha256: f.candidate.packages.kit.sha256, wasmSha256: f.candidate.packages.wasm.sha256,
+      installedOutsideRepository: true, npmOffline: true, nativeEngines: false,
+      formats: Object.fromEntries(['docx', 'xlsx', 'pptx', 'pdf'].map(format => [format,
+        { rasterEngine: format === 'pdf' ? 'pdfium' : 'libreoffice', images: 1, dimensions: [[100, 200]] }])),
+    }));
+  }
+  return directory;
+}
+
+test('installed CLI receipts reject a different candidate or absent platform', t => {
+  const f = fixture(t), directory = cliReceipts(f);
+  validateCliReceipts(directory, f.candidate);
+  const receiptFile = join(directory, 'cli-win32-x64.json');
+  const receipt = JSON.parse(readFileSync(receiptFile));
+  receipt.wasmSha256 = '0'.repeat(64);
+  writeFileSync(receiptFile, JSON.stringify(receipt));
+  assert.throws(() => validateCliReceipts(directory, f.candidate), /released archives/);
+  rmSync(receiptFile);
+  assert.throws(() => validateCliReceipts(directory, f.candidate), /Missing or duplicate/);
+});
+
 function workflow(t) {
   const f = fixture(t);
   const destination = join(f.directory, 'download');
@@ -87,7 +114,7 @@ function workflow(t) {
   const calls = [];
   let sourceReads = 0;
   const options = {
-    env: { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: sourceRepository, GITHUB_EVENT_NAME: 'workflow_dispatch' },
+    env: { CLI_RECEIPTS_DIR: cliReceipts(f), GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: sourceRepository, GITHUB_EVENT_NAME: 'workflow_dispatch' },
     run(args) {
       calls.push(args);
       if (args[0] === 'release') {

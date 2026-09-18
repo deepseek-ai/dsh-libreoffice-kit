@@ -1,6 +1,6 @@
 # Browser Office editing
 
-`@deepseek-ai/libreoffice-kit-browser` exposes `openEditor` for DOCX, XLSX and PPTX. Each editor owns one LibreOffice instance and a persistent document in a dedicated Worker. Keyboard, mouse, text and IME input mutate that model; LibreOffice reports changed geometry and dirty rectangles for direct Canvas painting. Saving exports OOXML. No PDF is created anywhere in this path.
+`@deepseek-ai/libreoffice-kit/browser` exposes `openEditor` for DOCX, XLSX and PPTX. Each editor owns one LibreOffice instance and a persistent document in a dedicated Worker. Keyboard, mouse, text and IME input mutate that model; LibreOffice reports changed geometry and dirty rectangles for direct Canvas painting. Saving exports OOXML. No PDF is created anywhere in this path.
 
 ## Open and retain a document
 
@@ -15,6 +15,7 @@ The returned editor remains live until `dispose()` or its lifetime signal aborts
 - `state` and `subscribe(listener)` expose immutable revision, command, cursor, selection, object and geometry snapshots. Invalidations name a part and rectangle; a null rectangle invalidates the whole part, and part `-1` applies to every part. A throwing subscriber does not interrupt other subscribers.
 - Writer has one continuous part plus its current page rectangles. Calc parts are worksheets; Impress parts are slides. `setPart(index)` changes the active part. Inactive part dimensions retain their last observation until selected so measurement does not commit an in-progress cell edit. `setViewport(rectangle, scale)` informs the engine of the visible region and zoom.
 - `renderTile(request, signal)` returns owned unassociated RGBA pixels without changing the model. The application combines duplicate requests, retains a bounded cache, invalidates intersecting tiles and discards stale results. Aborting one render abandons its result; it does not undo the work or close the editor.
+- `capture({generation, maxPixels, selection, tiles})` is a serialized idle barrier and image batch. It reports `renderGeneration`, selected sheet/data-area regions and immutable tiles. A supplied cached tile requires the matching generation, geometry, scale and byte size; otherwise the caller must repaint. Sheet capture uses an independent read-only drawing view and restores the editing view. Pixel/geometry invalidation during capture rejects with `snapshot-changed`; the application may retry the whole batch once. IME composition completion is coordinated by the application before capture so it never blocks the queued composition-end input.
 
 The Worker processes inputs in order and pumps the LibreOffice event loop in non-waiting slices between messages. Drawing requests and inputs share that engine thread. Complex layout, formula recalculation, export or a new font can take longer than an ordinary edit; non-blocking ownership does not promise a fixed completion deadline. The configured operation timeout closes an unresponsive editor.
 
@@ -23,7 +24,7 @@ The Worker processes inputs in order and pumps the LibreOffice event loop in non
 `save()` returns `{ data, extension, revision }`. It exports the edits ordered before it and does not write a Host file or acknowledge application persistence. The application writes those bytes against the source file's observed version and marks only the returned revision saved after that write succeeds. Input that arrives during the Host write remains dirty. A version conflict must preserve the local model until the user saves a copy or explicitly discards it.
 
 ```js
-import { openEditor } from '@deepseek-ai/libreoffice-kit-browser';
+import { openEditor } from '@deepseek-ai/libreoffice-kit/browser';
 
 const editor = await openEditor(options, documentLifetime);
 try {

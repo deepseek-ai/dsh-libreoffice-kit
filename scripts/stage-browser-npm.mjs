@@ -77,6 +77,29 @@ export function validateBrowserNpmCandidate(directory, tag) {
   return { sourceCommit: candidate.sourceCommit, version, packages };
 }
 
+/** The staging job consumes only receipts from its own completed OS matrix. */
+export function validateCliReceipts(directory, candidate) {
+  const files = readdirSync(directory);
+  for (const platform of ['darwin', 'linux', 'win32']) {
+    const names = files.filter(name => new RegExp(`^cli-${platform}-(?:arm64|x64)\\.json$`).test(name));
+    assert(names.length === 1, `Missing or duplicate installed CLI receipt: ${platform}`);
+    const receipt = readJson(join(directory, names[0]));
+    assert(receipt.schemaVersion === 1 && receipt.kind === 'installed-cli' && receipt.passed === true
+      && receipt.platform === platform && names[0] === `cli-${platform}-${receipt.arch}.json`
+      && receipt.sourceCommit === candidate.sourceCommit
+      && receipt.archiveSha256 === candidate.packages.kit.sha256 && receipt.wasmSha256 === candidate.packages.wasm.sha256
+      && receipt.installedOutsideRepository === true && receipt.npmOffline === true && receipt.nativeEngines === false,
+    `CLI receipt does not qualify the released archives: ${platform}`);
+    for (const format of ['docx', 'xlsx', 'pptx', 'pdf']) {
+      const result = receipt.formats?.[format];
+      assert(result?.rasterEngine === (format === 'pdf' ? 'pdfium' : 'libreoffice')
+        && Number.isSafeInteger(result.images) && result.images > 0 && result.dimensions?.length === result.images
+        && result.dimensions.every(size => Array.isArray(size) && size.length === 2
+          && size.every(value => Number.isSafeInteger(value) && value > 0)), `Missing CLI format evidence: ${platform}/${format}`);
+    }
+  }
+}
+
 /** Consume a published Release without executing its source or trusting its targetCommitish. */
 export async function stageBrowserNpmRelease(tag, directory, { env = process.env, run = gh,
   verifyTrust = verifyNpmOidc, publish = publishNpmPackages } = {}) {
@@ -107,6 +130,8 @@ export async function stageBrowserNpmRelease(tag, directory, { env = process.env
       && `sha256:${sha256(join(directory, name))}` === asset.digest, `Downloaded browser Release asset differs: ${name}`);
   }
   const publication = validateBrowserNpmCandidate(directory, tag);
+  assert(env.CLI_RECEIPTS_DIR, 'Staging requires the completed installed CLI matrix');
+  validateCliReceipts(env.CLI_RECEIPTS_DIR, readJson(join(directory, 'browser-preview.json')));
   const source = { repository: sourceRepository, commit: publication.sourceCommit };
   verifyReleaseSourceTag(sourceRepository, tag, source, run);
   await verifyTrust({ env, packages: publication.packages.map(record => record.name) });
