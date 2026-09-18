@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { EditorEngine } from '../src/editor-engine.ts'
 import type { EmscriptenModule } from '../src/engine-types.ts'
-import type { BrowserEditorEvent, BrowserEditorFormat, BrowserEditorInput } from '../src/editor-types.ts'
+import type { BrowserEditorCaptureRequest, BrowserEditorEvent, BrowserEditorFormat, BrowserEditorInput } from '../src/editor-types.ts'
 import type { EditorOperation } from '../src/protocol.ts'
 
 beforeEach(() => { vi.useFakeTimers() })
@@ -426,4 +426,155 @@ it.each(['doc', 'xls', 'ppt'] as const)('keeps legacy %s read-only while retaini
   await expect(editor.operation({ type: 'save' })).rejects.toThrow('read-only')
   expect(editor.state.documentType).toBe(format === 'doc' ? 'text' : format === 'xls' ? 'spreadsheet' : 'presentation')
   editor.stop()
+})
+
+const captureTile = { part: 0, x: 0, y: 0, width: 1, height: 1, scale: 1 }
+
+it.each([
+  { maxPixels: 0, tiles: [] },
+  { maxPixels: 67_108_865, tiles: [] },
+  { maxPixels: 1, tiles: Array.from({ length: 4097 }, () => ({ request: captureTile })) },
+] satisfies BrowserEditorCaptureRequest[])('rejects an oversized capture before touching the engine (%#)', async request => {
+  const f = fixture('docx')
+  await f.editor.start()
+  vi.mocked(f.module.ccall).mockClear()
+  await expect(f.editor.capture(request)).rejects.toThrow('allocation limit')
+  expect(f.module.ccall).not.toHaveBeenCalled()
+})
+
+it('rejects capture when the editable view is unavailable, without creating a replacement view', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_get_view', -1)
+  await expect(f.editor.capture({ maxPixels: 1, tiles: [] })).rejects.toThrow('editor view is unavailable')
+  expect(vi.mocked(f.module.ccall).mock.calls.some(([name]) => name === 'dsh_lok_document_create_view')).toBe(false)
+})
+
+it.each(['create', 'activate', 'allocate', 'size', 'width', 'height'] as const)(
+  'restores the editor and releases capture resources after a %s failure', async failure => {
+    const f = fixture('docx')
+    await f.editor.start()
+    f.overrides.set('dsh_lok_document_get_view', 3)
+    f.overrides.set('dsh_lok_document_create_view', failure === 'create' ? -1 : 4)
+    if (failure === 'activate') f.overrides.set('dsh_lok_document_set_view', args => args[1] === 4 ? 0 : 1)
+    if (failure === 'allocate') f.overrides.set('malloc', 0)
+    if (failure === 'size') f.overrides.set('dsh_lok_document_size', 0)
+    if (failure === 'width' || failure === 'height') f.overrides.set('dsh_lok_document_size', () => {
+      f.memory[1] = failure === 'width' ? 0 : 12000
+      f.memory[2] = failure === 'height' ? 0 : 16000
+      return 1
+    })
+    vi.mocked(f.module.ccall).mockClear()
+    await expect(f.editor.capture({ maxPixels: 1, tiles: [] })).rejects.toMatchObject({
+      code: failure === 'width' || failure === 'height' ? 'invalid-document' : 'render-failed',
+    })
+    expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_set_view', 'number', ['number', 'number'], [1, 3])
+    if (['size', 'width', 'height'].includes(failure)) expect(f.module.ccall).toHaveBeenCalledWith('free', 'number', ['number'], [4])
+    expect(await f.editor.operation({ type: 'copy' })).toEqual({ text: 'First' })
+  })
+
+it('reuses its capture view across captures and reports a later event-loop restoration failure', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_get_view', 3)
+  f.overrides.set('dsh_lok_document_create_view', 4)
+  for (let i = 0; i < 2; i++) await f.editor.capture({ maxPixels: 1, tiles: [] })
+  expect(vi.mocked(f.module.ccall).mock.calls.filter(([name]) => name === 'dsh_lok_document_create_view')).toHaveLength(1)
+  f.overrides.set('dsh_lok_document_set_view', 0)
+  await vi.advanceTimersByTimeAsync(16)
+  expect(f.failed).toHaveBeenCalledWith(expect.objectContaining({ code: 'render-failed', message: 'The editor view could not be restored after event processing.' }))
+  expect(vi.getTimerCount()).toBe(0)
+  expect(vi.mocked(f.module.ccall).mock.calls.filter(([name]) => name === 'dsh_lok_document_destroy_view')).toHaveLength(1)
+})
+
+function sheetCaptureFixture() {
+  const f = fixture()
+  const text = f.module.UTF8ToString.bind(f.module)
+  vi.spyOn(f.module, 'UTF8ToString').mockImplementation(pointer => {
+    if (pointer === 32 || pointer === 36) return JSON.stringify({ name: pointer === 32 ? 'First' : 'Hidden', visible: pointer === 32 ? 1 : 0,
+      rtllayout: 0, lastcolumn: 2, lastrow: 3 })
+    if (pointer === 40) return JSON.stringify({
+      columns: { sizes: '1500:16383', hidden: '0:16383', filtered: '0:16383' },
+      rows: { sizes: '300:1048575', hidden: '0:1048575', filtered: '0:1048575' },
+    })
+    return text(pointer)
+  })
+  f.overrides.set('dsh_lok_document_get_view', 3)
+  f.overrides.set('dsh_lok_document_create_view', 4)
+  f.overrides.set('dsh_lok_document_part_info', args => args[1] === 0 ? 32 : 36)
+  f.overrides.set('dsh_lok_document_command_values', args => args[1] === '.uno:SheetGeometryData' ? 40 : 0)
+  return f
+}
+
+it('captures visible worksheet data areas by default without changing the active editing sheet', async () => {
+  const f = sheetCaptureFixture()
+  await f.editor.start()
+  await f.editor.operation({ type: 'part', part: 1 })
+  const state = f.editor.state
+  const result = await f.editor.capture({ maxPixels: 1, selection: { scale: 1 }, tiles: [] })
+  expect(result.regions).toEqual([{ part: 0, sheet: 'First', range: 'A1:C4', rectangle: { x: 0, y: 0, width: 300, height: 80 } }])
+  expect(f.editor.state).toBe(state)
+  expect(result.state.part).toBe(1)
+  expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_command_values', 'number', ['number', 'string'],
+    [1, '.uno:ViewRowColumnHeaders?x=0&y=0&width=4500&height=1200'])
+})
+
+it('selects an explicitly named hidden sheet and expands only its captured bounds for the requested range', async () => {
+  const f = sheetCaptureFixture()
+  await f.editor.start()
+  const state = f.editor.state
+  const result = await f.editor.capture({ maxPixels: 1, selection: { sheet: 'Hidden', range: 'B2:K100', scale: 1 }, tiles: [] })
+  expect(result.regions).toEqual([{ part: 1, sheet: 'Hidden', range: 'B2:K100', rectangle: { x: 100, y: 20, width: 1000, height: 1980 } }])
+  expect(result.state.parts).toEqual([{ name: 'First', width: 800, height: 16000 / 15 }, { name: 'Second', width: 1100, height: 2000 }])
+  expect(f.editor.state).toBe(state)
+  expect(f.editor.state.parts[1]!.width).toBe(800)
+})
+
+it('rejects a nonexistent export sheet and keeps the editable model usable', async () => {
+  const f = sheetCaptureFixture()
+  await f.editor.start()
+  await expect(f.editor.capture({ maxPixels: 1, selection: { sheet: 'Missing', scale: 1 }, tiles: [] }))
+    .rejects.toMatchObject({ code: 'invalid-document', message: 'No worksheet matches the export selection.' })
+  expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_set_view', 'number', ['number', 'number'], [1, 3])
+  expect(await f.editor.operation({ type: 'copy' })).toEqual({ text: 'First' })
+})
+
+it.each(['xlsx', 'pptx'] as const)('captures %s tiles with part-specific geometry', async format => {
+  const f = fixture(format)
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_tile_mode', 0)
+  const result = await f.editor.capture({ maxPixels: 1, tiles: [{ request: { ...captureTile, part: 1 } }] })
+  expect(result.tiles).toEqual([{ width: 1, height: 1, rgba: new Uint8ClampedArray(4) }])
+  expect(result.regions).toEqual(format === 'xlsx' ? [] : [
+    { part: 0, rectangle: { x: 0, y: 0, width: 800, height: 16000 / 15 } },
+    { part: 1, rectangle: { x: 0, y: 0, width: 800, height: 20000 / 15 } },
+  ])
+  expect(f.module.ccall).toHaveBeenCalledWith('dsh_lok_document_paint', 'number', expect.any(Array), [1, 4, 1, 1, 1, 0, 0, 15, 15])
+})
+
+it('enforces the total pixel budget across the entire capture batch', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_tile_mode', 0)
+  await expect(f.editor.capture({ maxPixels: 1, tiles: [{ request: captureTile }, { request: captureTile }] }))
+    .rejects.toThrow('pixel budget')
+  expect(vi.mocked(f.module.ccall).mock.calls.filter(([name]) => name === 'dsh_lok_document_paint')).toHaveLength(1)
+})
+
+it.each(['generation', 'width', 'height', 'bytes'] as const)('rejects cached capture pixels with a mismatched %s', async mismatch => {
+  const f = fixture('docx')
+  await f.editor.start()
+  const cached = { width: mismatch === 'width' ? 2 : 1, height: mismatch === 'height' ? 2 : 1,
+    rgba: new Uint8ClampedArray(mismatch === 'bytes' ? 3 : 4) }
+  await expect(f.editor.capture({ ...(mismatch === 'generation' ? {} : { generation: 0 }), maxPixels: 1,
+    tiles: [{ request: captureTile, cached }] })).rejects.toThrow('Cached Office pixels do not match')
+  expect(vi.mocked(f.module.ccall).mock.calls.some(([name]) => name === 'dsh_lok_document_paint')).toBe(false)
+})
+
+it('reports capture paint failure and permits subsequent editing', async () => {
+  const f = fixture('docx')
+  await f.editor.start()
+  f.overrides.set('dsh_lok_document_paint', 0)
+  await expect(f.editor.capture({ maxPixels: 1, tiles: [{ request: captureTile }] })).rejects.toThrow('Office capture failed.')
+  await expect(f.editor.operation({ type: 'paste', text: 'continued editing' })).resolves.toEqual({})
 })

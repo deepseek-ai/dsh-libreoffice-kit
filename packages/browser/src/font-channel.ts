@@ -32,7 +32,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
   declaredFamilies: ReadonlyMap<string, string>, request: (request: BrowserFontRequest) => void, next: () => void,
   install: (path: string, bytes: Uint8Array) => void, missing: (families: readonly string[]) => void): (request: BrowserFontRequest) => EngineFontFace[] {
   const { control, bytes } = fontViews(channel)
-  const installed = new Map<string, EngineFontFace>()
+  const installed = new Map<string, { face: EngineFontFace; format: FontHeader['fonts'][number]['format'] }>()
   const aliases = new Map<string, { id: string; family: string }>()
   const requests = new Map<string, EngineFontFace[]>()
   const families = new Set<string>()
@@ -68,8 +68,9 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
     const faces: EngineFontFace[] = []
     for (const font of header.fonts) {
       if (typeof font.id !== 'string' || typeof font.family !== 'string' || font.family.length === 0 || typeof font.alias !== 'string' || font.alias.length === 0 || /[\x00\t\r\n]/.test(font.alias) || !Number.isSafeInteger(font.bytes) || font.bytes <= 0) throw new BrowserRenderError('font-unavailable', 'Invalid font file descriptor.')
+      if (font.format !== undefined && !['ttf', 'otf', 'ttc'].includes(font.format)) throw new BrowserRenderError('font-unavailable', 'Invalid full font format.')
       const prior = installed.get(font.id)
-      if (prior && prior.family !== font.alias) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting aliases.')
+      if (prior && (prior.format !== font.format || (font.format === undefined && prior.face.family !== font.alias))) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting aliases or formats.')
       const alias = normalize(font.alias)
       const previousAlias = aliases.get(alias)
       if (previousAlias && (previousAlias.family !== font.family || (font.format === undefined && previousAlias.id !== font.id))) throw new BrowserRenderError('font-unavailable', 'Font alias identifies conflicting subsets.')
@@ -82,9 +83,10 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
         buffer?.set(frame.data, received)
         received += frame.data.length
       }
-      if (font.format !== undefined && !['ttf', 'otf', 'ttc'].includes(font.format)) throw new BrowserRenderError('font-unavailable', 'Invalid full font format.')
-      const face = prior ?? { path: font.format === undefined ? `/dsh-fonts/${installed.size}.font` : `/usr/share/fonts/dsh-pdfium/${installed.size}.${font.format}`, family: font.alias }
-      if (buffer) { install(face.path, buffer); installed.set(font.id, face); loadedBytes += buffer.length }
+      // A full TTC asset can expose multiple families from the same installed bytes.
+      // Its requested family must not inherit the first family's alias.
+      const face = { path: prior?.face.path ?? (font.format === undefined ? `/dsh-fonts/${installed.size}.font` : `/usr/share/fonts/dsh-pdfium/${installed.size}.${font.format}`), family: font.alias }
+      if (buffer) { install(face.path, buffer); installed.set(font.id, { face, format: font.format }); loadedBytes += buffer.length }
       aliases.set(alias, { id: font.id, family: font.family })
       faces.push(face)
     }
