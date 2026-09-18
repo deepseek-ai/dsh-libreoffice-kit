@@ -41,7 +41,7 @@ async function fontFile(): Promise<FontFace> {
   return {
     path, dev, ino, size, mtimeMs, ctimeMs,
     faceIndex: 0, family: 'Fixture', style: 'Regular', aliases: ['fixture'],
-    weight: 400, width: 5, italic: false, fixed: false, postscriptName: 'Fixture-Regular',
+    weight: 400, width: 5, italic: false, fixed: false, decorative: false, postscriptName: 'Fixture-Regular',
   }
 }
 

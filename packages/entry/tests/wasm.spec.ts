@@ -113,7 +113,7 @@ async function wasmFixture(root: string, behavior: LoaderBehavior) {
   const status = statSync(fontPath)
   const face: FontFace = { path: fontPath, size: status.size, mtimeMs: status.mtimeMs, ctimeMs: status.ctimeMs,
     dev: status.dev, ino: status.ino, faceIndex: 0, family: 'Fixture Face', style: 'Regular', aliases: ['fixtureface'],
-    weight: 400, width: 5, italic: false, fixed: false, postscriptName: 'FixtureFace', coverage: [[65, 65]] }
+    weight: 400, width: 5, italic: false, fixed: false, decorative: false, postscriptName: 'FixtureFace', coverage: [[65, 65]] }
   return { engine, face }
 }
 

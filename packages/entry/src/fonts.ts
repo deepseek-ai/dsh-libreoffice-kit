@@ -35,6 +35,8 @@ export interface FontFace {
   readonly width: number
   readonly italic: boolean
   readonly fixed: boolean
+  /** OS/2 identifies a script or ornamental face; deprioritized only after named preferences. */
+  readonly decorative: boolean
   readonly postscriptName: string | null
   /** Decoded glyph ranges; absent until a match reads this face's coverage. */
   coverage?: GlyphRange[]
@@ -204,16 +206,19 @@ function covers(face: FontFace, points: readonly number[]): number[] {
 }
 
 /**
- * VCL weight, width, and fixed-pitch values for one parsed face.
+ * VCL metrics and OS/2 design classification for one parsed face.
  * @param font - The parsed physical face, whose `OS/2` and `post` tables may be absent.
  * @returns the recorded classes, or the regular defaults for an absent table.
  */
-export function faceMetrics(font: Pick<Font, 'OS/2' | 'post'>): { weight: number; width: number; fixed: boolean } {
+export function faceMetrics(font: Pick<Font, 'OS/2' | 'post'>): Pick<FontFace, 'weight' | 'width' | 'fixed' | 'decorative'> {
   const os2 = font['OS/2']
+  // PANOSE family kinds 3/4 are script/decorative; IBM classes 9/10 are ornamental/script.
+  const familyClass = (os2?.sFamilyClass ?? 0) >>> 8
   return {
     weight: os2 === undefined ? 400 : os2.usWeightClass,
     width: os2 === undefined ? 5 : os2.usWidthClass,
     fixed: Boolean(font.post?.isFixedPitch),
+    decorative: [3, 4].includes(os2?.panose[0] ?? 0) || [9, 10].includes(familyClass),
   }
 }
 
@@ -328,7 +333,8 @@ export class SystemFontCatalog {
   /**
      * Find installed faces covering the requested family or missing characters.
      * Exact families precede configured alternatives, symbol families for missing symbols,
-     * generic families, then other glyph-covering faces.
+     * generic families, then other glyph-covering faces. Within the same priority,
+     * text faces precede script/decorative faces before comparing locale and style.
      * @param request - VCL family/style attributes and Unicode scalars missing from its current font.
      * @param signal - cancellation checked between synchronous font reads.
      * @returns selected files or physical faces according to deduplicateBy; absent glyphs remain unresolved.
@@ -355,7 +361,8 @@ export class SystemFontCatalog {
                 + Math.abs((VCL_WEIGHTS[request.weight] ?? 400) - face.weight) / 100
                 + (request.width === 0 ? 0 : Math.abs(request.width - face.width))
       return { face, rank: rank < 0 ? priority.length : rank, region, style }
-    }).sort((left, right) => left.rank - right.rank || left.region - right.region || left.style - right.style
+    }).sort((left, right) => left.rank - right.rank || Number(left.face.decorative) - Number(right.face.decorative)
+            || left.region - right.region || left.style - right.style
             || left.face.path.localeCompare(right.face.path, 'en') || left.face.faceIndex - right.face.faceIndex)
     const selected = []
     const files = new Set()

@@ -14,7 +14,7 @@ import { resolveOptions } from '../src/options.ts'
 function fontFace(family: string, characters: string, overrides: Partial<FontFace> = {}): FontFace {
   const coverage = Array.from(characters, character => [character.codePointAt(0) ?? 0, character.codePointAt(0) ?? 0] as [number, number])
   return { family, aliases: [normalize(family)], path: `${family}.ttf`, faceIndex: 0,
-    postscriptName: family, style: 'Regular', weight: 400, width: 5, italic: false, fixed: false,
+    postscriptName: family, style: 'Regular', weight: 400, width: 5, italic: false, fixed: false, decorative: false,
     size: 0, mtimeMs: 0, ctimeMs: 0, dev: 0, ino: 0, coverage, ...overrides }
 }
 
@@ -56,6 +56,33 @@ it('explicit installed families precede substitutions, including handwriting', (
   }
 })
 
+it.each(['', 'en-US', 'zh-CN', 'ko-KR'])('missing Carlito uses Korean body text independent of document language %j', (language) => {
+  const faces = [fontFace('Nanum Brush Script', '안녕', { path: '0-handwriting.ttc', decorative: true }),
+    fontFace('Arial', 'A'), fontFace('Apple SD Gothic Neo', '안녕'), fontFace('AppleMyungjo', '안녕')]
+  const attributes = { language, codePoints: [65, 0xc548, 0xb155] }
+  const result = matchFonts(faces, 'Carlito', {}, attributes)
+  expect(result.missingFamily).toBe('Carlito')
+  expect(result.fonts.map(face => face.family)).toEqual(['Arial', 'Apple SD Gothic Neo'])
+  expect(matchFonts(faces, 'serif', {}, attributes).fonts.map(face => face.family)).toEqual(['AppleMyungjo', 'Arial'])
+  expect(matchFonts(faces, 'monospace', {}, attributes).fonts.map(face => face.family)).toEqual(['Apple SD Gothic Neo', 'Arial'])
+})
+
+it.each(['Malgun Gothic', 'Noto Sans CJK KR', 'NanumGothic'])('Korean sans fallback uses %s when available', (family) => {
+  const faces = [fontFace('Nanum Brush Script', '안', { path: '0-handwriting.ttc', decorative: true }), fontFace(family, '안')]
+  expect(matchFonts(faces, 'Carlito', {}, { codePoints: [0xc548] }).fonts.map(face => face.family)).toEqual([family])
+})
+
+it('unlisted body faces outweigh handwriting locale/style scores without excluding unique glyphs', () => {
+  const faces = [fontFace('Unlisted Script KR', '안𐐀', { path: '0-script.ttf', decorative: true }),
+    fontFace('Unlisted Text', '안', { style: 'Medium', weight: 500 })]
+  const attributes = { language: 'ko-KR', style: 'Regular', codePoints: [0xc548, 0x10400] }
+  expect(matchFonts(faces, 'Carlito', {}, attributes).fonts.map(face => face.family))
+    .toEqual(['Unlisted Text', 'Unlisted Script KR'])
+  expect(matchFonts(faces, 'Unlisted Script KR', {}, attributes).fonts.map(face => face.family)).toEqual(['Unlisted Script KR'])
+  expect(matchFonts(faces, 'Carlito', { fontFallbacks: [['Carlito', 'Unlisted Script KR']] }, attributes).fonts.map(face => face.family))
+    .toEqual(['Unlisted Script KR'])
+})
+
 it('monospaced Latin uses common full-width CJK text before handwriting when CJK monospace is absent', () => {
   const faces = [fontFace('Courier New', 'A', { fixed: true }), fontFace('PingFang SC', '汉'),
     fontFace('Hannotate SC', '汉', { path: '0-handwriting.ttc' })]
@@ -93,6 +120,7 @@ it('WASM aliases include the same metric and CJK alternatives as matching', () =
   for (const [family, expected] of [
     ['Calibri', ['Carlito', 'PingFang SC']], ['Calibri Light', ['Carlito', 'PingFang SC']],
     ['Cambria', ['Caladea', 'Songti SC']], ['monospace', ['Courier New', 'Noto Sans Mono CJK SC']],
+    ['sans-serif', ['Arial', 'Apple SD Gothic Neo']], ['serif', ['Times New Roman', 'AppleMyungjo']],
   ] as const) {
     const alias = xml.match(new RegExp(`<alias><family>${family}</family><accept>(.*?)</accept></alias>`))?.[1]
     expect(alias, family).toBeTruthy()
@@ -175,11 +203,19 @@ it('unreadable, missing, and non-font sources are skipped while real failures pr
 })
 
 it('VCL metrics default for faces without OS/2 or post tables and glyph decoding can reject', () => {
-  expect(faceMetrics({ 'OS/2': undefined, post: undefined })).toEqual({ weight: 400, width: 5, fixed: false })
-  expect(faceMetrics({ 'OS/2': { usWeightClass: 700, usWidthClass: 3 }, post: { isFixedPitch: 1 } }))
-    .toEqual({ weight: 700, width: 3, fixed: true })
+  expect(faceMetrics({ 'OS/2': undefined, post: undefined })).toEqual({ weight: 400, width: 5, fixed: false, decorative: false })
+  expect(faceMetrics({ 'OS/2': { usWeightClass: 700, usWidthClass: 3, sFamilyClass: 0, panose: [2] }, post: { isFixedPitch: 1 } }))
+    .toEqual({ weight: 700, width: 3, fixed: true, decorative: false })
   const damaged = { characterSet: [65], hasGlyphForCodePoint: () => { throw new Error('damaged cmap') } } as unknown as Font
   expect(faceCoverage(damaged)).toEqual([])
+})
+
+it.each([
+  [3, 0, true], [4, 0, true], [2, 9 << 8, true], [2, 10 << 8, true],
+  [2, 8 << 8, false], [0, 0, false],
+])('OS/2 design classification reads PANOSE %i and IBM family %i', (panose, sFamilyClass, decorative) => {
+  expect(faceMetrics({ 'OS/2': { usWeightClass: 400, usWidthClass: 5, panose: [panose], sFamilyClass }, post: undefined }).decorative)
+    .toBe(decorative)
 })
 
 it('regional priority prefers the requested writing system and stays neutral otherwise', () => {
@@ -306,7 +342,7 @@ it('reading a replaced, irregular, or truncated indexed font rejects', () => {
     writeFileSync(path, 'four')
     const stat = statSync(path)
     const face: FontFace = { path, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, dev: stat.dev, ino: stat.ino,
-      faceIndex: 0, family: 'Face', style: 'Regular', aliases: ['face'], weight: 400, width: 5, italic: false, fixed: false,
+      faceIndex: 0, family: 'Face', style: 'Regular', aliases: ['face'], weight: 400, width: 5, italic: false, fixed: false, decorative: false,
       postscriptName: 'Face', coverage: [] }
     expect(readFont(face).toString()).toBe('four')
     expect(() => readFont({ ...face, path: root })).toThrow(/changed/)

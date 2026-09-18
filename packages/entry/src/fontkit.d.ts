@@ -9,6 +9,8 @@ declare module 'fontkit' {
   interface OS2Table {
     readonly usWeightClass: number
     readonly usWidthClass: number
+    readonly sFamilyClass: number
+    readonly panose: readonly number[]
   }
 
   /** One physical face's `post` table. */

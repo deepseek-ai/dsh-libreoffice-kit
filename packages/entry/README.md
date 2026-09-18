@@ -50,7 +50,7 @@ CLI paths resolve against its working directory. Success writes one JSON object 
 
 ## Fonts and PDF scope
 
-Node operations use bounded system-font discovery. Exact installed families precede configured fallbacks; full original font files retain shaping and encoding. Recreate the converter after changing installed fonts. `missingFonts` covers named families in readable OOXML metadata, not all missing glyphs or PDF font diagnostics.
+Node operations use bounded system-font discovery. Exact installed families precede configured fallbacks; default Korean sans/serif preferences select body-text fonts before handwriting even when the document language is absent. Unlisted fallback faces classified by OS/2 as script or decorative rank below other text faces, but remain available for otherwise missing glyphs. Full original font files retain shaping and encoding. Recreate the converter after changing installed fonts. `missingFonts` covers named families in readable OOXML metadata, not all missing glyphs or PDF font diagnostics.
 
 `createFontSource` from `@deepseek-ai/libreoffice-kit/fonts` provides an independent lazy Worker service. `resolve(attributes)` retains the Unicode-script subset behavior for interactive Office. `resolve({...attributes, mode:'full'})` returns opaque `full_…` identities, original family names and `format` (`ttf`, `otf`, `ttc`); `read(id)` returns complete original font bytes. Apple dfont resources are extracted as complete sfnt faces. Reads reject unknown or changed sources and do not expose host paths.
 

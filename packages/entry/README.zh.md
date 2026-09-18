@@ -41,7 +41,7 @@ CLI 相对路径按工作目录解析，成功在 stdout 输出一个 JSON，失
 
 ## 字体与 PDF 范围
 
-Node 端在限制范围内发现系统字体，精确 family 优先于回退配置，导入完整原始字体。安装字体改变后重新创建转换器。`missingFonts` 只报告可读 OOXML 的声明 family，不代表全部缺字或 PDF 字体诊断。
+Node 端在限制范围内发现系统字体，精确 family 优先于回退配置；默认韩文无衬线/衬线回退优先使用正文字体，不依赖文档声明语言。未列入偏好组的字体中，OS/2 标记为手写或装饰的字体优先级较低，仍可用于补齐其他字体无法覆盖的字符。导入完整原始字体。安装字体改变后重新创建转换器。`missingFonts` 只报告可读 OOXML 的声明 family，不代表全部缺字或 PDF 字体诊断。
 
 `@deepseek-ai/libreoffice-kit/fonts` 的 `createFontSource` 是独立懒加载字体 Worker。默认 `resolve(attributes)` 保留 Office 的 Unicode-script 子集；新增 `resolve({...attributes,mode:'full'})` 返回不暴露主机路径的 `full_…` ID、原 family 和 ttf/otf/ttc 格式。`read(id)` 返回完整原字节，dfont 提取完整单字体 sfnt。来源变化或未知 ID 会拒绝读取。
 

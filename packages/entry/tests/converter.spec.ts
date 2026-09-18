@@ -28,7 +28,7 @@ vi.mock('node:worker_threads', async (importOriginal) => {
           options = { ...options, workerData: { ...data, fontFaces: [{
             path, size, mtimeMs, ctimeMs, dev, ino, faceIndex: 0,
             family: 'Fixture Face', aliases: ['fixtureface'], style: 'Regular',
-            weight: 400, width: 5, italic: false, fixed: false, postscriptName: 'FixtureFace',
+            weight: 400, width: 5, italic: false, fixed: false, decorative: false, postscriptName: 'FixtureFace',
             coverage: [[0, 0x10ffff]],
           }] } }
         }
