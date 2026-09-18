@@ -70,6 +70,7 @@ try {
 const source = createFontSource();
 const requests = [];
 const fontCoverage = new Map();
+const fontBytes = new Map();
 const fixtureTexts = {
   docx: 'Browser native Office rendering - ABC 123',
   mixed: 'Latin ABC 123 — العربية مرحبا — हिन्दी नमस्ते — বাংলা স্বাগতম — ไทย สวัสดี — עברית שלום — 中文测试',
@@ -103,6 +104,7 @@ const server = createServer(async (request, response) => {
     } else if (url.pathname.startsWith('/fonts/')) {
       const id = url.pathname.slice(7);
       const bytes = await source.read(id);
+      fontBytes.set(id, bytes.byteLength);
       if (!fontCoverage.has(id)) fontCoverage.set(id, new Set(parseFont(bytes).characterSet));
       response.setHeader('Content-Type', 'font/ttf'); response.end(bytes);
     } else if (url.pathname.startsWith('/fixture/')) {
@@ -174,7 +176,7 @@ try {
       let missingFonts = [];
       const isPdf = format.startsWith('pdf-');
       const editor = await (isPdf ? openDocument : openEditor)({ readOnly: true, data, extension: isPdf ? 'pdf' : ['doc', 'ppt', 'pptx'].includes(format) ? format : 'docx', assets,
-        timeoutMs: 120000, maxLoadedFontBytes: 256 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024, fontFallbacks,
+        timeoutMs: 120000, maxLoadedFontBytes: 512 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024, fontFallbacks,
         onMissingFonts: families => { missingFonts = [...families]; },
         resolveFonts: async (request, signal) => {
           const response = await fetch(`${origin}/resolve-fonts`, { method: 'POST', body: JSON.stringify(request), signal });
@@ -237,8 +239,9 @@ try {
       await mkdir(resolve(values.screenshots), { recursive: true });
       await page.locator('canvas').screenshot({ path: join(resolve(values.screenshots), `${format}.png`) });
     }
+    const ids = new Set(requests.filter(request => request.format === format).flatMap(request => request.result.fonts.map(font => font.id)));
+    formats[format].loadedFontBytes = [...ids].reduce((sum, id) => sum + fontBytes.get(id), 0);
     if (fixtureTexts[format]) {
-      const ids = new Set(requests.filter(request => request.format === format).flatMap(request => request.result.fonts.map(font => font.id)));
       const points = new Set([...fixtureTexts[format]].map(char => char.codePointAt(0)));
       for (const point of points) assert([...ids].some(id => fontCoverage.get(id)?.has(point)), `No delivered font covers ${format} U+${point.toString(16)}`);
     }
