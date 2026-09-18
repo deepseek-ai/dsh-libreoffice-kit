@@ -11,10 +11,10 @@
 使用 Node.js 22.19.0 或更新版本安装：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc3
 ```
 
-npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
+本候选版仅发布 Node API 与 Linux WASM 引擎。npm 在 Linux 上安装 `@deepseek-ai/libreoffice-kit-wasm`。本版不支持 macOS 和 Windows；其开发运行时仍要求另行准备匹配的原生引擎，不会切换到 WASM。引擎缺失或无效时，`createConverter` 以 `unavailable` 拒绝；转换失败不会切换引擎。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -31,7 +31,7 @@ try {
 }
 ```
 
-原生与 WASM 引擎是按平台筛选的可选依赖。应用构建方必须验证所需引擎已安装：macOS/Windows 使用原生引擎，Linux 使用 WASM。必需引擎缺失时，`createConverter()` 以 `unavailable` 拒绝。
+WASM 引擎是仅供 Linux 使用的可选依赖。应用构建方必须确认已安装该引擎；必需引擎缺失时，`createConverter()` 以 `unavailable` 拒绝。本候选版不迁移现有 macOS/Windows 应用到 WASM。
 
 每个转换器串行执行转换和重算。一次操作会创建独立的原生进程或 Node worker 以及私有配置目录，因此字体、文档状态和失败不会泄漏到后续渲染。截止时间在获得转换槽位之后开始计算。`AbortSignal` 可以取消排队中或进行中的工作；取消和 `dispose()` 都会等待进程或 worker 退出并完成临时文件清理。已释放的转换器会拒绝后续工作。
 

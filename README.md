@@ -18,10 +18,10 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 
 ## Quick start
 
-Requires Node.js **22.19.0 or newer**. Install the `0.0.2-rc2` candidate package with its optional engines:
+Requires Linux and Node.js **22.19.0 or newer**. Install the `0.0.2-rc3` candidate package with its optional engines:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc3
 ```
 
 ```js
@@ -62,15 +62,11 @@ The [Node package manifest](packages/entry/package.json) declares the released e
 
 | Engine | Role |
 | --- | --- |
-| `@deepseek-ai/libreoffice-kit-darwin-arm64` | Native helper for macOS on Apple Silicon. |
-| `@deepseek-ai/libreoffice-kit-darwin-x64` | Native helper for Intel macOS. |
-| `@deepseek-ai/libreoffice-kit-win32-arm64` | Native helper for Windows ARM64; requires ARM64 Node.js and the Microsoft Visual C++ v14 ARM64 Redistributable. |
-| `@deepseek-ai/libreoffice-kit-win32-x64` | Native helper for Windows x64; requires the Microsoft Visual C++ v14 x64 Redistributable. |
 | `@deepseek-ai/libreoffice-kit-wasm` | Shared Node WASM engine for Linux. |
 
-Other native directories are development recipes, not additional released targets. The shared WASM package declares Linux as its npm OS, with no CPU or libc restriction; that declaration alone does not certify every Linux host. Native and WASM engines perform layout and PDF serialization on the CPU.
+Native directories are development recipes, not additional released targets. The shared WASM package declares Linux as its npm OS, with no CPU or libc restriction; that declaration alone does not certify every Linux host. Native and WASM engines perform layout and PDF serialization on the CPU.
 
-npm installs only the matching native package on macOS/Windows ARM64 or x64, and WASM on Linux. macOS and Windows require their native package and never fall back to WASM. Linux uses WASM unless an explicitly installed development native package supports its glibc version. A missing required engine or a corrupt installed engine rejects `createConverter` with `unavailable`; conversion failures do not switch engines.
+This candidate publishes the Node API and Linux WASM engine only. npm installs `@deepseek-ai/libreoffice-kit-wasm` on Linux. macOS and Windows are not supported by this release; their development runtime still requires a separately prepared matching native engine and does not switch to WASM. A missing or invalid engine rejects `createConverter` with `unavailable`; conversion failures never switch engines.
 
 The Node API and engines share the kit version. Installation uses prepared packages; no install hook or conversion compiles LibreOffice, downloads extra engines, or discovers the user's LibreOffice installation. npm distributes standard `.tgz` packages. GitHub Release engine downloads use verified XZ transfer archives for application builders to prepare and bundle. See [packaging](docs/packaging.md) and [release procedures](docs/building.md) for these distribution paths and installed-conversion checks.
 

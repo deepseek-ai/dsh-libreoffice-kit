@@ -29,6 +29,10 @@ export function artifactPlan(selection = '', repo = root) {
   const selected = selection ? selection.split(',').map(value => value.trim()) : Object.keys(runtimeTargets);
   assert(selected.length > 0 && selected.every(value => Object.hasOwn(runtimeTargets, value)), 'Unknown or empty Office runtime target');
   const released = kitNativeTargets(kitManifest(repo));
+  for (const value of selected) {
+    if (selection && !value.startsWith('node24-linux-'))
+      assert(released.includes(runtimeTargets[value]), `This release has no engine for ${value}`);
+  }
   const native = selected.map(value => runtimeTargets[value]).filter(value => released.includes(value));
   return [...new Set(native), ...(selected.some(value => value.startsWith('node24-linux-')) ? ['wasm'] : [])];
 }

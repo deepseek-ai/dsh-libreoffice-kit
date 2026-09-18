@@ -13,12 +13,12 @@ import { source, configureFlags } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { run } from '../scripts/pack-utils.mjs';
 
-test('runtime targets select native engines for macOS/Windows and WASM only for Linux', () => {
-  assert.deepEqual(artifactPlan('node24-linux-x64,node24-win-x64'), ['win32-x64', 'wasm']);
-  assert.deepEqual(artifactPlan('node24-macos-arm64,node24-linux-arm64'), ['darwin-arm64', 'wasm']);
-  assert.deepEqual(artifactPlan('node24-macos-x64,node24-win-arm64'), ['darwin-x64', 'win32-arm64']);
-  assert.deepEqual(artifactPlan('node24-linux-arm64'), ['wasm']);
-  assert.deepEqual(artifactPlan(), ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64', 'wasm']);
+test('release preparation selects Linux WASM and rejects unavailable desktop engines', () => {
+  assert.deepEqual(artifactPlan('node24-linux-x64,node24-linux-arm64'), ['wasm']);
+  assert.deepEqual(artifactPlan(), ['wasm']);
+  for (const target of ['node24-win-x64', 'node24-win-arm64', 'node24-macos-arm64', 'node24-macos-x64'])
+    assert.throws(() => artifactPlan(target), /This release has no engine/);
+  assert.throws(() => artifactPlan('node24-linux-x64,node24-win-x64'), /This release has no engine/);
   assert.throws(() => artifactPlan('node24-linux-x64,'), /Unknown or empty/);
   assert.throws(() => artifactPlan('node24-freebsd-x64'), /Unknown or empty/);
 });

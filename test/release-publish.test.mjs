@@ -82,14 +82,14 @@ test('publication rejects adapter bytes changed after the conversion receipts', 
 
 test('publication requires embedded graphics evidence from every installed engine', t => {
   const { directory, env, evidence, save } = fixture(t);
-  delete evidence.platforms[0].native.embeddedGraphics;
+  delete evidence.platforms[0].wasm.embeddedGraphics;
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /Missing embedded PDF graphic/);
 });
 
 test('publication rejects partial, duplicate and undeclared development targets', t => {
   const complete = releaseTargets([]);
-  for (const platforms of [complete.slice(0, -1), [...complete, ...complete], ['wasm'],
+  for (const platforms of [complete.slice(0, -1), [...complete, ...complete], ['darwin-arm64'],
     [...complete, 'linux-x64-glibc'], [...complete, 'darwin-arm64']]) {
     const { directory, env } = fixture(t, platforms);
     assert.throws(() => validatePublication(directory, env), /every declared release platform/);
@@ -122,12 +122,12 @@ test('publication rejects a transfer size that differs from the pinned archive',
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
 
-test('publication requires the canonical engine order and matching package versions', t => {
+test('publication requires the canonical engine inventory and matching package versions', t => {
   const { directory, env, release, save } = fixture(t);
-  release.packages.reverse();
+  release.packages.push(release.packages[0]);
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /package order/);
-  release.packages.reverse();
+  release.packages.pop();
   release.packages[0].version = '99.0.0';
   release.packages[0].file = engineArchiveName(release.packages[0]);
   release.packages[0].install.file = release.packages[0].file.replace(/\.xz$/, '');
@@ -138,7 +138,7 @@ test('publication requires the canonical engine order and matching package versi
 test('publication rejects noncanonical filenames, platform identities and family versions', t => {
   const { directory, env, release, save } = fixture(t);
   const first = { ...release.packages[0] };
-  for (const change of [{ file: '../different.tgz' }, { platform: 'wasm' }]) {
+  for (const change of [{ file: '../different.tgz' }, { platform: 'darwin-arm64' }]) {
     release.packages[0] = { ...first, ...change };
     save('release.json', release);
     assert.throws(() => validatePublication(directory, env), /canonical engine asset|transfer filename/);

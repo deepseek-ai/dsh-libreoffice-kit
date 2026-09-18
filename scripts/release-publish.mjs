@@ -97,7 +97,7 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Standalone Office-to-PDF conversion for Node.js: DOC, DOCX, XLS, XLSX, PPT and PPTX. Required native engines serve macOS and Windows on ARM64 and x64; Linux uses WASM. macOS and Windows do not fall back to WASM.',
+    'Office and OpenDocument conversion and spreadsheet recalculation for Node.js on Linux, through the public API and CLI. This candidate publishes the Node API and WASM engine only; macOS and Windows runtime migration is not included.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',

@@ -11,10 +11,10 @@ Binary `.doc`, `.xls`, and `.ppt` inputs must be OLE compound documents, such as
 Install with Node.js 22.19.0 or newer:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc3
 ```
 
-npm installs the matching native engine on macOS/Windows ARM64 or x64, and the shared WASM engine on Linux. macOS and Windows require their native package; a missing or invalid package rejects `createConverter` with `unavailable`, without switching to WASM. Linux uses WASM unless a compatible development native package was installed explicitly. Conversion failures never switch engines.
+This candidate publishes the Node API and Linux WASM engine only. npm installs `@deepseek-ai/libreoffice-kit-wasm` on Linux. macOS and Windows are not supported by this release; their development runtime still requires a separately prepared matching native engine and does not switch to WASM. A missing or invalid engine rejects `createConverter` with `unavailable`; conversion failures never switch engines.
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -31,7 +31,7 @@ try {
 }
 ```
 
-Native and WASM engines are platform-filtered optional dependencies. Application builders must verify the required engine is installed: native on macOS/Windows, WASM on Linux. A missing required engine rejects `createConverter()` with `unavailable`.
+The WASM engine is a Linux-only optional dependency. Application builders must verify it is installed; a missing required engine rejects `createConverter()` with `unavailable`. This candidate does not migrate existing macOS/Windows applications to WASM.
 
 Each converter serializes conversions and recalculations. An operation creates a separate native process or Node worker and private profile, so fonts, document state, and failures do not leak into later renders. The deadline begins after acquiring its conversion slot. An `AbortSignal` cancels queued or active work; cancellation and `dispose()` await process or worker exit and scratch cleanup. Disposed converters reject further work.
 
