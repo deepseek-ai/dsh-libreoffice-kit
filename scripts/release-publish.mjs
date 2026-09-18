@@ -101,7 +101,7 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Office editing, direct PNG rendering, format conversion and spreadsheet recalculation use the portable WASM engine. The existing main package contains the Node API, CLI, browser entry and font service; the existing WASM package contains the engine.',
+    'Read-only Office browsing, direct PNG rendering, format conversion and spreadsheet recalculation use the portable WASM engine. The existing main package contains the Node API, CLI, browser entry and font service; the existing WASM package contains the engine.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',

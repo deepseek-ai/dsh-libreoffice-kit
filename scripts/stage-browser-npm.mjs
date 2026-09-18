@@ -81,6 +81,8 @@ export function validateCliReceipts(directory, candidate) {
       && receipt.archiveSha256 === candidate.packages.kit.sha256 && receipt.wasmSha256 === candidate.packages.wasm.sha256
       && receipt.installedOutsideRepository === true && receipt.npmOffline === true && receipt.nativeEngines === false,
     `CLI receipt does not qualify the released archives: ${platform}`);
+    assert(receipt.recalculation?.formulasPreserved === true && receipt.recalculation.cachesRefreshed === true,
+      `Missing CLI recalculation evidence: ${platform}`);
     for (const format of ['docx', 'xlsx', 'pptx', 'pdf']) {
       const result = receipt.formats?.[format];
       assert(result?.rasterEngine === (format === 'pdf' ? 'pdfium' : 'libreoffice')

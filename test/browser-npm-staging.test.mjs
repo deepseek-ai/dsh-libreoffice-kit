@@ -85,6 +85,7 @@ function cliReceipts(f) {
       schemaVersion: 1, kind: 'installed-cli', passed: true, platform, arch: 'x64',
       sourceCommit: f.candidate.sourceCommit, archiveSha256: f.candidate.packages.kit.sha256, wasmSha256: f.candidate.packages.wasm.sha256,
       installedOutsideRepository: true, npmOffline: true, nativeEngines: false,
+      recalculation: { formulasPreserved: true, cachesRefreshed: true },
       formats: Object.fromEntries(['docx', 'xlsx', 'pptx', 'pdf'].map(format => [format,
         { rasterEngine: format === 'pdf' ? 'pdfium' : 'libreoffice', images: 1, dimensions: [[100, 200]] }])),
     }));
@@ -97,6 +98,12 @@ test('installed CLI receipts reject a different candidate or absent platform', t
   validateCliReceipts(directory, f.candidate);
   const receiptFile = join(directory, 'cli-win32-x64.json');
   const receipt = JSON.parse(readFileSync(receiptFile));
+  for (const field of ['formulasPreserved', 'cachesRefreshed']) {
+    const changed = structuredClone(receipt);
+    changed.recalculation[field] = false;
+    writeFileSync(receiptFile, JSON.stringify(changed));
+    assert.throws(() => validateCliReceipts(directory, f.candidate), /recalculation evidence/);
+  }
   receipt.wasmSha256 = '0'.repeat(64);
   writeFileSync(receiptFile, JSON.stringify(receipt));
   assert.throws(() => validateCliReceipts(directory, f.candidate), /released archives/);

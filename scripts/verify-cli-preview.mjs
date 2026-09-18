@@ -23,7 +23,7 @@ try {
   const require = createRequire(join(consumer, 'package.json'));
   const cli = require.resolve('@deepseek-ai/libreoffice-kit/cli');
   process.env.LIBREOFFICE_RUNTIME_ENTRY = require.resolve('@deepseek-ai/libreoffice-kit');
-  const { documentFixture } = await import('../test/runtime-fixture.mjs');
+  const { documentFixture, unzipSync } = await import('../test/runtime-fixture.mjs');
   const docx = join(work, 'sample.docx');
   writeFileSync(docx, documentFixture('Office CLI offline test 123'));
   const invoke = args => JSON.parse(execFileSync(process.execPath, [cli, ...args], {
@@ -47,11 +47,19 @@ try {
     results[format] = { images: result.images.length, rasterEngine: result.rasterEngine,
       dimensions: result.images.map(image => [image.width, image.height]) };
   }
+  const calculated = join(work, 'calculated.xlsx');
+  invoke(['recalculate', '--input', join(root, 'test/fixtures/cross-sheet-formulas.xlsx'), '--output', calculated]);
+  const sheet = new TextDecoder().decode(unzipSync(readFileSync(calculated))['xl/worksheets/sheet2.xml']);
+  for (const [cell, value] of [['A1', 16], ['A2', 48]]) {
+    const body = sheet.match(new RegExp(`<c\\b[^>]*r="${cell}"[^>]*>(.*?)</c>`, 's'))?.[1];
+    assert(body && /<f\b[^>]*>.+<\/f>/.test(body)
+      && Number(body.match(/<v>(.*?)<\/v>/)?.[1]) === value, `CLI recalculation did not preserve and refresh ${cell}`);
+  }
   const output = join(directory, `cli-${process.platform}-${process.arch}.json`);
   writeFileSync(output, `${JSON.stringify({ schemaVersion: 1, kind: 'installed-cli', passed: true,
     platform: process.platform, arch: process.arch, sourceCommit: candidate.sourceCommit,
     archiveSha256: candidate.packages.kit.sha256, wasmSha256: candidate.packages.wasm.sha256,
     installedOutsideRepository: true, npmOffline: true, nativeEngines: false,
-    capabilities, formats: results }, null, 2)}\n`);
+    recalculation: { formulasPreserved: true, cachesRefreshed: true }, capabilities, formats: results }, null, 2)}\n`);
   console.log(output);
 } finally { rmSync(work, { recursive: true, force: true }); }
