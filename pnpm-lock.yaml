@@ -51,21 +51,9 @@ importers:
         specifier: 6.0.0
         version: 6.0.0
     optionalDependencies:
-      '@deepseek-ai/libreoffice-kit-darwin-arm64':
-        specifier: workspace:*
-        version: link:../darwin-arm64
-      '@deepseek-ai/libreoffice-kit-darwin-x64':
-        specifier: workspace:*
-        version: link:../darwin-x64
       '@deepseek-ai/libreoffice-kit-wasm':
         specifier: workspace:*
         version: link:../wasm
-      '@deepseek-ai/libreoffice-kit-win32-arm64':
-        specifier: workspace:*
-        version: link:../win32-arm64
-      '@deepseek-ai/libreoffice-kit-win32-x64':
-        specifier: workspace:*
-        version: link:../win32-x64
 
   packages/linux-arm64-glibc: {}
 

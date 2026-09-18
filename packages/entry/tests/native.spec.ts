@@ -31,18 +31,19 @@ async function withTemporaryDirectory<T>(body: (root: string) => Promise<T>): Pr
 function substitutions(xml: string): Map<string, string> {
   const parser = new SaxesParser()
   const families = new Map<string, string>()
+  let item = ''
   let family = ''
   let property = ''
   let value = ''
   parser.on('opentag', (tag) => {
-    if (tag.name === 'item') expect(tag.attributes['oor:path']).toBe('/org.openoffice.VCL/FontSubstitutions/en')
+    if (tag.name === 'item') item = tag.attributes['oor:path'] ?? ''
     if (tag.name === 'node') { family = tag.attributes['oor:name'] ?? ''; expect(tag.attributes['oor:op']).toBe('replace') }
     if (tag.name === 'prop') property = tag.attributes['oor:name'] ?? ''
     if (tag.name === 'value') value = ''
   })
   parser.on('text', (text) => { value += text })
   parser.on('closetag', (tag) => {
-    if (tag.name !== 'value') return
+    if (tag.name !== 'value' || item !== '/org.openoffice.VCL/FontSubstitutions/en') return
     expect(property).toBe('SubstFonts')
     expect(families.has(family), `Duplicate VCL font record: ${family}`).toBe(false)
     families.set(family, value)
@@ -112,13 +113,14 @@ describe('native font profiles', () => {
     })
   })
 
-  it('empty choices create no profile and an existing profile file is never overwritten', async () => {
+  it('empty choices create a headless profile and existing profiles are never overwritten', async () => {
     await withTemporaryDirectory(async (root) => {
       await prepareNativeFontProfile(root, [])
-      await expect(stat(join(root, 'user'))).rejects.toMatchObject({ code: 'ENOENT' })
-      await prepareNativeFontProfile(root, [{ family: 'Missing Font', substitute: 'Arial' }])
+      expect((await stat(join(root, 'user'))).isDirectory()).toBe(true)
       const path = join(root, 'user/registrymodifications.xcu')
       const before = await readFile(path)
+      expect(before.toString()).toContain('WarnActiveSheet')
+      expect(before.toString()).toContain('<value>false</value>')
       await expect(prepareNativeFontProfile(root, [{ family: 'Missing Font', substitute: 'Courier New' }]))
         .rejects.toMatchObject({ code: 'EEXIST' })
       expect(await readFile(path)).toEqual(before)
@@ -163,9 +165,10 @@ const fs = require('node:fs');
 fs.writeFileSync(args['--output-path'], '%PDF-fixture');
 fs.writeFileSync(${JSON.stringify(join(root, 'arguments.json'))}, JSON.stringify(args));
 console.log(JSON.stringify({ ok: true }));\n`))
-      await runNative(engine, options, join(root, 'input.docx'), output, profile, [], substitutionsArgument, new AbortController().signal)
+      await runNative(engine, options, join(root, 'input.docx'), output, profile, [], substitutionsArgument, new AbortController().signal, { format: 'csv', recalculate: false, sheet: 'Summary 中文' })
       expect(await readFile(output, 'utf8')).toBe('%PDF-fixture')
       const recorded = JSON.parse(await readFile(join(root, 'arguments.json'), 'utf8')) as string[]
+      expect(recorded).toMatchObject({ '--format': 'csv', '--recalculate': 'false', '--sheet': 'Summary 中文' })
       expect(Object.keys(recorded)).toContain('--program-directory')
       expect(Object.values(recorded)).toContain(String(options.maxOutputBytes))
       expect(Object.values(recorded)).toContain(String(options.maxImageResolution))
@@ -182,9 +185,9 @@ console.log(JSON.stringify({ ok: true }));\n`))
         { helper: helperScript('console.log(JSON.stringify({ ok: false, error: "fixture conversion failure" }));\nprocess.exitCode = 2;\n'), message: /fixture conversion failure/ },
         { helper: helperScript('console.log(JSON.stringify({ ok: true }));\nprocess.exitCode = 3;\n'), message: /native conversion failed/ },
       ]
-      for (const { helper, message } of cases) {
-        const { engine, profile } = await helperEngine(join(root, 'case'), helper)
-        await expect(runNative(engine, options, join(root, 'input.docx'), output, profile, [], [], new AbortController().signal))
+      for (const [index, { helper, message }] of cases.entries()) {
+        const { engine, profile } = await helperEngine(join(root, `case-${index}`), helper)
+        await expect(runNative(engine, options, join(root, 'input.docx'), output, profile, [], [], new AbortController().signal, { format: 'pdf', recalculate: false }))
           .rejects.toThrow(message)
       }
     })
@@ -203,15 +206,16 @@ console.log(JSON.stringify({ ok: true }));\n`))
         return child
       })
       const { engine, profile } = await helperEngine(root, 'process.exitCode = 1\n')
-      await expect(runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [], [], new AbortController().signal))
+      await expect(runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [], [], new AbortController().signal, { format: 'pdf', recalculate: false }))
         .rejects.toMatchObject({ code: 'output-too-large' })
     })
   })
 
   it('reports a helper that cannot start', async () => {
     await withTemporaryDirectory(async (root) => {
+      await mkdir(join(root, 'profile'))
       const engine: NativeEngine = { backend: 'native', root, programDirectory: root, executable: join(root, 'absent-helper') }
-      await expect(runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), join(root, 'profile'), [], [], new AbortController().signal))
+      await expect(runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), join(root, 'profile'), [], [], new AbortController().signal, { format: 'pdf', recalculate: false }))
         .rejects.toMatchObject({ code: 'ENOENT' })
     })
   })
@@ -221,18 +225,18 @@ console.log(JSON.stringify({ ok: true }));\n`))
       const { engine, profile } = await helperEngine(root, helperScript('setInterval(() => {}, 1000);\n'))
       const controller = new AbortController()
       const started = runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [],
-        [{ family: 'Calibri', substitute: 'Carlito' }], controller.signal)
+        [{ family: 'Calibri', substitute: 'Carlito' }], controller.signal, { format: 'pdf', recalculate: false })
       controller.abort(new Error('caller stopped the helper'))
       await expect(started).rejects.toThrow(/caller stopped the helper/)
       const aborted = new AbortController()
       aborted.abort(new Error('already stopped'))
-      await expect(runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [], [], aborted.signal))
+      await expect(runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [], [], aborted.signal, { format: 'pdf', recalculate: false }))
         .rejects.toThrow(/already stopped/)
       const duringProfile = new AbortController()
       const separate = await helperEngine(join(root, 'during-profile'), helperScript('setInterval(() => {}, 1000);\n'))
       queueMicrotask(() => { duringProfile.abort(new Error('stopped during profile')) })
       await expect(runNative(separate.engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), separate.profile, [],
-        [{ family: 'Calibri', substitute: 'Carlito' }], duringProfile.signal))
+        [{ family: 'Calibri', substitute: 'Carlito' }], duringProfile.signal, { format: 'pdf', recalculate: false }))
         .rejects.toThrow(/stopped during profile/)
     })
   })
@@ -244,7 +248,7 @@ console.log(JSON.stringify({ ok: true }));\n`))
 require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ready');
 setInterval(() => {}, 1000);\n`))
       const controller = new AbortController()
-      const started = runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [], [], controller.signal)
+      const started = runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [], [], controller.signal, { format: 'pdf', recalculate: false })
       for (let attempt = 0; attempt < 200 && !existsSync(marker); attempt++) await new Promise(resolve => setTimeout(resolve, 20))
       expect(existsSync(marker)).toBe(true)
       controller.abort(new Error('helper stopped while running'))
@@ -257,7 +261,7 @@ setInterval(() => {}, 1000);\n`))
       const fontFile = join(root, 'font.ttf')
       writeFileSync(fontFile, 'font bytes')
       const { engine, profile } = await helperEngine(root, helperScript('console.log(JSON.stringify({ ok: true }));\n'))
-      await runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [fontFile], [], new AbortController().signal)
+      await runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [fontFile], [], new AbortController().signal, { format: 'pdf', recalculate: false })
     })
   })
 })

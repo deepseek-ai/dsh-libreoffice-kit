@@ -5,7 +5,7 @@ import type { DocumentFontMetadata } from './ooxml.ts'
 import type { ResolvedOptions } from './options.ts'
 
 /** Input suffixes accepted by the public converter. */
-export const DOCUMENT_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const
+export const DOCUMENT_EXTENSIONS = ['doc', 'docx', 'odt', 'xls', 'xlsx', 'ods', 'ppt', 'pptx', 'odp'] as const
 
 const COMPOUND_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
 
@@ -22,7 +22,7 @@ export function inspectDocument(bytes: Uint8Array, extension: string,
   limits: Pick<ResolvedOptions, 'maxArchiveEntries' | 'maxUncompressedBytes'>): DocumentFontMetadata {
   if (!(DOCUMENT_EXTENSIONS as readonly string[]).includes(extension))
     throw new ConversionError('unsupported-format', `Input extension must be ${DOCUMENT_EXTENSIONS.join(', ')}.`)
-  if (['docx', 'xlsx', 'pptx'].includes(extension)) return inspectOoxml(bytes, extension, limits)
+  if (['docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp'].includes(extension)) return inspectOoxml(bytes, extension, limits)
   if (bytes.length < 512 || !COMPOUND_SIGNATURE.every((value, index) => bytes[index] === value))
     throw new ConversionError('invalid-document', 'Legacy Office input must contain an OLE compound document.')
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)

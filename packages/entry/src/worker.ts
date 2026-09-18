@@ -8,6 +8,7 @@ import { createFontLoader, preloadFonts } from './font-loader.ts'
 import { indexSystemFonts } from './fonts.ts'
 import { convertWithWasm } from './wasm.ts'
 import { ConversionError, failureCode } from './errors.ts'
+import type { ConversionSpec } from './operations.ts'
 import type { Engine } from './engine.ts'
 import type { FontFace } from './fonts.ts'
 import type { ResolvedOptions } from './options.ts'
@@ -16,6 +17,7 @@ import type { ResolvedOptions } from './options.ts'
 export interface WorkerRequest {
   readonly inputPath: string
   readonly extension: string
+  readonly operation: ConversionSpec
   readonly options: ResolvedOptions
   readonly engine: Engine
   readonly scratch: string
@@ -38,7 +40,7 @@ function requireParentPort(port: MessagePort | null): MessagePort {
 const port = requireParentPort(parentPort)
 
 try {
-  const { inputPath, extension, options, engine, scratch, fontFaces } = workerData as WorkerRequest
+  const { inputPath, extension, operation, options, engine, scratch, fontFaces } = workerData as WorkerRequest
   const bytes = readFileSync(inputPath)
   const document = inspectDocument(bytes, extension, options)
   const faces = fontFaces ?? indexSystemFonts({ directories: options.fontDirectories, maxFiles: options.maxFontFiles,
@@ -46,8 +48,8 @@ try {
   if (!fontFaces) port.postMessage({ kind: 'fonts', faces })
   if (engine.backend === 'wasm') {
     if (faces.length === 0) throw new ConversionError('unavailable', 'No usable fonts were found. Install fonts or configure fontDirectories before converting documents.')
-    const result = await convertWithWasm({ engine, bytes, extension, options, document, faces })
-    port.postMessage({ ok: true, ...result }, [result.pdf.buffer as ArrayBuffer])
+    const result = await convertWithWasm({ engine, bytes, extension, operation, options, document, faces })
+    port.postMessage({ ok: true, ...result }, [result.output.buffer as ArrayBuffer])
   } else {
     const directory = join(scratch, 'fonts')
     mkdirSync(directory, { mode: 0o700 })

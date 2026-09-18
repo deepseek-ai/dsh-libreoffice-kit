@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-使用预编译 LibreOffice 引擎，在 Node.js 中将本地 DOC、DOCX、XLS、XLSX、PPT 和 PPTX 文件转换为 PDF。通过同一套 API，为服务端、桌面应用和文档处理任务提供可配置字体、取消和资源限制。
+使用预编译 LibreOffice 引擎，在 Node.js 中转换本地 Office、OpenDocument 文件并重算工作簿。通过同一套 API，为服务端、桌面应用和文档处理任务提供可配置字体、取消和资源限制。
 
 二进制 `.doc`、`.xls`、`.ppt` 输入必须是 OLE 复合文档，例如 Office 97–2003 文件。不支持改后缀的 RTF/HTML 和 `.wps`。二进制输入的 `missingFonts` 为空，因为其字体表由 LibreOffice 读取，而不是由 OOXML 检查器读取。
 
@@ -11,10 +11,10 @@
 使用 Node.js 22.19.0 或更新版本安装：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.1
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc3
 ```
 
-npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
+本候选版仅发布 Node API 与 Linux WASM 引擎。npm 在 Linux 上安装 `@deepseek-ai/libreoffice-kit-wasm`。本版不支持 macOS 和 Windows；其开发运行时仍要求另行准备匹配的原生引擎，不会切换到 WASM。引擎缺失或无效时，`createConverter` 以 `unavailable` 拒绝；转换失败不会切换引擎。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -31,17 +31,44 @@ try {
 }
 ```
 
-原生与 WASM 引擎是按平台筛选的可选依赖。应用构建方必须验证所需引擎已安装：macOS/Windows 使用原生引擎，Linux 使用 WASM。必需引擎缺失时，`createConverter()` 以 `unavailable` 拒绝。
+WASM 引擎是仅供 Linux 使用的可选依赖。应用构建方必须确认已安装该引擎；必需引擎缺失时，`createConverter()` 以 `unavailable` 拒绝。本候选版不迁移现有 macOS/Windows 应用到 WASM。
 
-每个转换器串行执行渲染。一次渲染会创建独立的原生进程或 Node worker 以及私有配置目录，因此字体、文档状态和失败不会泄漏到后续渲染。截止时间在获得转换槽位之后开始计算。`AbortSignal` 可以取消排队中或进行中的工作；取消和 `dispose()` 都会等待进程或 worker 退出并完成临时文件清理。已释放的转换器会拒绝后续工作。
+每个转换器串行执行转换和重算。一次操作会创建独立的原生进程或 Node worker 以及私有配置目录，因此字体、文档状态和失败不会泄漏到后续渲染。截止时间在获得转换槽位之后开始计算。`AbortSignal` 可以取消排队中或进行中的工作；取消和 `dispose()` 都会等待进程或 worker 退出并完成临时文件清理。已释放的转换器会拒绝后续工作。
 
 转换 worker 以空的 `execArgv` 运行包内发布的 JavaScript；`--input-type=module` 之类的调用方启动参数不会被继承。
 
 在 Linux 上，原生子进程会先在所选引擎的 program 目录中查找共享库，然后才查找系统路径。调用方提供的 `LD_LIBRARY_PATH` 和 `LD_PRELOAD` 不会被继承。
 
-调用方负责授权输入访问并拥有私有输入/输出目录；路径必须是绝对路径，并在转换期间保持不变。输入文件必须是常规 Office 文件，且在配置的字节限制之内。ZIP 条目数和解压大小限制适用于 OOXML；二进制 DOC/XLS/PPT 使用 OLE 复合容器，内部结构由 LibreOffice 导入器验证。二进制格式仍遵守相同的转换超时和输入/输出限制。输出创建使用独占模式和 `0600` 权限；已存在的输出绝不会被覆盖。失败或取消的渲染会删除新建的输出。`maxOutputBytes` 限制返回的 PDF 及其读取缓冲区；原生临时磁盘文件在导出完成前可能继续增长，随后过大的 PDF 会在 Node 读取之前被拒绝并删除。成功的 PDF 归调用方所有，调用方可以将其字节发送给浏览器 PDF 阅读器。
+调用方负责授权输入访问并拥有私有输入/输出目录；路径必须是绝对路径，并在转换期间保持不变。输入文件必须是常规 Office 文件，且在配置的字节限制之内。ZIP 条目数和解压大小限制适用于 OOXML 和 OpenDocument；二进制 DOC/XLS/PPT 使用 OLE 复合容器，内部结构由 LibreOffice 导入器验证。二进制格式仍遵守相同的转换超时和输入/输出限制。输出创建使用独占模式和 `0600` 权限；已存在的输出绝不会被覆盖。失败或取消的操作会删除新建的输出。`maxOutputBytes` 限制返回的文档及其读取缓冲区；原生临时磁盘文件在导出完成前可能继续增长，随后过大的输出会在 Node 读取之前被拒绝并删除。成功的输出归调用方所有，生命周期独立于转换器。
 
 `ConversionError.code` 区分 `invalid-document`、`unsupported-format`、`input-too-large`、`output-too-large`、`invalid-output`、`timeout`、`unavailable` 和 `failed`。这些 code 会原样穿过 worker 和原生传输层。无效的安装资源会让创建以 `unavailable` 拒绝；它们绝不会启用回退。`EEXIST` 等文件系统错误、无效配置错误和调用方取消原因保持原样。
+
+## 转换、重算与 CLI
+
+`converter.convert({ inputPath, outputPath, sheet? }, signal?)` 根据输出后缀选择格式。`converter.render()` 委托同一实现生成 PDF。支持以下组合：
+
+| 输入 | 输出 |
+| --- | --- |
+| DOC、DOCX、ODT | PDF、DOCX、ODT、TXT |
+| XLS、XLSX、ODS | PDF、XLSX、ODS、CSV |
+| PPT、PPTX、ODP | PDF、PPTX、ODP |
+
+CSV 每次导出一个工作表，采用 UTF-8、逗号和双引号字段。单表工作簿无需选择；多表工作簿必须通过 `sheet` 指定精确的工作表名称。选择参数仅适用于 CSV。本 API 不提供 PNG 分页导出。
+
+`converter.recalculate({ inputPath, outputPath }, signal?)` 接受 XLS、XLSX 或 ODS，并写入新的 XLSX 或 ODS。它等待引擎同步完成整本工作簿计算，再保存公式与缓存结果。输入输出必须不同，已有输出会被拒绝。重算不代表公式或业务数据验证通过；外部链接仍不加载。
+
+`discoverRuntime()` 返回当前安装的 `{ cliPath, nodeApiPath, version, backend }`，无需启动引擎。应用可以把这些绝对路径暴露给脚本，不必发现系统 LibreOffice。已安装的 CLI 离线调用同一套 Node API：
+
+```sh
+node <cliPath> capabilities --json
+node <cliPath> convert --input report.docx --output report.pdf
+node <cliPath> convert --input workbook.xlsx --output summary.csv --sheet Summary
+node <cliPath> recalculate --input workbook.xlsx --output workbook.checked.xlsx
+```
+
+CLI 路径相对其工作目录解析。成功向 stdout 写入一个 JSON 对象；失败向 stderr 写入带分类的 JSON 错误并以状态 1 退出。SIGINT 和 SIGTERM 取消操作并等待清理。`capabilities` 列出格式组合及适用选项。转换命令接受 `--timeout-ms`、`--max-output-bytes` 等资源限制，可重复的 `--font-directory`、`--initial-font-family`，以及 JSON 格式的 `--font-fallbacks`。所有参数均经过 API 校验。
+
+原生与 WASM 适配层保留现有精简组件和禁用宏执行的策略。私有引擎 helper 不是通用 `soffice` 可执行文件。
 
 ## 引擎、字体与运行行为
 
@@ -66,7 +93,7 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 ## 使用限制
 
 - 保真度取决于源格式、已安装字体和所选引擎。缺失字体名称不能报告所有缺字。
-- 只支持 DOCX、XLSX 和 PPTX 输入。转换不发现系统 LibreOffice，也不下载引擎和字体。
+- 输入输出限于文档列出的格式矩阵。转换不发现系统 LibreOffice，也不下载引擎和字体。
 - 字体导入和输出限制不能约束全部原生内存或临时磁盘使用。原生平台引擎的字体解析可能与 WASM 不同。
 - npm 安装使用按平台选择的可选包。自行打包引擎的应用需要保留所选包的完整内容，包括资源和许可声明。
 - Windows 需要系统安装与 Node.js 架构一致的 Microsoft Visual C++ v14 Redistributable（x64 或 ARM64）；包中不捆绑该运行库。Windows ARM64 引擎需要使用 ARM64 Node.js。

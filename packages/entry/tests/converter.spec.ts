@@ -133,7 +133,7 @@ const wasmWritesPdf = `module.exports = async function factory(overrides) {
     ccall(name, returnType, argTypes, args) {
       if (name === 'dsh_lok_initialize') return 1
       if (name === 'dsh_lok_document_load') return 2
-      if (name === 'dsh_lok_document_save_pdf') { files.set(String(args[1]).replace('file://', ''), new TextEncoder().encode('%PDF-1.7 wasm fixture')); return 1 }
+      if (name === 'dsh_lok_document_export') { files.set(String(args[2]).replace('file://', ''), new TextEncoder().encode('%PDF-1.7 wasm fixture')); return 1 }
       if (name === 'dsh_lok_error') return 0
       return 1
     },
@@ -307,4 +307,21 @@ describe('createConverter', () => {
     } finally { await converter.dispose() }
   })
 
+})
+
+
+it('shares the converter queue and exclusive output handling with conversion and recalculation', async () => {
+  const { root, inputPath } = await conversionFixture()
+  vi.mocked(resolveEngine).mockResolvedValue(await nativeEngine(root, `const fs = require('node:fs'); fs.writeFileSync(value('--output-path'), value('--format') === 'txt' ? 'Exported text' : Buffer.from([0x50, 0x4b, 3, 4])); console.log(JSON.stringify({ok:true}));`))
+  const converter = await createConverter({ fontDirectories: [] })
+  try {
+    const outputPath = join(root, 'converted.txt')
+    await converter.convert({ inputPath, outputPath })
+    expect(await readFile(outputPath, 'utf8')).toBe('Exported text')
+    await expect(converter.convert({ inputPath, outputPath })).rejects.toMatchObject({ code: 'EEXIST' })
+    const spreadsheet = join(root, 'input.xlsx')
+    await writeFile(spreadsheet, await readFile(new URL('../../../test/fixtures/one-sheet.xlsx', import.meta.url)))
+    await converter.recalculate({ inputPath: spreadsheet, outputPath: join(root, 'calculated.ods') })
+    await expect(converter.recalculate({ inputPath, outputPath: join(root, 'invalid.docx') })).rejects.toMatchObject({ code: 'unsupported-format' })
+  } finally { await converter.dispose() }
 })

@@ -6,6 +6,9 @@ import { ConversionError } from './errors.ts'
 import type { ResolvedOptions } from './options.ts'
 
 const MAIN_PARTS: Readonly<Record<string, readonly [string, string]>> = {
+  odt: ['content.xml', 'application/vnd.oasis.opendocument.text'],
+  ods: ['content.xml', 'application/vnd.oasis.opendocument.spreadsheet'],
+  odp: ['content.xml', 'application/vnd.oasis.opendocument.presentation'],
   docx: ['word/document.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'],
   xlsx: ['xl/workbook.xml', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'],
   pptx: ['ppt/presentation.xml', 'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml'],
@@ -38,6 +41,7 @@ export function inspectDocument(bytes: Uint8Array, extension: string,
   limits: Pick<ResolvedOptions, 'maxArchiveEntries' | 'maxUncompressedBytes'>): DocumentFontMetadata {
   const main = MAIN_PARTS[extension]
   if (!main) throw new ConversionError('unsupported-format', 'Input extension must be docx, xlsx, or pptx.')
+  const odf = ['odt', 'ods', 'odp'].includes(extension)
   const names = new Set<string>()
   let total = 0
   let files: Record<string, Uint8Array>
@@ -46,15 +50,19 @@ export function inspectDocument(bytes: Uint8Array, extension: string,
       total += entry.originalSize
       if (names.has(entry.name) || names.size >= limits.maxArchiveEntries || !Number.isSafeInteger(total) || total > limits.maxUncompressedBytes) throw new Error('OOXML archive exceeds its limits or repeats an entry.')
       names.add(entry.name)
+      if (odf) return ['mimetype', 'content.xml', 'styles.xml', 'META-INF/manifest.xml'].includes(entry.name)
       return entry.name === '[Content_Types].xml' || (/^(word|xl|ppt)\/.*\.xml$/.test(entry.name) && !entry.name.endsWith('/fontTable.xml') && !entry.name.includes('/theme/'))
     } })
   } catch (cause) { throw new ConversionError('invalid-document', 'Input is not a supported, bounded OOXML archive.', { cause }) }
   const contentTypes = files['[Content_Types].xml']
-  if (!names.has('_rels/.rels') || !names.has(main[0]) || contentTypes === undefined || !strFromU8(contentTypes).includes(main[1])) throw new ConversionError('invalid-document', `Input does not contain a ${extension} document.`)
+  const invalid = odf
+    ? !names.has('content.xml') || !names.has('META-INF/manifest.xml') || strFromU8(files.mimetype ?? new Uint8Array()) !== main[1]
+    : !names.has('_rels/.rels') || !names.has(main[0]) || contentTypes === undefined || !strFromU8(contentTypes).includes(main[1])
+  if (invalid) throw new ConversionError('invalid-document', `Input does not contain a ${extension} document.`)
   const families = new Map<string, string>()
   const codePoints = new Set<number>()
   for (const [name, data] of Object.entries(files)) {
-    if (name === '[Content_Types].xml') continue
+    if (name === '[Content_Types].xml' || name === 'mimetype' || name === 'META-INF/manifest.xml') continue
     const partFamilies: string[] = []
     const partPoints = new Set<number>()
     const parser = new SaxesParser({ xmlns: true })
@@ -63,6 +71,7 @@ export function inspectDocument(bytes: Uint8Array, extension: string,
       const drawing = /drawingml\/(?:2006\/)?main$/.test(tag.uri)
       const sheet = /spreadsheetml\/(?:2006\/)?main$/.test(tag.uri) && tag.local === 'name'
       for (const attribute of Object.values(tag.attributes)) {
+        if (odf && attribute.local === 'font-family') partFamilies.push(attribute.value.replace(/^['"]|['"]$/g, ''))
         if ((word && ['ascii', 'hAnsi', 'eastAsia', 'cs'].includes(attribute.local)) || (drawing && attribute.local === 'typeface') || (sheet && attribute.local === 'val')) partFamilies.push(attribute.value)
       }
     })

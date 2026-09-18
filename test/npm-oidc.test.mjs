@@ -17,11 +17,11 @@ function fixture() {
   return { env, calls, fetchImpl };
 }
 
-test('OIDC verification exchanges tokens for exactly the six release packages without publishing', async () => {
+test('OIDC verification exchanges tokens for exactly the two release packages without publishing', async () => {
   const f = fixture();
   const result = await verifyNpmOidc(f);
-  assert.deepEqual(result, { verifiedPackages: 6 });
-  assert.equal(f.calls.length, 12);
+  assert.deepEqual(result, { verifiedPackages: 2 });
+  assert.equal(f.calls.length, 4);
   const packages = [];
   for (let index = 0; index < f.calls.length; index += 2) {
     const identity = f.calls[index];
@@ -40,11 +40,7 @@ test('OIDC verification exchanges tokens for exactly the six release packages wi
       assert.ok(options.signal instanceof AbortSignal);
     }
   }
-  assert.deepEqual(packages.sort(), [
-    '@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-darwin-arm64',
-    '@deepseek-ai/libreoffice-kit-darwin-x64', '@deepseek-ai/libreoffice-kit-wasm',
-    '@deepseek-ai/libreoffice-kit-win32-arm64', '@deepseek-ai/libreoffice-kit-win32-x64',
-  ]);
+  assert.deepEqual(packages.sort(), ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-wasm']);
   assert.doesNotMatch(JSON.stringify(result), /secret/);
 });
 

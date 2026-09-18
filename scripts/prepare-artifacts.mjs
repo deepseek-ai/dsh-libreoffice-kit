@@ -29,6 +29,10 @@ export function artifactPlan(selection = '', repo = root) {
   const selected = selection ? selection.split(',').map(value => value.trim()) : Object.keys(runtimeTargets);
   assert(selected.length > 0 && selected.every(value => Object.hasOwn(runtimeTargets, value)), 'Unknown or empty Office runtime target');
   const released = kitNativeTargets(kitManifest(repo));
+  for (const value of selected) {
+    if (selection && !value.startsWith('node24-linux-'))
+      assert(released.includes(runtimeTargets[value]), `This release has no engine for ${value}`);
+  }
   const native = selected.map(value => runtimeTargets[value]).filter(value => released.includes(value));
   return [...new Set(native), ...(selected.some(value => value.startsWith('node24-linux-')) ? ['wasm'] : [])];
 }
@@ -47,7 +51,7 @@ export function verifyPreparedEngine(platform, directory = join(root, 'packages'
   assert(prebuild.source.repository === pinned.repository && prebuild.source.revision === pinned.revision, 'Prepared engine upstream revision mismatch');
   const receipt = readJson(regularFile(directory, 'sources/core-source.json'));
   assert(receipt.repository === pinned.repository && receipt.revision === pinned.revision, 'Prepared engine Core source receipt mismatch');
-  const files = ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', ...(wasm
+  const files = ['engine/document-operations.hxx', 'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(repo, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
     : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles(repo)])];
   const patchPrefix = wasm ? 'engine/wasm-source/patches/' : 'engine/native/patches/';
