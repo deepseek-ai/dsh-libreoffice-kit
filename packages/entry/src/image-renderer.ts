@@ -68,7 +68,7 @@ export async function renderImagesWithWasm(request: Omit<WasmConversionRequest, 
         rectangles = splitRasterRectangle(region.rectangle, scale, { maxPixels: operation.maxPixels,
           maxDimension: operation.maxDimension, maxTiles: operation.maxPages - selected.length })
       } catch (cause) {
-        throw new ConversionError('output-too-large', cause instanceof Error ? cause.message : 'Worksheet image batch exceeds its limits.', { cause })
+        throw new ConversionError('output-too-large', String(cause), { cause })
       }
       selected.push(...rectangles.map(rectangle => ({ ...region, rectangle })))
     }
