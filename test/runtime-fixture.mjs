@@ -1,5 +1,10 @@
 import { createRequire } from 'node:module';
-const { zipSync, unzipSync, strToU8, strFromU8 } = createRequire(new URL('../packages/entry/package.json', import.meta.url))('fflate');
+// Installed-engine rehearsals resolve fixture dependencies from that installation.
+const { zipSync, unzipSync, strToU8, strFromU8 } = createRequire(
+  process.env.LIBREOFFICE_RUNTIME_ENTRY ?? new URL('../packages/entry/package.json', import.meta.url),
+)('fflate');
+
+export { unzipSync };
 
 export function documentFixture(text = 'LibreOffice Node document test', family = 'Arial') {
   const xml = '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
