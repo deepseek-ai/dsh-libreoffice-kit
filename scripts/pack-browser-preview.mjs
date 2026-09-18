@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path';
 import { verifyBrowserPackage } from './build-browser.mjs';
 import { verifyFontSubset } from './build-font-subset.mjs';
 import { verifyEnginePackage } from './verify-artifacts.mjs';
+import { verifyKitPackage } from './verify-kit.mjs';
+import { auditNpmArchive } from './publication-privacy.mjs';
 import { packDependencies } from './pack-dependencies.mjs';
 import { stagePackage, workflowRepositoryUrl } from './pack-release.mjs';
 import { npm, run, scratch } from './pack-utils.mjs';
@@ -27,8 +29,11 @@ export function packBrowserPreview(destination) {
       if (kind === 'kit') manifest.dependencies['@deepseek-ai/libreoffice-kit-wasm'] = manifest.version;
       const staged = join(work, kind);
       stagePackage(directory, staged, manifest, workflowRepositoryUrl());
+      if (kind === 'kit') verifyKitPackage(staged, true);
+      else verifyEnginePackage(staged);
       npm(['pack', '--json', '--ignore-scripts', '--pack-destination', destination], staged, work);
       const file = tarballName(manifest);
+      auditNpmArchive(join(destination, file));
       packages[kind] = { name: manifest.name, version: manifest.version, file, bytes: statSync(join(destination, file)).size, sha256: sha256(join(destination, file)) };
     }
     const dependencies = packDependencies(join(root, 'packages/entry'), join(destination, 'dependencies'), work);
