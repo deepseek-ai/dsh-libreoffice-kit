@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Pack the two existing packages from staged WASM resources. */
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { verifyBrowserPackage } from './build-browser.mjs';
 import { verifyFontSubset } from './build-font-subset.mjs';
@@ -32,7 +32,11 @@ export function packBrowserPreview(destination) {
       packages[kind] = { name: manifest.name, version: manifest.version, file, bytes: statSync(join(destination, file)).size, sha256: sha256(join(destination, file)) };
     }
     const dependencies = packDependencies(join(root, 'packages/entry'), join(destination, 'dependencies'), work);
-    run('tar', ['-cf', join(destination, 'offline-dependencies.tar'), '-C', destination, 'dependencies']);
+    for (const record of dependencies) utimesSync(join(destination, record.file), 0, 0);
+    const ownership = process.platform === 'linux' ? ['--owner=0', '--group=0', '--numeric-owner']
+      : ['--uid=0', '--gid=0', '--uname=', '--gname='];
+    run('tar', ['--format=ustar', '--no-xattrs', '--no-acls', ...ownership, '-cf', join(destination, 'offline-dependencies.tar'),
+      '-C', destination, ...dependencies.map(record => record.file).sort()], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
     const dependencyArchive = { file: 'offline-dependencies.tar', bytes: statSync(join(destination, 'offline-dependencies.tar')).size, sha256: sha256(join(destination, 'offline-dependencies.tar')) };
     const result = { schemaVersion: 1, kind: 'browser-preview',
       sourceCommit: run('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(),

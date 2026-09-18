@@ -43,6 +43,6 @@ test('matching dependency names cannot conceal a symbolic link', t => {
   const sum = archive.subarray(0, 512).reduce((total, value) => total + value, 0);
   archive.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 'utf8');
   const f = fixture(t, archive);
-  assert.throws(() => extractOfflineDependencies(f.directory, f.candidate), /may not contain links/);
+  assert.throws(() => extractOfflineDependencies(f.directory, f.candidate), /Unsupported tar entry type/);
   assert.equal(existsSync(join(f.directory, 'dependencies')), false);
 });

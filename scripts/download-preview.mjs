@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /** Download a locally-built preview plus its offline dependency closure, verifying GitHub asset digests. */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { visitTar } from './publication-privacy.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
 import { isMain, sourceRepository, tarballName } from './platform-matrix.mjs';
 export function downloadPreview(tag, destination) {
@@ -46,14 +47,15 @@ export function extractOfflineDependencies(directory, candidate) {
   assert(candidate.dependencyArchive?.file === 'offline-dependencies.tar'
     && candidate.dependencyArchive.sha256 === sha256(archive)
     && candidate.dependencyArchive.bytes === statSync(archive).size, 'Offline dependencies differ from the candidate');
-  const inspect = args => execFileSync('tar', [...args, archive], {encoding:'utf8', timeout:30_000, maxBuffer:1024*1024})
-    .trim().split('\n').filter(Boolean);
-  const names = inspect(['-tf']);
-  assert(names.every(name => name === 'dependencies/' || name === 'dependencies' || files.has(name))
-    && new Set(names).size === names.length && [...files].every(name => names.includes(name)), 'Unexpected dependency archive member');
-  const listing = inspect(['-tvf']);
-  assert(listing.length === names.length && listing.every(line => /^[-d]/.test(line)), 'Dependency archives may not contain links');
-  execFileSync('tar', ['-xf', archive, '-C', directory], { timeout:30_000 });
+  const entries = new Map();
+  visitTar(readFileSync(archive), entry => {
+    assert(files.has(entry.name) && entry.type === '0' && entry.uid === 0 && entry.gid === 0
+      && entry.uname === '' && entry.gname === '' && Object.keys(entry.extended).length === 0, 'Unexpected dependency archive member');
+    entries.set(entry.name, entry.data);
+  });
+  assert(entries.size === files.size && [...files].every(name => entries.has(name)), 'Unexpected dependency archive member');
+  mkdirSync(join(directory, 'dependencies'));
+  for (const [name, bytes] of entries) writeFileSync(join(directory, name), bytes, { flag: 'wx', mode: 0o600 });
   for (const record of candidate.dependencies) {
     assert(statSync(join(directory, record.file)).isFile() && sha256(join(directory, record.file)) === record.sha256,
       'Extracted dependency checksum differs');
