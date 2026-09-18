@@ -41,6 +41,11 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading 
   const { assets } = options
   let metadata: ReturnType<typeof inspectDocument>
   try { metadata = options.extension === 'pdf' ? { families: new Map(), codePoints: [] } : inspectDocument(options.data, options.extension, options) } catch (failure) { throw new BrowserRenderError('invalid-document', failure instanceof Error ? failure.message : String(failure)) }
+  const initialFont = { family: 'sans-serif', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }
+  let initialFontPending = options.extension !== 'pdf'
+  // Host font discovery runs while the engine downloads and compiles. The first
+  // synchronous font read consumes this response through the same bounded channel.
+  if (initialFontPending) send({ type: 'font', request: initialFont, known: [] })
   const response = await fetch(assets.dataUrl, { credentials: 'same-origin', signal: lifetime.signal })
   if (!response.ok) throw new BrowserRenderError('unavailable', `LibreOffice data request failed: ${response.status}`)
   const data = await response.arrayBuffer()
@@ -70,10 +75,14 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading 
       loaded.FS.writeFile('/dsh/fonts.conf', new TextEncoder().encode(memoryFontConfig(options.fontFallbacks, metadata.families.values())))
       Object.assign(loaded.ENV, { HOME: '/dsh/profile', TMPDIR: '/tmp', FONTCONFIG_FILE: '/dsh/fonts.conf', LOK_HOST_ALLOWLIST: '^$' })
       resolveFonts = createFontReader(channel, options.timeoutMs, options.maxLoadedFontBytes, metadata.families,
-        (request, known) => send({ type: 'font', request, known }), () => send({ type: 'font-next' }),
+        (request, known) => {
+          if (initialFontPending) initialFontPending = false
+          else send({ type: 'font', request, known })
+        }, () => send({ type: 'font-next' }),
         (path, bytes) => loaded.FS.writeFile(path, bytes), families => send({ type: 'missing-fonts', families }))
-      const initialFamilies = options.extension === 'pdf' ? new Set(options.fontFallbacks.flat()) : new Set(['sans-serif'])
-      for (const family of initialFamilies) resolveFonts({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [], ...(options.extension === 'pdf' ? { mode: 'full' as const } : {}) })
+      if (options.extension === 'pdf') {
+        for (const family of new Set(options.fontFallbacks.flat())) resolveFonts({ ...initialFont, family, mode: 'full' })
+      } else resolveFonts(initialFont)
     }],
     onAbort() { fatal = true },
     print() {}, printErr() {},

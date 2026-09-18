@@ -25,7 +25,7 @@ Writer starts in `paginated` layout. `setLayout({mode: 'continuous', width, anch
 
 `setViewport` changes scrolling and raster zoom only. Equal layout widths are deduplicated and pending layout requests coalesce to the latest width. DPR changes must update pixel density without changing the document width. `layoutGeneration` changes when layout changes; `renderGeneration` changes for invalidated geometry or pixels, including newly resolved fonts. Cache entries and in-flight results must be checked against the invalidation state. Impress paints inactive slides through a separate read-only capture view and restores the reading view after native event processing. Calc rejects stale inactive-sheet tiles before painting, preserving its active selection.
 
-`renderTile` paints the current part only. A tile queued before `setPart` may become obsolete: the Worker rejects it with `BrowserRenderError.code === 'stale-part'` before entering LibreOffice painting, without changing selection or closing the session. Discard that expired display request. Already-started valid painting may still finish and enter the cache. Background multi-sheet image export belongs to the separate Node/CLI API.
+`renderTile` paints the current part for Writer and Calc; Impress can also paint inactive slides through its capture view. A tile queued before `setPart` may become obsolete: the Worker rejects it with `BrowserRenderError.code === 'stale-part'` before entering LibreOffice painting, without changing selection or closing the session. Discard that expired display request. Already-started valid painting may still finish and enter the cache. Background multi-sheet image export belongs to the separate Node/CLI API.
 
 ## PDF, resources and fonts
 
@@ -34,6 +34,8 @@ Writer starts in `paginated` layout. `setLayout({mode: 'continuous', width, anch
 Serve the resources declared in `assets.json` unchanged through `BrowserEngineAssets`. A secure cross-origin-isolated context is required (`COOP: same-origin`, `COEP: credentialless`), with a Content Security Policy permitting the engine Worker, nested pthread Workers and WebAssembly. The loader starts pthreads from the same loader URL; the Worker bundle has no external JavaScript imports.
 
 `@deepseek-ai/libreoffice-kit/fonts` provides the shared Host font service. Office requests reusable subsets with canonical family names; PDFium requests original TTF/OTF/TTC bytes. The platform/script fallback rules and optional uncovered-code-point diagnostics are shared by Node, CLI and browser. Production fonts are not bundled. The main package owns `./browser`, `./browser-assets` and `./fonts`; the existing `-wasm` dependency owns the engine resources. No extra npm package is required.
+
+Office starts its initial fallback-font request before loading engine assets so Host font discovery can overlap engine startup. The response uses the same bounded, cancellable channel as later requests.
 
 The browser font channel transfers each immutable font asset once per document. Later resolutions reference bytes that the Worker has already installed, including multiple family aliases in one TTC, without repeating the byte transfer or charging the font budget again. Installation failures and incomplete transfers do not create reusable identities. This transport detail does not change the Host font-provider request API.
 
