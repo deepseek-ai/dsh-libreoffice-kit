@@ -44,13 +44,14 @@
  
 --- a/desktop/util/Executable_soffice_bin-emscripten-exports
 +++ b/desktop/util/Executable_soffice_bin-emscripten-exports
-@@ -12,3 +12,29 @@
+@@ -12,3 +12,30 @@
  _lok_preinit_2
  _malloc
  _free
 +_dsh_lok_initialize
 +_dsh_lok_document_load
 +_dsh_lok_document_save_pdf
++_dsh_lok_document_export
 +_dsh_lok_document_destroy
 +_dsh_lok_error
 +_dsh_lok_destroy

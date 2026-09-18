@@ -3,13 +3,18 @@ import { constants } from 'node:fs'
 import { open, mkdtemp, mkdir, rm, unlink } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { extname, isAbsolute, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { runNative } from './native.ts'
 import { resolveOptions } from './options.ts'
 import { resolveEngine } from './engine.ts'
 import { ConversionError, failureCode } from './errors.ts'
-import { DOCUMENT_EXTENSIONS } from './document.ts'
+import { resolveConversion, validateOutput } from './operations.ts'
+import type { ConversionRequest, ConversionSpec } from './operations.ts'
+export { CONVERSION_FORMATS } from './operations.ts'
+export type { ConversionRequest } from './operations.ts'
+export { discoverRuntime } from './runtime.ts'
+export type { RuntimeInfo } from './runtime.ts'
 import type { Engine, NativeEngine } from './engine.ts'
 import type { FontFace } from './fonts.ts'
 import type { FontSubstitution } from './font-loader.ts'
@@ -24,7 +29,7 @@ export interface ConverterOptions {
   timeoutMs?: number
   /** Maximum source bytes. Default: 64 MiB. */
   maxInputBytes?: number
-  /** Maximum generated PDF bytes. Default: 128 MiB. */
+  /** Maximum generated output bytes. Default: 128 MiB. */
   maxOutputBytes?: number
   /** PDF export image resolution in DPI. Default: 144. */
   maxImageResolution?: number
@@ -62,26 +67,35 @@ export interface Converter {
    * Convert a private, caller-authorized regular Office file to a fresh exclusive PDF path.
    * The caller owns both directories and must prevent concurrent path changes.
    * Rejects existing output paths; removes a newly created output on failure or cancellation.
-   * @param request - Absolute paths. Input suffix: doc, docx, xls, xlsx, ppt, or pptx.
+   * @param request - Absolute paths. Input suffixes are listed in CONVERSION_FORMATS.
    * @param signal - Optional cancellation, including while queued.
    * @returns Engine choice and missing declared font families.
    */
   render(request: { inputPath: string; outputPath: string }, signal?: AbortSignal): Promise<RenderResult>
+  /**
+   * Convert to the format named by the output extension; CSV requires a sheet for multi-sheet inputs.
+   * @param request - Absolute authorized input and fresh output paths, and optional CSV sheet name.
+   * @param signal - Cancellation, including while queued.
+   * @returns Engine choice and missing declared font families.
+   */
+  convert(request: ConversionRequest, signal?: AbortSignal): Promise<RenderResult>
+  /**
+   * Recalculate the entire workbook synchronously and save formulas with refreshed cached results.
+   * This does not validate formulas or business data.
+   * @param request - XLS, XLSX, or ODS input and a distinct fresh XLSX or ODS output.
+   * @param signal - Cancellation, including while queued.
+   * @returns Engine choice and missing declared font families.
+   */
+  recalculate(request: Omit<ConversionRequest, 'sheet'>, signal?: AbortSignal): Promise<RenderResult>
   /** Abort queued and active work, await exit and cleanup, and permanently reject further renders. */
   dispose(): Promise<void>
 }
 
-/** Absolute paths one render converts. */
-interface RenderRequest {
-  readonly inputPath: string
-  readonly outputPath: string
-}
-
-/** Worker result for a WASM conversion, which returns owned PDF bytes. */
+/** Worker result for a WASM conversion, which returns owned output bytes. */
 interface WasmWorkerResult {
   readonly kind?: undefined
   readonly ok: true
-  readonly pdf: Uint8Array
+  readonly output: Uint8Array
   readonly missingFonts: string[]
 }
 
@@ -109,7 +123,7 @@ async function readBounded(path: string, limit: number, signal: AbortSignal, rol
   try {
     const before = await file.stat()
     const invalid = role === 'input' ? 'invalid-document' : 'invalid-output'
-    if (!before.isFile() || before.size < 1) throw new ConversionError(invalid, 'Document must be a nonempty regular file.')
+    if (!before.isFile() || (role === 'input' && before.size < 1)) throw new ConversionError(invalid, 'Document must be a nonempty regular file.')
     if (before.size > limit) throw new ConversionError(`${role}-too-large`, `Document exceeds its ${role} byte limit.`)
     const bytes = Buffer.alloc(before.size)
     for (let offset = 0; offset < bytes.length;) {
@@ -183,12 +197,8 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
     signal.throwIfAborted()
     running = true
   }
-  async function render(request: RenderRequest | null | undefined, signal: AbortSignal): Promise<RenderResult> {
-    if (!request || typeof request.inputPath !== 'string' || typeof request.outputPath !== 'string'
-      || !isAbsolute(request.inputPath) || !isAbsolute(request.outputPath) || request.inputPath.includes('\0') || request.outputPath.includes('\0')) throw new TypeError('inputPath and outputPath must be absolute filesystem paths.')
-    if (resolve(request.inputPath) === resolve(request.outputPath)) throw new Error('Input and output paths must differ.')
-    const extension = extname(request.inputPath).slice(1).toLowerCase()
-    if (!(DOCUMENT_EXTENSIONS as readonly string[]).includes(extension)) throw new ConversionError('unsupported-format', `Input extension must be ${DOCUMENT_EXTENSIONS.join(', ')}.`)
+  async function execute(request: ConversionSpec, signal: AbortSignal): Promise<RenderResult> {
+    const { extension, format } = request
     await acquire(signal)
     const deadline = new AbortController()
     const stopped = AbortSignal.any([signal, deadline.signal])
@@ -200,27 +210,27 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
     try {
       stopped.throwIfAborted()
       output = await open(request.outputPath, 'wx', 0o600)
-      const bytes = await readBounded(request.inputPath, resolvedOptions.maxInputBytes, stopped, 'input')
+      const sourceBytes = await readBounded(request.inputPath, resolvedOptions.maxInputBytes, stopped, 'input')
       scratch = await mkdtemp(join(tmpdir(), 'libreoffice-kit-'))
       const inputPath = join(scratch, `document.${extension}`)
       const input = await open(inputPath, 'wx', 0o600)
-      try { await input.writeFile(bytes) } finally { await input.close() }
-      const result = await runWorker({ inputPath, extension, options: resolvedOptions, engine, scratch, fontFaces },
+      try { await input.writeFile(sourceBytes) } finally { await input.close() }
+      const result = await runWorker({ inputPath, extension, operation: request, options: resolvedOptions, engine, scratch, fontFaces },
         stopped, (faces) => { fontFaces = faces })
-      let pdf: Uint8Array
-      if ('pdf' in result) pdf = result.pdf
+      let bytes: Uint8Array
+      if ('output' in result) bytes = result.output
       else {
         // The worker answers with font imports for the engine the converter resolved.
         const native = engine as NativeEngine
         const profile = join(scratch, 'profile')
         await mkdir(profile, { mode: 0o700 })
-        const path = join(scratch, 'document.pdf')
-        await runNative(native, resolvedOptions, inputPath, path, profile, result.fonts, result.substitutions, stopped)
-        pdf = await readBounded(path, resolvedOptions.maxOutputBytes, stopped, 'output')
+        const path = join(scratch, `output.${format}`)
+        await runNative(native, resolvedOptions, inputPath, path, profile, result.fonts, result.substitutions, stopped, request)
+        bytes = await readBounded(path, resolvedOptions.maxOutputBytes, stopped, 'output')
       }
-      if (Buffer.from(pdf.subarray(0, 5)).toString() !== '%PDF-') throw new ConversionError('invalid-output', 'LibreOffice did not produce a PDF.')
+      validateOutput(bytes, format)
       stopped.throwIfAborted()
-      await output.writeFile(pdf)
+      await output.writeFile(bytes)
       stopped.throwIfAborted()
       succeeded = true
       return { backend: engine.backend, missingFonts: result.missingFonts }
@@ -246,14 +256,18 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       }
     }
   }
+  async function submit(request: ConversionRequest, operation: 'render' | 'convert' | 'recalculate', signal?: AbortSignal): Promise<RenderResult> {
+    const task = execute(resolveConversion(request, operation),
+      signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal)
+    active.add(task)
+    void task.finally(() => { active.delete(task) }).catch((_error: unknown) => { /* The caller owns task rejection. */ })
+    return task
+  }
   return {
     backend: engine.backend,
-    render(request, signal) {
-      const task = render(request, signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal)
-      active.add(task)
-      void task.finally(() => { active.delete(task) }).catch((_error: unknown) => { /* The caller owns task rejection. */ })
-      return task
-    },
+    render: (request, signal) => submit(request, 'render', signal),
+    convert: (request, signal) => submit(request, 'convert', signal),
+    recalculate: (request, signal) => submit(request, 'recalculate', signal),
     dispose() {
       disposal ??= (async () => { lifetime.abort(new Error('LibreOffice converter is disposed.')); await Promise.allSettled(active) })()
       return disposal

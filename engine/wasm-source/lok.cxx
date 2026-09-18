@@ -1,9 +1,7 @@
 // The browser Worker owns one LibreOfficeKit instance and serializes all calls.
 // Pointers remain inside that worker's WebAssembly memory.
 
-#define LOK_USE_UNSTABLE_API
-#include <LibreOfficeKit/LibreOfficeKit.h>
-#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include "dsh_document_operations.hxx"
 
 #include <cstdlib>
 #include <cstdio>
@@ -220,6 +218,17 @@ int dsh_lok_document_paint(LibreOfficeKitDocument* document, unsigned char* buff
             document->pClass->paintPartTile(document, buffer, part, LOK_PARTMODE_SLIDES,
                                             canvasWidth, canvasHeight, x, y, width, height);
         return 1;
+    }, 0);
+}
+
+/** Export any supported format after synchronous calculation and CSV selection. */
+int dsh_lok_document_export(LibreOfficeKit* office, LibreOfficeKitDocument* document,
+    const char* url, const char* format, const char* filterOptions, int calculate, const char* sheet)
+{
+    return guarded([&] {
+        if (calculate) dsh::recalculate(office, document);
+        if (std::strcmp(format, "csv") == 0) dsh::selectCsvSheet(office, document, sheet && sheet[0] ? sheet : nullptr);
+        return document->pClass->saveAs(document, url, format, filterOptions);
     }, 0);
 }
 

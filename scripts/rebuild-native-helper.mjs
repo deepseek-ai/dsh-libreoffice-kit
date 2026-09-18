@@ -20,7 +20,7 @@ export function verifyCoreReuse(directory, core, repo = root) {
   assert(JSON.stringify(receipts) === JSON.stringify(patches.map(file => `sources/${file}`)), 'Reusable Core patch receipt set differs from the current recipe');
   assert(sha256(join(directory, 'sources/core.json')) === prebuild.files['sources/core.json'], 'Reusable Core configure receipt hash changed');
   verifyConfigureInput(prebuild.platform, readJson(join(directory, 'sources/core.json')).configure);
-  for (const file of ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...patches]) {
+  for (const file of ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...patches]) {
     const hash = sha256(join(directory, 'sources', file));
     assert(hash === prebuild.files[`sources/${file}`] && hash === sha256(join(repo, file)), `Reusable Core source receipt changed: ${file}`);
   }
@@ -52,7 +52,7 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   if (!platform.startsWith('win32-')) chmodSync(join(directory, prebuild.engine.executable), 0o755);
   const symbols = stripNativePayload(directory, platform);
   for (const file of symbols.stripped) prebuild.files[file] = sha256(join(directory, file));
-  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
+  const updated = ['engine/native/worker.cxx', 'engine/document-operations.hxx', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
   for (const file of updated) {
     const destination = `sources/${file}`;
     mkdirSync(join(directory, destination, '..'), { recursive: true });

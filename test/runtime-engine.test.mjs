@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { documentFixture } from './runtime-fixture.mjs';
+import { commentedDocumentFixture, documentFixture } from './runtime-fixture.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {
@@ -33,6 +33,16 @@ test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and
       assert.ok(bytes.length > 100, `${extension} PDF is empty`);
       formats[extension] = { backend: converted.backend, pdfBytes: bytes.length };
     }
+    const commentedInput = join(root, 'commented.docx');
+    const commentedOutput = join(root, 'commented.pdf');
+    await writeFile(commentedInput, commentedDocumentFixture());
+    const commentedResult = await converter.render({ inputPath: commentedInput, outputPath: commentedOutput });
+    const commentedPdf = await readFile(commentedOutput);
+    assert.equal(commentedResult.backend, converter.backend);
+    assert.equal(commentedPdf.subarray(0, 5).toString('ascii'), '%PDF-');
+    assert.match(commentedPdf.subarray(-2048).toString('latin1'), /%%EOF/);
+    assert.ok(commentedPdf.length > 100, 'commented DOCX PDF is empty');
+    formats.commentedDocx = { backend: commentedResult.backend, pdfBytes: commentedPdf.length };
     await assert.rejects(converter.render({ inputPath, outputPath }), error => error.code === 'EEXIST');
     assert.equal((await readFile(outputPath)).subarray(0, 5).toString(), '%PDF-');
     const wrong = join(root, 'invalid.docx');

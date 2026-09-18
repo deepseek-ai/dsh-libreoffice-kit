@@ -1,5 +1,5 @@
 ---
-description: "Font-friendly Office-to-PDF conversion in Node.js, with prebuilt LibreOffice engines."
+description: "Office conversion and spreadsheet recalculation in Node.js, with prebuilt LibreOffice engines."
 kind: "package-library"
 ---
 # @deepseek-ai/libreoffice-kit
@@ -8,20 +8,20 @@ English | [中文](README.zh.md)
 
 ## Current goal
 
-**Font-friendly Office → PDF conversion in Node.js.** Version `0.0.1` exposes a standalone Node API for converting local `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, and `.pptx` files into PDFs using prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
+**Office conversion and spreadsheet recalculation in Node.js.** The Node API and public CLI use the same prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
 
 The priorities are document layout and readable text, explicit control over available fonts and substitutions, and an engine that applications can bundle and run offline. Size reduction serves that goal: retain the import, layout, drawing, and PDF-export machinery these documents need while removing unrelated desktop features and resources.
 
-The current API supports these six Office formats and PDF output. Use it in a Node.js service, a desktop application, or a document-processing job. Applications manage their own authorization, storage, and preview interfaces.
+The API converts binary Office, OOXML, and OpenDocument formats and recalculates whole workbooks while preserving formulas. The [Node API reference](packages/entry/README.md#conversion-recalculation-and-cli) defines supported format pairs, CSV worksheet selection, and the offline CLI. Use it in a Node.js service, a desktop application, or a document-processing job. Applications manage their own authorization, storage, and preview interfaces.
 
 Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as Office 97–2003. RTF/HTML files renamed to these suffixes and `.wps` are not accepted. `missingFonts` reports declarations found in OOXML; binary formats return an empty list while LibreOffice performs font matching.
 
 ## Quick start
 
-Requires Node.js **22.19.0 or newer**. Install the `0.0.1` package with its optional engines:
+Requires Node.js **22.19.0 or newer**. Install the `0.0.2-rc2` candidate package with its optional engines:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.1
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc2
 ```
 
 ```js
@@ -45,7 +45,7 @@ try {
 
 Supply absolute paths in caller-owned private directories; the output must not already exist. The PDF is written to `outputPath`, and `render` returns the selected backend and missing-font names. Each render owns a fresh native process or Node worker and private profile. Renders on one converter are serialized; cancellation and disposal wait for engine exit and cleanup. See the [Node API](packages/entry/README.md) for cancellation, errors, and resource limits.
 
-## What “font-friendly” means in 0.0.1
+## Font handling
 
 - **Use available fonts.** The API discovers conventional system/user font directories, or indexes the roots supplied through `fontDirectories`. Custom roots replace the default list. `fontkit` reads font metadata and glyph coverage; selected files are passed to the engine as original font bytes.
 - **Preserve requested families when available.** Exact installed families take priority, including handwriting and decorative fonts. WASM font requests also carry weight and italic information so matching installed faces can be selected; the catalog can supply additional fonts for missing glyphs.
@@ -58,7 +58,7 @@ This improves control over font choice, but does not guarantee identical output 
 
 ## Engines and distribution
 
-The [Node package manifest](packages/entry/package.json) declares the engines for `0.0.1`:
+The [Node package manifest](packages/entry/package.json) declares the released engine targets:
 
 | Engine | Role |
 | --- | --- |

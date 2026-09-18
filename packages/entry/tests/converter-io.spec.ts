@@ -24,7 +24,7 @@ vi.mock('node:worker_threads', () => ({
     constructor() {
       super()
       queueMicrotask(() => this.emit('message', {
-        ok: true, pdf: Buffer.from('%PDF-1.7 fixture'), missingFonts: [],
+        ok: true, output: Buffer.from('%PDF-1.7 fixture'), missingFonts: [],
       }))
     }
     async terminate(): Promise<number> { worker.terminations++; return 0 }

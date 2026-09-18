@@ -230,7 +230,7 @@ export function verifyEnginePackage(dir) {
     for (const key of ['loader', 'wasm', 'data', 'metadata']) regularFile(dir, engine[key]);
     const module = new WebAssembly.Module(readFileSync(join(dir, engine.wasm)));
     const exports = new Set(WebAssembly.Module.exports(module).filter((entry) => entry.kind === 'function').map((entry) => entry.name.replace(/^_/, '')));
-    for (const name of ['dsh_lok_initialize', 'dsh_lok_document_load', 'dsh_lok_document_save_pdf', 'dsh_lok_document_destroy', 'dsh_lok_destroy', 'dsh_lok_error', 'malloc', 'free']) {
+    for (const name of ['dsh_lok_initialize', 'dsh_lok_document_load', 'dsh_lok_document_save_pdf', 'dsh_lok_document_export', 'dsh_lok_document_destroy', 'dsh_lok_destroy', 'dsh_lok_error', 'malloc', 'free']) {
       assert(exports.has(name), `WASM engine missing conversion export: ${name}`);
     }
     const dataSize = statSync(join(dir, engine.data)).size;

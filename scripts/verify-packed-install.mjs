@@ -1,5 +1,5 @@
 /** Rehearse consumer installation without registry access or source-checkout resolution. */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { npm, npmEnvironment, pnpm, run } from './pack-utils.mjs';
@@ -23,7 +23,7 @@ export function packAdapter(directory, work) {
   const manifest = readJson(join(adapterDirectory, 'package.json'));
   const staged = join(directory, tarballName(manifest));
   if (existsSync(staged)) return { manifest, file: staged };
-  for (const entry of ['lib/index.js', 'lib/worker.js'])
+  for (const entry of ['lib/index.js', 'lib/worker.js', 'lib/cli.js'])
     assert(existsSync(join(adapterDirectory, entry)), `Build the Node API before rehearsal: missing ${entry}`);
   const destination = join(work, 'adapters');
   mkdirSync(destination);
@@ -63,7 +63,15 @@ export function verifyPackedInstall(directory, options = {}) {
         .concat([[adapter.manifest.name, `file:${adapter.file}`]])),
     }, null, 2)}\n`);
     npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', '--omit=optional'], consumer, work);
-    for (const record of selected) verifyEnginePackage(join(consumer, 'node_modules', ...record.name.split('/')));
+    const sizes = selected.map(record => {
+      const directory = join(consumer, 'node_modules', ...record.name.split('/'));
+      verifyEnginePackage(directory);
+      const unpackedBytes = readdirSync(directory, { recursive: true }).reduce((total, file) => {
+        const info = lstatSync(join(directory, file));
+        return total + (info.isFile() ? info.size : 0);
+      }, 0);
+      return { platform: record.platform, archiveBytes: record.bytes, installationTarBytes: record.install.bytes, unpackedBytes };
+    });
     const macOS = !wasmOnly && process.platform === 'darwin' ? auditMacOS(join(consumer, 'node_modules', '@deepseek-ai', `libreoffice-kit-${platform}`)) : undefined;
     verifyKitPackage(join(consumer, 'node_modules', ...adapter.manifest.name.split('/')), true);
     cpSync(join(root, 'scripts/smoke-installed.mjs'), join(consumer, 'smoke.mjs'));
@@ -77,6 +85,10 @@ export function verifyPackedInstall(directory, options = {}) {
     assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
       'Installed conversion must include DOC, DOCX, XLS, XLSX, PPT, and PPTX PDFs');
     assert(result.embeddedGraphics?.pdfInEmf === true, 'Installed conversion must preserve embedded PDF graphics');
+    run(process.execPath, ['--test', join(root, 'test/runtime-operations.test.mjs')], {
+      cwd: consumer, env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '',
+        LIBREOFFICE_RUNTIME_ENTRY: join(consumer, 'node_modules', ...adapter.manifest.name.split('/'), 'lib/index.js') },
+      timeout: 2_500_000 });
     if (keep) {
       mkdirSync(dirname(keep), { recursive: true });
       for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'runtime-embedded-pdf-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'roundtrip.doc.pdf', 'roundtrip.xls.pdf', 'roundtrip.ppt.pdf', 'roundtrip.xlsx.pdf', 'roundtrip.pptx.pdf', 'external.docx', 'external.pdf', 'embedded-pdf.docx', 'embedded-pdf.pdf'])
@@ -92,7 +104,7 @@ export function verifyPackedInstall(directory, options = {}) {
     // Record the installed adapter so a receipt proves which build converted.
     const adapterRecord = { name: adapter.manifest.name, version: adapter.manifest.version,
       file: basename(adapter.file), sha256: sha256(adapter.file) };
-    return { ...result, ...(macOS ? { macOS } : {}), adapter: adapterRecord, installedOutsideRepository: true, network: 'offline', ...(keep ? { retainedInstallation: keep } : {}) };
+    return { ...result, sizes, documentOperations: { conversionMatrix: true, recalculationCaches: true, csvSelection: true, offlineCli: true }, ...(macOS ? { macOS } : {}), adapter: adapterRecord, installedOutsideRepository: true, network: 'offline', ...(keep ? { retainedInstallation: keep } : {}) };
   } finally { rmSync(work, { recursive: true, force: true, maxRetries: 3 }); }
 }
 

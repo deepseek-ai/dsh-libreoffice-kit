@@ -8,6 +8,7 @@
 #include <cassert>
 #define LOK_USE_UNSTABLE_API
 #include <LibreOfficeKit/LibreOfficeKitInit.h>
+#include "../document-operations.hxx"
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -34,7 +35,8 @@ struct ConversionError : std::runtime_error {
 };
 
 struct Request {
-    std::string program, input, output, profile;
+    std::string program, input, output, profile, format = "pdf", sheet;
+    bool recalculate = false;
     std::vector<std::string> fonts;
     unsigned long long maxOutput = 0;
     unsigned int resolution = 0;
@@ -74,6 +76,15 @@ Request parse(const std::vector<std::string>& args)
         else if (option == "--input-path") request.input = value;
         else if (option == "--output-path") request.output = value;
         else if (option == "--profile-directory") request.profile = value;
+        else if (option == "--format") request.format = value;
+        else if (option == "--sheet") {
+            if (value.empty()) throw std::runtime_error("Worksheet name must be nonempty");
+            request.sheet = value;
+        }
+        else if (option == "--recalculate") {
+            if (value != "true" && value != "false") throw std::runtime_error("Expected boolean recalculation flag");
+            request.recalculate = value == "true";
+        }
         else if (option == "--font-file") request.fonts.push_back(value);
         else if (option == "--max-output-bytes") request.maxOutput = positiveInteger(value);
         else if (option == "--max-image-resolution") {
@@ -84,6 +95,10 @@ Request parse(const std::vector<std::string>& args)
     }
     for (const auto& path : {request.program, request.input, request.output, request.profile})
         if (path.empty() || !fs::u8path(path).is_absolute()) throw std::runtime_error("Worker requires absolute paths");
+    const std::vector<std::string> formats = {"pdf", "docx", "odt", "txt", "xlsx", "ods", "csv", "pptx", "odp"};
+    if (std::find(formats.begin(), formats.end(), request.format) == formats.end()) throw std::runtime_error("Unsupported output format");
+    if (!request.sheet.empty() && request.format != "csv") throw std::runtime_error("Worksheet selection is only supported for CSV");
+    if (request.recalculate && request.format != "xlsx" && request.format != "ods") throw std::runtime_error("Recalculation output must be XLSX or ODS");
     if (!request.maxOutput || !request.resolution) throw std::runtime_error("Worker limits are required");
     if (fs::exists(fs::u8path(request.output))) throw std::runtime_error("Output path already exists");
     return request;
@@ -151,11 +166,7 @@ void convert(const Request& request)
         throw ConversionError("unavailable", "Failed to configure Windows library search directories");
 #endif
     fs::create_directories(fs::u8path(request.profile));
-#if defined(__APPLE__) || defined(_WIN32)
     environment("SAL_LOK_OPTIONS", "unipoll");
-#else
-    environment("SAL_LOK_OPTIONS", "");
-#endif
     environment("SAL_DISABLE_OPENCL", "1");
     environment("LOK_HOST_ALLOWLIST", "^$");
 #if !defined(__APPLE__) && !defined(_WIN32)
@@ -183,19 +194,22 @@ void convert(const Request& request)
         office->pClass->documentLoadWithOptions(office.get(), input.c_str(), "Batch=true,EnableMacrosExecution=false"),
         [](LibreOfficeKitDocument* value) { value->pClass->destroy(value); });
     if (!document) throw std::runtime_error(officeError(office.get()));
+    if (request.recalculate) dsh::recalculate(office.get(), document.get());
+    if (request.format == "csv") dsh::selectCsvSheet(office.get(), document.get(), request.sheet.empty() ? nullptr : request.sheet.c_str());
     const auto options = std::string("{\"ReduceImageResolution\":{\"type\":\"boolean\",\"value\":\"true\"},\"MaxImageResolution\":{\"type\":\"long\",\"value\":\"")
         + std::to_string(request.resolution) + "\"},\"ExportBookmarks\":{\"type\":\"boolean\",\"value\":\"true\"}}";
     const auto output = fileUrl(request.output);
-    if (!document->pClass->saveAs(document.get(), output.c_str(), "pdf", options.c_str()))
+    if (!document->pClass->saveAs(document.get(), output.c_str(), request.format.c_str(),
+        request.format == "pdf" ? options.c_str() : request.format == "txt" ? "UTF8,LF" : nullptr))
         throw std::runtime_error(officeError(office.get()));
     // Reject before Node reads the PDF; this limit does not cap temporary disk use.
     if (fs::file_size(fs::u8path(request.output)) > request.maxOutput) {
         fs::remove(fs::u8path(request.output));
-        throw ConversionError("output-too-large", "PDF exceeds maxOutputBytes");
+        throw ConversionError("output-too-large", "Output exceeds maxOutputBytes");
     }
     char header[5] = {};
     std::ifstream(fs::u8path(request.output), std::ios::binary).read(header, sizeof header);
-    if (std::memcmp(header, "%PDF-", sizeof header) != 0) throw ConversionError("invalid-output", "LibreOffice did not produce PDF bytes");
+    if (request.format == "pdf" && std::memcmp(header, "%PDF-", sizeof header) != 0) throw ConversionError("invalid-output", "LibreOffice did not produce PDF bytes");
 }
 
 int execute(const std::vector<std::string>& args)

@@ -3,8 +3,10 @@ import { spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ConversionError, failureCode } from './errors.ts'
+import { profileXml } from './profile.ts'
 import { LOCALIZED_FONT_SEARCH_NAMES } from './native-font-names.ts'
 import type { FontSubstitution } from './font-loader.ts'
+import type { ConversionSpec } from './operations.ts'
 import type { NativeEngine } from './engine.ts'
 import type { ResolvedOptions } from './options.ts'
 
@@ -30,10 +32,9 @@ function fontSearchName(value: string): string {
  * Installed originals and metric-compatible fonts are resolved before this table by LibreOffice.
  * @param profile - Existing, conversion-owned profile directory.
  * @param substitutions - Missing document families and the selected installed family.
- * @returns Resolves after the exclusive profile file is written; empty choices create no file.
+ * @returns Resolves after the exclusive profile file is written; empty choices still disable the interactive CSV warning.
  */
 export async function prepareNativeFontProfile(profile: string, substitutions: readonly FontSubstitution[]): Promise<void> {
-  if (substitutions.length === 0) return
   const families = new Map<string, string>(substitutions.map(({ family, substitute }) => [fontSearchName(family), substitute] as const))
   for (const [family, substitute] of [...families]) {
     for (let alias = METRIC_SEARCH_NAMES.get(family); alias; alias = METRIC_SEARCH_NAMES.get(alias)) {
@@ -42,7 +43,7 @@ export async function prepareNativeFontProfile(profile: string, substitutions: r
   }
   const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;')
   const nodes = [...families].map(([family, substitute]) => `<node oor:name="${escape(family)}" oor:op="replace"><prop oor:name="SubstFonts" oor:op="fuse"><value>${escape(substitute)}</value></prop></node>`).join('')
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.VCL/FontSubstitutions/en">${nodes}</item></oor:items>\n`
+  const xml = profileXml(nodes)
   const user = join(profile, 'user')
   await mkdir(user, { mode: 0o700 })
   await writeFile(join(user, 'registrymodifications.xcu'), xml, { flag: 'wx', mode: 0o600 })
@@ -77,17 +78,19 @@ export function nativeEnvironment(profile: string, programDirectory: string, sou
  * @param fonts - Installed font files the helper may load.
  * @param substitutions - Missing families and their selected installed substitutes.
  * @param signal - Cancellation; it kills the helper and awaits its exit.
+ * @param operation - Validated output format, recalculation, and worksheet selection.
  * @throws ConversionError for a reported conversion failure, and the abort reason for cancellation.
  */
 export async function runNative(engine: NativeEngine, options: ResolvedOptions, input: string, output: string, profile: string,
-  fonts: readonly string[], substitutions: readonly FontSubstitution[], signal: AbortSignal): Promise<void> {
+  fonts: readonly string[], substitutions: readonly FontSubstitution[], signal: AbortSignal, operation: Pick<ConversionSpec, 'format' | 'recalculate' | 'sheet'>): Promise<void> {
   signal.throwIfAborted()
   await prepareNativeFontProfile(profile, substitutions)
   signal.throwIfAborted()
   const env = nativeEnvironment(profile, engine.programDirectory)
   const child = spawn(engine.executable, ['--program-directory', engine.programDirectory, '--input-path', input,
     '--output-path', output, '--profile-directory', profile, '--max-output-bytes', String(options.maxOutputBytes),
-    '--max-image-resolution', String(options.maxImageResolution), ...fonts.flatMap(path => ['--font-file', path])],
+    '--max-image-resolution', String(options.maxImageResolution), '--format', operation.format, '--recalculate', String(operation.recalculate),
+    ...(operation.sheet === undefined ? [] : ['--sheet', operation.sheet]), ...fonts.flatMap(path => ['--font-file', path])],
   { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env })
   let stdout = ''
   let stderr = ''

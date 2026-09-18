@@ -1,3 +1,4 @@
+import { zipSync, strToU8 } from 'fflate'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DOCUMENT_EXTENSIONS, inspectDocument } from '../src/document.ts'
@@ -9,6 +10,20 @@ const fixture = (name: string) => readFileSync(new URL(`../../../test/fixtures/$
 describe('Office input containers', () => {
   it.each([['doc', 'one-page.doc'], ['xls', 'one-sheet.xls'], ['ppt', 'one-slide.ppt']])('accepts a real %s compound file without inventing font diagnostics', (extension, name) => {
     expect(inspectDocument(fixture(name), extension, options)).toEqual({ families: new Map(), codePoints: [] })
+  })
+
+  it.each([['odt', 'text'], ['ods', 'spreadsheet'], ['odp', 'presentation']])('inspects bounded %s archives and declared fonts', (extension, type) => {
+    const archive = (mime: string) => zipSync({
+      mimetype: strToU8(mime), 'META-INF/manifest.xml': strToU8('<manifest/>'),
+      'content.xml': strToU8('<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"><office:text fo:font-family="Fixture Font">中文 test</office:text></office:document-content>'),
+    })
+    const bytes = archive(`application/vnd.oasis.opendocument.${type}`)
+    expect(inspectDocument(bytes, extension, options).families.get('fixturefont')).toBe('Fixture Font')
+    expect(inspectDocument(bytes, extension, options).codePoints).toContain('中'.codePointAt(0))
+    expect(() => inspectDocument(bytes, extension, { ...options, maxUncompressedBytes: 1 })).toThrow(/bounded/)
+    const missingMime = zipSync({ 'content.xml': strToU8('<doc/>'), 'META-INF/manifest.xml': strToU8('<manifest/>') })
+    expect(() => inspectDocument(missingMime, extension, options)).toThrow(/does not contain/)
+    expect(() => inspectDocument(archive('wrong'), extension, options)).toThrow(/does not contain/)
   })
 
   it('retains OOXML inspection and ZIP limits', () => {

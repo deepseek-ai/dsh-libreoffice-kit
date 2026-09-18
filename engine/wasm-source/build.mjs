@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { slimWasmData } from './slim.mjs';
+import { assertUiCoreRevision } from '../ui-resource-policy.mjs';
 import { buildEnvironment, buildIdentity, publicBuildValue } from '../build-identity.mjs';
 import { readWasmSource } from './source.mjs';
 
@@ -45,6 +46,7 @@ const tarballs = path.resolve(values.tarballs);
 const output = path.resolve(values.output);
 const receiptPath = path.join(build, 'dsh-wasm-build.json');
 const shimTarget = path.join(source, 'desktop/source/lib/dsh_wasm.cxx');
+const operationsTarget = path.join(source, 'desktop/source/lib/dsh_document_operations.hxx');
 const identityPaths = { workspace: repository, source, build, tarballs, emsdk };
 const env = buildEnvironment(process.env, 'wasm', identityPaths);
 const identity = buildIdentity('wasm', identityPaths, env);
@@ -115,6 +117,7 @@ function prepare() {
       throw new Error(`Official source differs from ${path.basename(patch)}; preserve local edits and reconcile the patch`);
     }
   }
+  copyFileSync(path.join(owner, '../document-operations.hxx'), operationsTarget);
   const shim = readFileSync(path.join(owner, pinned.shim));
   if (!existsSync(shimTarget) || !readFileSync(shimTarget).equals(shim)) {
     writeFileSync(shimTarget, shim);
@@ -130,6 +133,7 @@ function verifyRecipe() {
   for (const patch of patches()) {
     if (!checkPatch(patch, true)) throw new Error(`${path.basename(patch)} is not applied; run the prepare stage`);
   }
+  if (!existsSync(operationsTarget) || hashFile(operationsTarget) !== hashFile(path.join(owner, '../document-operations.hxx'))) throw new Error('Document operations header does not match the current recipe.');
   if (!existsSync(shimTarget) || hashFile(shimTarget) !== hashFile(path.join(owner, pinned.shim))) {
     throw new Error('The LibreOfficeKit shim differs from the recipe; run the prepare stage');
   }
@@ -165,6 +169,7 @@ function buildInputs() {
     buildConfiguration: hashFile(path.join(build, 'config_build.mk')),
     sourceChanges: sha256(git(['diff', '--binary', 'HEAD', '--'])),
     shim: hashFile(shimTarget),
+    operations: hashFile(operationsTarget),
     toolchain: verifyRecipe(),
     patches: Object.fromEntries(patches().map((patch) => [path.basename(patch), hashFile(patch)])),
   };
@@ -192,6 +197,7 @@ function compile() {
 }
 
 function packageArtifacts() {
+  assertUiCoreRevision(pinned.libreoffice.commit);
   if (!existsSync(receiptPath)) throw new Error('No successful LibreOffice build receipt exists; run the compile stage');
   const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
   const compiledInputs = buildInputs();
@@ -215,7 +221,7 @@ function packageArtifacts() {
     'soffice.data.js.metadata': Buffer.from(`${JSON.stringify(slimmed.metadata)}\n`),
   };
   const inputs = { ...compiledInputs, packaging: {
-    recipes: Object.fromEntries(['build.mjs', 'slim.mjs', '../build-identity.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
+    recipes: Object.fromEntries(['build.mjs', 'slim.mjs', '../build-identity.mjs', '../ui-resource-policy.mjs'].map(name => [name, hashFile(path.join(owner, name))])),
     compiledFiles,
   } };
   const files = { ...compiledFiles, ...Object.fromEntries(Object.entries(repacked).map(([name, bytes]) => [name, sha256(bytes)])) };
