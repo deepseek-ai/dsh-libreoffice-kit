@@ -42,6 +42,10 @@ export function validateBrowserNpmCandidate(directory, tag) {
     assert(result?.saveReopen === true && result.nativeReopen === true && result.disposed === true
       && Number.isSafeInteger(result.bytes) && result.bytes > 0,
     `Missing browser/native edit-save-reopen evidence: ${format}`);
+    assert(['unsavedPixels', 'cachedBytesReused', 'missingTilePainted', 'staleGenerationRejected', 'orderedAcrossEdit']
+      .every(key => result.capture?.[key] === true), `Missing installed capture evidence: ${format}`);
+    if (format === 'xlsx') assert(result.capture.sheetSelection?.userSelectionPreserved === true,
+      'Missing independent worksheet capture evidence');
   }
   for (const name of ['browser-preview.json', 'editor.json']) auditBytes(readFileSync(join(directory, name)), name);
   const packages = ['wasm', 'kit'].map(kind => {

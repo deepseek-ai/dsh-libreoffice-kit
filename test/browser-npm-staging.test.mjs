@@ -26,7 +26,8 @@ function fixture(t, alter = value => value) {
     passed: true, installedOutsideRepository: true, npmOffline: true, externalNetworkRequests: 0,
     crossOriginIsolated: true, workerDisposal: true, newCharacterFonts: true,
     archiveSha256: packages.kit.sha256, wasmSha256: packages.wasm.sha256,
-    formats: Object.fromEntries(['docx', 'xlsx', 'pptx'].map(format => [format, { saveReopen: true, nativeReopen: true, disposed: true, bytes: 100 }])) };
+    formats: Object.fromEntries(['docx', 'xlsx', 'pptx'].map(format => [format, { saveReopen: true, nativeReopen: true, disposed: true, bytes: 100,
+      capture: { unsavedPixels: true, cachedBytesReused: true, missingTilePainted: true, staleGenerationRejected: true, orderedAcrossEdit: true, sheetSelection: { userSelectionPreserved: true } } }])) };
   const save = () => {
     writeFileSync(join(directory, 'browser-preview.json'), JSON.stringify(candidate));
     writeFileSync(join(directory, 'editor.json'), JSON.stringify(receipt));
@@ -52,6 +53,8 @@ test('browser staging rejects dirty source, mismatched receipt, missing format e
     f => f.receipt.formats.docx.nativeReopen = false,
     f => f.receipt.formats.xlsx.saveReopen = false,
     f => f.receipt.formats.pptx.disposed = false,
+    f => f.receipt.formats.docx.capture.cachedBytesReused = false,
+    f => f.receipt.formats.xlsx.capture.sheetSelection.userSelectionPreserved = false,
     f => f.candidate.packages.native = {},
     f => f.candidate.packages.kit.file = '../other.tgz',
   ]) {
