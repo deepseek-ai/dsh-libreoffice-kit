@@ -27,6 +27,7 @@ export function* fontFrames(result: BrowserFontResult, known: readonly FontIdent
   yield { state: FontState.Header, bytes: encoded }
   for (const [index, font] of result.fonts.entries()) {
     if (header.fonts[index]!.reference) continue
+    /* v8 ignore next -- header validation rejects an unknown data-less font before iteration. */
     if (font.data === undefined) throw new BrowserRenderError('font-unavailable', 'Font reference has not been installed.')
     for (let offset = 0; offset < font.data.byteLength; offset += FONT_CHUNK_BYTES) {
       yield { state: FontState.Bytes, bytes: font.data.subarray(offset, offset + FONT_CHUNK_BYTES) }
