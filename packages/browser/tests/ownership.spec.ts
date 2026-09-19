@@ -88,7 +88,7 @@ describe('browser document ownership', () => {
     supported()
     const input = options()
     let fontSignal: AbortSignal | undefined
-    const document = await openDocument({ ...input, resolveFonts: (_request, signal) => { fontSignal = signal; return new Promise(() => {}) } })
+    const document = await openDocument({ ...input, resolveFonts: (_request, _known, signal) => { fontSignal = signal; return new Promise(() => {}) } })
     const worker = ControlledWorker.instances[0]!
     worker.receive({ type: 'font', known: [], request: { family: 'Arial', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] } })
     await Promise.resolve()
@@ -318,7 +318,8 @@ describe('owner-side asynchronous font delivery', () => {
   it('returns only a reference header and trailer when the Worker already installed the same font', async () => {
     supported()
     const data = new Uint8Array([1, 2, 3])
-    const resolveFonts = vi.fn(async () => ({ fonts: [{ id: 'shared-ttc', family: 'Arial', alias: 'Arial', data, format: 'ttc' as const }] }))
+    const resolveFonts = vi.fn(async (_request, known) => ({ fonts: [{ id: 'shared-ttc', family: 'Arial', alias: 'Arial',
+      ...(known.length === 0 ? { data } : { bytes: data.length }), format: 'ttc' as const }] }))
     const document = await openDocument({ ...options(), resolveFonts })
     const worker = ControlledWorker.instances[0]!
     const opened = worker.messages[0] as Extract<OwnerMessage, { type: 'open' }>
@@ -329,7 +330,8 @@ describe('owner-side asynchronous font delivery', () => {
       expect(JSON.parse(new TextDecoder().decode(bytes.slice(0, Atomics.load(control, 1))))).toEqual({ fonts: [
         { id: 'shared-ttc', bytes: data.length, family: 'Arial', alias: 'Arial', format: 'ttc', reference: true },
       ] })
-      expect(resolveFonts).toHaveBeenCalledExactlyOnceWith(fontRequest, expect.any(AbortSignal))
+      expect(resolveFonts).toHaveBeenCalledExactlyOnceWith(fontRequest,
+        [{ id: 'shared-ttc', bytes: data.length, format: 'ttc' }], expect.any(AbortSignal))
       worker.receive({ type: 'font-next' })
       expect(Atomics.load(control, 0)).toBe(FontState.Done)
       expect(Atomics.load(control, 1)).toBe(0)

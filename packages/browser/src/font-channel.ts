@@ -14,9 +14,11 @@ export function fontViews(channel: SharedArrayBuffer): { control: Int32Array; by
 export function* fontFrames(result: BrowserFontResult, known: readonly FontIdentity[] = []): Generator<{ state: FontState; bytes: Uint8Array }> {
   const identities = new Map(known.map(font => [font.id, font]))
   const header: FontHeader = { fonts: result.fonts.map(font => {
-    const identity: FontIdentity = { id: font.id, bytes: font.data.byteLength, ...(font.format ? { format: font.format } : {}) }
+    const size = font.data === undefined ? font.bytes : font.data.byteLength
+    const identity: FontIdentity = { id: font.id, bytes: size, ...(font.format ? { format: font.format } : {}) }
     const prior = identities.get(font.id)
     if (prior && (prior.bytes !== identity.bytes || prior.format !== identity.format)) throw new BrowserRenderError('font-unavailable', 'Font identity has conflicting bytes or formats.')
+    if (!prior && font.data === undefined) throw new BrowserRenderError('font-unavailable', 'Font reference has not been installed.')
     identities.set(font.id, identity)
     return { ...identity, family: font.family, alias: font.alias, ...(prior ? { reference: true as const } : {}) }
   }), ...(result.missingFamily === undefined ? {} : { missingFamily: result.missingFamily }) }
@@ -25,6 +27,7 @@ export function* fontFrames(result: BrowserFontResult, known: readonly FontIdent
   yield { state: FontState.Header, bytes: encoded }
   for (const [index, font] of result.fonts.entries()) {
     if (header.fonts[index]!.reference) continue
+    if (font.data === undefined) throw new BrowserRenderError('font-unavailable', 'Font reference has not been installed.')
     for (let offset = 0; offset < font.data.byteLength; offset += FONT_CHUNK_BYTES) {
       yield { state: FontState.Bytes, bytes: font.data.subarray(offset, offset + FONT_CHUNK_BYTES) }
     }
@@ -43,6 +46,7 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
   const installed = new Map<string, { face: EngineFontFace; bytes: number; format: FontIdentity['format'] }>()
   const aliases = new Map<string, { id: string; family: string }>()
   const requests = new Map<string, EngineFontFace[]>()
+  const coverage = new Map<string, { readonly points: Set<number>; readonly faces: EngineFontFace[]; complete: boolean }>()
   const families = new Set<string>()
   let loadedBytes = 0
   function read(): { state: FontState; data: Uint8Array } {
@@ -63,10 +67,18 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
   }
   return (attributes) => {
     const canonical = aliases.get(normalize(attributes.family))?.family
-    const original = { ...attributes, ...(canonical === undefined ? {} : { family: canonical }) }
+    const codePoints = [...new Set(attributes.codePoints)].sort((left, right) => left - right)
+    const original = { ...attributes, codePoints, ...(canonical === undefined ? {} : { family: canonical }) }
     const key = JSON.stringify(original)
     const cached = requests.get(key)
     if (cached) return cached
+    const { codePoints: _points, ...base } = original
+    const coverageKey = JSON.stringify(base)
+    const covered = coverage.get(coverageKey)
+    if (codePoints.length > 0 && covered && (covered.complete || codePoints.every(point => covered.points.has(point)))) {
+      requests.set(key, covered.faces)
+      return covered.faces
+    }
     request(original, [...installed].map(([id, font]) => ({ id, bytes: font.bytes, ...(font.format ? { format: font.format } : {}) })))
     const first = read()
     if (first.state !== FontState.Header) throw new BrowserRenderError('font-unavailable', 'Expected font transfer metadata.')
@@ -104,6 +116,15 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
     const absentFamily = header.missingFamily === undefined ? undefined : declaredFamilies.get(normalize(header.missingFamily))
     if (absentFamily !== undefined && !families.has(absentFamily)) { families.add(absentFamily); missing([...families]) }
     requests.set(key, faces)
+    if (codePoints.length > 0) {
+      const group = { points: new Set(covered?.points), faces: [...(covered?.faces ?? [])], complete: covered?.complete ?? false }
+      for (const point of codePoints) group.points.add(point)
+      for (const face of faces) {
+        if (!group.faces.some(existing => existing.path === face.path && existing.family === face.family)) group.faces.push(face)
+      }
+      group.complete ||= header.fonts.every(font => font.format !== undefined)
+      coverage.set(coverageKey, group)
+    }
     return faces
   }
 }

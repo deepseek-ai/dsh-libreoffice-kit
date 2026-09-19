@@ -7,7 +7,6 @@ import { createHash } from 'node:crypto'
 import { create } from 'fontkit'
 import * as hb from 'harfbuzzjs'
 import { FontSubsetSource } from '../src/font-subsets.ts'
-import { indexSystemFonts } from '../src/fonts.ts'
 import { requestedFontScripts, fontScriptCodePoints } from '../src/unicode-scripts.ts'
 import * as harfbuzz from '../src/harfbuzz-subset.ts'
 import type { FontMatchRequest } from '../src/fonts.ts'
@@ -158,18 +157,16 @@ it('bounded cache eviction regenerates the same content and transfers cannot det
   expect(generate).toHaveBeenCalledTimes(1)
 })
 
-it('refresh recognizes new and modified fonts and refuses previously selected stale originals', async () => {
+it('keeps one installed-font snapshot and a new source observes later files', async () => {
   const root = scratch('LatinGreek.ttf')
   const service = source(root)
   const old = (await service.resolve(request('Roboto', 'A'))).fonts[0]!
-  const options = { directories: [root], maxFiles: 20, maxFileBytes: 256 * 1024 * 1024 }
-  const first = indexSystemFonts(options)
-  expect(indexSystemFonts(options, first)[0]).toBe(first[0])
   copyFileSync(join(fixtures, 'Arabic.ttf'), join(root, 'Arabic.ttf'))
-  expect((await service.resolve(request('Noto Nastaliq Urdu', 'س'))).fonts[0]?.family).toBe('Noto Nastaliq Urdu')
+  expect((await service.resolve(request('Noto Nastaliq Urdu', 'س'))).fonts.some(font => font.family === 'Noto Nastaliq Urdu')).toBe(false)
+  expect((await source(root).resolve(request('Noto Nastaliq Urdu', 'س'))).fonts[0]?.family).toBe('Noto Nastaliq Urdu')
   copyFileSync(join(fixtures, 'Devanagari.ttf'), join(root, 'LatinGreek.ttf'))
   await expect(service.read(old.id)).rejects.toThrow(/changed/)
-  expect((await service.resolve(request('Noto Sans Devanagari', 'न'))).fonts[0]?.family).toBe('Noto Sans Devanagari')
+  expect((await source(root).resolve(request('Noto Sans Devanagari', 'न'))).fonts[0]?.family).toBe('Noto Sans Devanagari')
   await expect(service.read('unknown' as FontAssetId)).rejects.toThrow(/not selected/)
 })
 
@@ -208,16 +205,17 @@ it('regeneration rejects inconsistent original bytes and changed subset content'
   await expect(service.read(asset.id)).rejects.toThrow(/identity changed/)
 })
 
-it.each([1, 128 * 1024 * 1024])('refresh retires obsolete selections with a %i-byte cache budget', async budget => {
+it.each([1, 128 * 1024 * 1024])('a lifetime snapshot rejects removed selections with a %i-byte cache budget', async budget => {
   const root = scratch('LatinGreek.ttf')
   const service = source(root, budget)
   const old = (await service.resolve(request('Roboto', 'A'))).fonts[0]!
   rmSync(join(root, 'LatinGreek.ttf'))
-  expect((await service.resolve(request('Roboto', 'A'))).fonts).toEqual([])
-  await expect(service.read(old.id)).rejects.toThrow(/not selected/)
+  await expect(service.resolve(request('Roboto', 'A'))).rejects.toThrow(/changed|ENOENT/)
+  await expect(service.read(old.id)).rejects.toThrow(/changed|ENOENT/)
+  expect((await source(root).resolve(request('Roboto', 'A'))).fonts).toEqual([])
 })
 
-it('removing an older TTC copy preserves the latest path and face selected for its shared content', async () => {
+it('a new source selects a surviving TTC copy after the original disappears', async () => {
   const root = scratch('Faces.ttc')
   const service = source(root)
   const first = (await service.resolve({ ...request('Roboto', 'A'), mode: 'full' })).fonts[0]!
@@ -227,12 +225,12 @@ it('removing an older TTC copy preserves the latest path and face selected for i
   expect(second.id).toBe(first.id)
   expect(second.family).toBe('Noto Sans Devanagari')
   rmSync(join(root, 'Faces.ttc'))
-  // Refresh without selecting the shared asset again, so a stale-path removal cannot hide a lost current selection.
-  expect((await service.resolve({ ...request('Missing Family', '\u{10ffff}'), mode: 'full' })).fonts).toEqual([])
-  expect(Buffer.from(await service.read(second.id))).toEqual(readFileSync(copy))
+  await expect(service.read(second.id)).rejects.toThrow(/changed|ENOENT/)
+  const replacement = source(root)
+  const selected = (await replacement.resolve({ ...request('Noto Sans Devanagari', 'न'), mode: 'full' })).fonts[0]!
+  expect(Buffer.from(await replacement.read(selected.id))).toEqual(readFileSync(copy))
   rmSync(copy)
-  await service.resolve({ ...request('Missing Family', '\u{10ffff}'), mode: 'full' })
-  await expect(service.read(second.id)).rejects.toThrow(/not selected/)
+  await expect(replacement.read(selected.id)).rejects.toThrow(/changed|ENOENT/)
 })
 
 it('rejects an unknown asset mode before indexing any font files', async () => {

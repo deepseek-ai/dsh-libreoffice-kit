@@ -1,4 +1,4 @@
-/** Refreshable installed-font matching with deterministic, memory-bounded sfnt subsets. */
+/** Lifetime-scoped installed-font matching with deterministic, memory-bounded sfnt subsets. */
 import { createHash } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { extname } from 'node:path'
@@ -105,27 +105,15 @@ export class FontSubsetSource {
   }
 
   /**
-   * Refresh installed files and select whole Unicode-script subsets for matching physical faces.
+   * Select whole Unicode-script subsets from the source lifetime's installed-font snapshot.
    * @param request - Requested family/style attributes and Unicode scalars.
    * @returns reusable subset identities; unavailable characters remain unresolved.
    */
   async resolve(request: FontResolveRequest): Promise<FontResolution> {
     if (request.mode !== undefined && request.mode !== 'subset' && request.mode !== 'full') throw new TypeError('Unknown font asset mode.')
-    const snapshot = indexSystemFonts(this.options, this.snapshot)
-    if (this.catalog === undefined || snapshot.length !== this.snapshot.length || snapshot.some((face, index) => face !== this.snapshot[index])) {
-      const current = new Set(snapshot.map(face => fileIdentity(face)))
-      for (const [partition, selection] of this.partitions) {
-        if (current.has(fileIdentity(selection.face))) continue
-        this.partitions.delete(partition)
-        if (this.selected.get(selection.asset.id) === selection) this.selected.delete(selection.asset.id)
-        const bytes = this.cached.get(selection.key)
-        if (bytes !== undefined) {
-          this.cached.delete(selection.key)
-          this.cachedBytes -= bytes.byteLength
-        }
-      }
-      this.snapshot = snapshot
-      this.catalog = new SystemFontCatalog({ faces: snapshot, fallbackFamilies: this.options.fallbackFamilies, deduplicateBy: 'face' })
+    if (this.catalog === undefined) {
+      this.snapshot = indexSystemFonts(this.options)
+      this.catalog = new SystemFontCatalog({ faces: this.snapshot, fallbackFamilies: this.options.fallbackFamilies, deduplicateBy: 'face' })
     }
     const matched = this.catalog.match(request, new AbortController().signal)
     const fonts: FontAsset[] = []

@@ -5,7 +5,7 @@ import type { BrowserDocument, BrowserDocumentOptions, BrowserTile, BrowserTileR
 export { BrowserRenderError } from './types.ts'
 export { openOfficeDocument } from './office.ts'
 export type * from './office-types.ts'
-export type { BrowserDocument, BrowserDocumentOptions, BrowserEngineAssets, BrowserFontRequest, BrowserFontResult, BrowserPage, BrowserRenderErrorCode, BrowserTile, BrowserTileRequest } from './types.ts'
+export type { BrowserDocument, BrowserDocumentOptions, BrowserEngineAssets, BrowserFontIdentity, BrowserFontRequest, BrowserFontResult, BrowserPage, BrowserRenderErrorCode, BrowserResolvedFont, BrowserTile, BrowserTileRequest } from './types.ts'
 
 /**
  * Open a read-only document; each call owns an independent Worker.

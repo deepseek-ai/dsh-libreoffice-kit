@@ -119,18 +119,21 @@ it.each(['full', 'subset'] as const)('retains separate %s assets for two resourc
   expect(assets[0]!.id).not.toBe(assets[1]!.id)
   expect(generate).toHaveBeenCalledTimes(mode === 'full' ? 2 : 0)
 })
-it('retires both face selections when their shared TTC is replaced and resolves the new file', async () => {
+it('rejects replaced TTC selections until a new source captures the replacement', async () => {
   const { source, path } = fixture('Faces.ttc', 256 * 1024 * 1024)
   const previous = (await source.resolve({ ...attributes, mode: 'full', codePoints: [0x41, 0x928] })).fonts
   expect(previous).toHaveLength(2)
   expect(previous[0]!.id).toBe(previous[1]!.id)
   copyFileSync(join(fixtures, 'LatinGreek.ttf'), path)
   for (const asset of previous) await expect(source.read(asset.id)).rejects.toThrow(/changed/)
-  const current = (await source.resolve({ ...attributes, mode: 'full', codePoints: [0x41] })).fonts[0]!
+  await expect(source.resolve({ ...attributes, mode: 'full', codePoints: [0x41] })).rejects.toThrow(/changed/)
+  const refreshed = new FontSubsetSource({ directories: [join(path, '..')], fallbackFamilies: [], maxFiles: 20,
+    maxFileBytes: 256 * 1024 * 1024, maxCachedSubsetBytes: 256 * 1024 * 1024 })
+  const current = (await refreshed.resolve({ ...attributes, mode: 'full', codePoints: [0x41] })).fonts[0]!
   expect(current).toMatchObject({ family: 'Roboto', alias: 'Roboto', format: 'ttf' })
   expect(current.id).not.toBe(previous[0]!.id)
-  expect(Buffer.from(await source.read(current.id))).toEqual(readFileSync(path))
-  await expect(source.read(previous[0]!.id)).rejects.toThrow(/not selected/)
+  expect(Buffer.from(await refreshed.read(current.id))).toEqual(readFileSync(path))
+  await expect(refreshed.read(previous[0]!.id)).rejects.toThrow(/not selected/)
 })
 it('preload deduplicates full assets and enforces the byte budget before installation', () => {
   const { root } = fixture('LatinGreek.ttf')

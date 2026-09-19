@@ -37,7 +37,7 @@ Serve the resources declared in `assets.json` unchanged through `BrowserEngineAs
 
 Office starts its initial fallback-font request before loading engine assets so Host font discovery can overlap engine startup. The response uses the same bounded, cancellable channel as later requests.
 
-The browser font channel transfers each immutable font asset once per document. Later resolutions reference bytes that the Worker has already installed, including multiple family aliases in one TTC, without repeating the byte transfer or charging the font budget again. Installation failures and incomplete transfers do not create reusable identities. This transport detail does not change the Host font-provider request API.
+The browser font channel transfers each immutable font asset once per document. `resolveFonts(request, known, signal)` receives the installed identities and may return metadata-only references for them; new assets carry bytes. Later resolutions therefore avoid both Host downloads and Worker transfer, including multiple family aliases in one TTC. Installation failures and incomplete transfers do not create reusable identities.
 
 ## Building and qualification
 

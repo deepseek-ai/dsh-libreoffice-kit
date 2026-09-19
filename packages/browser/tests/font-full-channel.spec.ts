@@ -8,7 +8,7 @@ const defaultAttributes: BrowserFontRequest = { family: 'Test Sans', style: '', 
 const attributes: BrowserFontRequest = { ...defaultAttributes, mode: 'full' }
 const data = new Uint8Array([1, 2, 3])
 
-function channel(response: (input: BrowserFontRequest) => BrowserFontResult) {
+function channel(response: (input: BrowserFontRequest) => BrowserFontResult, limit = data.length) {
   const shared = new SharedArrayBuffer(FONT_HEADER_BYTES + FONT_CHUNK_BYTES)
   const { control, bytes } = fontViews(shared)
   let frames: ReturnType<typeof fontFrames>
@@ -27,7 +27,7 @@ function channel(response: (input: BrowserFontRequest) => BrowserFontResult) {
     frames = fontFrames(response(input), known)
     pump()
   })
-  const read = createFontReader(shared, 10, data.length, new Map(), request, pump, install, vi.fn())
+  const read = createFontReader(shared, 10, limit, new Map(), request, pump, install, vi.fn())
   return { read, install, request, transfers }
 }
 
@@ -64,6 +64,39 @@ it('transfers one TTC body for several face aliases in the same response under o
     { id: 'shared-collection', bytes: data.length, family: 'Test Serif', alias: 'Test Serif', format: 'ttc', reference: true },
     { id: 'shared-collection', bytes: data.length, family: 'Test Mono', alias: 'Test Mono', format: 'ttc', reference: true },
   ] })
+})
+
+it('accepts matching metadata-only references and rejects unknown references', () => {
+  const exchange = channel(input => input.codePoints.length === 0
+    ? { fonts: [{ id: 'shared', data, family: input.family, alias: input.family, format: 'ttc' }] }
+    : { fonts: [{ id: 'shared', bytes: data.length, family: input.family, alias: input.family, format: 'ttc' }] })
+  exchange.read(attributes)
+  expect(exchange.read({ ...attributes, family: 'Second', codePoints: [0x41] }))
+    .toEqual([{ path: '/usr/share/fonts/dsh-pdfium/0.ttc', family: 'Second' }])
+  expect(exchange.transfers.map(frames => frames.map(frame => frame.state))).toEqual([
+    [FontState.Header, FontState.Bytes, FontState.Done], [FontState.Header, FontState.Done],
+  ])
+  expect(() => [...fontFrames({ fonts: [{ id: 'unknown', bytes: 4, family: 'Test', alias: 'Test' }] })])
+    .toThrow('not been installed')
+})
+
+it('combines prior results when they cover a later request with the same attributes', () => {
+  const latin = { id: 'latin', data, family: 'Test Sans', alias: 'Latin' }
+  const greek = { id: 'greek', data: Uint8Array.of(4, 5), family: 'Test Sans', alias: 'Greek' }
+  const exchange = channel(input => ({ fonts: input.codePoints.includes(0x3a9) ? [greek] : [latin] }), 5)
+  exchange.read({ ...defaultAttributes, codePoints: [0x41] })
+  exchange.read({ ...defaultAttributes, codePoints: [0x3a9] })
+  expect(exchange.read({ ...defaultAttributes, codePoints: [0x3a9, 0x41, 0x41] })).toEqual([
+    { path: '/dsh-fonts/0.font', family: 'Latin' }, { path: '/dsh-fonts/1.font', family: 'Greek' },
+  ])
+  expect(exchange.request).toHaveBeenCalledTimes(2)
+})
+
+it('reuses a complete-font fallback for later code points', () => {
+  const exchange = channel(() => ({ fonts: [{ id: 'full', data, family: 'Test Sans', alias: 'Test Sans', format: 'ttf' }] }))
+  const first = exchange.read({ ...defaultAttributes, codePoints: [0x41] })
+  expect(exchange.read({ ...defaultAttributes, codePoints: [0x3a9] })).toEqual(first)
+  expect(exchange.request).toHaveBeenCalledOnce()
 })
 
 it.each([{ id: 'same', alias: 'Other' }, { id: 'other', alias: 'Subset' }])(

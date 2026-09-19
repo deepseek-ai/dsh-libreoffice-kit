@@ -64,7 +64,7 @@ export async function openBrowserConnection(options: BrowserDocumentOptions | Of
       case 'office-event': if (!closed) { onEvent?.(message.event); if (message.event.type === 'error') void dispose() }; return
       case 'font':
         if (closed) return
-        void Promise.resolve().then(() => options.resolveFonts(message.request, lifetime.signal)).then(result => {
+        void Promise.resolve().then(() => options.resolveFonts(message.request, message.known, lifetime.signal)).then(result => {
           if (closed) return
           frames = fontFrames(result, message.known)
           pumpFonts()

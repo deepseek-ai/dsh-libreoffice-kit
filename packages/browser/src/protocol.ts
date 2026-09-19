@@ -1,5 +1,5 @@
 /** Private messages exchanged by the document owner and its single engine Worker. */
-import type { BrowserDocumentOptions, BrowserFontRequest, BrowserPage, BrowserRenderErrorCode, BrowserTile, BrowserTileRequest } from './types.ts'
+import type { BrowserDocumentOptions, BrowserFontIdentity, BrowserFontRequest, BrowserPage, BrowserRenderErrorCode, BrowserTile, BrowserTileRequest } from './types.ts'
 import type { OfficeDocumentEvent, OfficeDocumentNavigation, OfficeDocumentOptions, OfficeDocumentState, OfficeDocumentPointer, OfficeDocumentLayoutRequest, OfficeDocumentLayoutResult, OfficeDocumentTileRequest, OfficeDocumentRectangle } from './office-types.ts'
 
 export const FONT_CHUNK_BYTES = 1024 * 1024
@@ -34,7 +34,7 @@ export type WorkerMessage =
   | { readonly type: 'font-next' }
   | { readonly type: 'missing-fonts'; readonly families: readonly string[] }
 /** Immutable bytes already installed in this document's MEMFS. */
-export interface FontIdentity { readonly id: string; readonly bytes: number; readonly format?: 'ttf' | 'otf' | 'ttc' }
+export type FontIdentity = BrowserFontIdentity
 export interface FontHeader {
   readonly fonts: readonly (FontIdentity & { readonly family: string; readonly alias: string; readonly reference?: true })[]
   readonly missingFamily?: string

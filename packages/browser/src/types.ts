@@ -23,9 +23,24 @@ export interface BrowserFontRequest {
   readonly codePoints: readonly number[]
 }
 
+/** Immutable font content already installed in one document Worker. */
+export interface BrowserFontIdentity {
+  readonly id: string
+  readonly bytes: number
+  readonly format?: 'ttf' | 'otf' | 'ttc'
+}
+
+/** One new font body or a metadata-only reference to content already installed in the Worker. */
+export type BrowserResolvedFont = {
+  readonly id: string
+  readonly family: string
+  readonly alias: string
+  readonly format?: 'ttf' | 'otf' | 'ttc'
+} & ({ readonly data: Uint8Array; readonly bytes?: never } | { readonly data?: never; readonly bytes: number })
+
 /** Immutable per-face font subsets; equal ids and aliases must identify equal bytes. */
 export interface BrowserFontResult {
-  readonly fonts: readonly { readonly id: string; readonly data: Uint8Array; readonly family: string; readonly alias: string; readonly format?: 'ttf' | 'otf' | 'ttc' }[]
+  readonly fonts: readonly BrowserResolvedFont[]
   readonly missingFamily?: string
   /** Missing scalars reported by the Host, independently of a substituted family. */
   readonly unresolvedCodePoints?: readonly number[]
@@ -67,7 +82,7 @@ export interface BrowserDocumentOptions {
   /** The same ordered substitution groups used by the Host font matcher. */
   readonly fontFallbacks: readonly (readonly string[])[]
   /** Match fonts without blocking the browser's main thread. */
-  readonly resolveFonts: (request: BrowserFontRequest, signal: AbortSignal) => Promise<BrowserFontResult>
+  readonly resolveFonts: (request: BrowserFontRequest, known: readonly BrowserFontIdentity[], signal: AbortSignal) => Promise<BrowserFontResult>
   /** Called with unavailable declared OOXML families; binary DOC/PPT have no font diagnostics. */
   readonly onMissingFonts?: (families: readonly string[]) => void
 }
