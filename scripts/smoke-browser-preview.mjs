@@ -140,7 +140,7 @@ try {
       for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;
       const options = { extension: format, assets, fontFallbacks, timeoutMs: 120000,
         maxLoadedFontBytes: 256 * 1024 * 1024, maxArchiveEntries: 20000, maxUncompressedBytes: 512 * 1024 * 1024,
-        resolveFonts: async (input, signal) => {
+        resolveFonts: async (input, _known, signal) => {
           const response = await fetch(`${origin}/resolve-fonts`, { method: 'POST', body: JSON.stringify(input), signal });
           if (!response.ok) throw new Error(await response.text());
           const result = await response.json();
