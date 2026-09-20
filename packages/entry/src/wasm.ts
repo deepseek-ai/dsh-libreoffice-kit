@@ -1,7 +1,7 @@
 /** Node-only LibreOffice module execution; the owner terminates this worker on cancellation. */
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename } from 'node:path'
 import { createFontLoader, memoryFontConfig, preloadFonts } from './font-loader.ts'
 import { preloadPdfFonts } from './font-full.ts'
 import { profileXml } from './profile.ts'
@@ -176,8 +176,11 @@ export async function withWasmSession<T>(request: Omit<WasmConversionRequest, 'o
       mainScriptUrlOrBlob: engine.loader,
       locateFile(name) {
         const file = basename(name)
-        if (![engine.loader, engine.data, engine.wasm, engine.metadata].some(path => basename(path) === file)) throw new Error(`LibreOffice requested an unlisted asset: ${file}`)
-        return join(dirname(engine.loader), file)
+        if (file === 'soffice.wasm') return engine.wasm
+        for (const asset of [engine.loader, engine.data, engine.wasm, engine.metadata]) {
+          if (basename(asset) === file) return asset
+        }
+        throw new Error(`LibreOffice requested an unlisted asset: ${file}`)
       },
       getPreloadedPackage: () => data,
       dshResolveSystemFonts(request) {

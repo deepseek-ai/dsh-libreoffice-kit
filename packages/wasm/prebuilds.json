@@ -6,7 +6,7 @@
   "engine": {
     "kind": "wasm",
     "loader": "assets/soffice.cjs",
-    "wasm": "assets/soffice.wasm",
+    "wasm": "assets/dsh-office.wasm",
     "data": "assets/soffice.data",
     "metadata": "assets/soffice.data.js.metadata",
     "programDirectory": "/instdir/program"

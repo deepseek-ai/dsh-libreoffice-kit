@@ -26,7 +26,7 @@ function options(): OfficeDocumentOptions {
   vi.stubGlobal('Worker', ReadingWorker); vi.stubGlobal('crossOriginIsolated', true)
   return { data: new Uint8Array([1]), extension: 'docx', timeoutMs: 1000, maxArchiveEntries: 100,
     maxUncompressedBytes: 1024, maxLoadedFontBytes: 1024, fontFallbacks: [], resolveFonts: async () => ({ fonts: [] }),
-    assets: { workerUrl: '/worker.js', loaderUrl: '/soffice.js', dataUrl: '/soffice.data', wasmUrl: '/soffice.wasm',
+    assets: { workerUrl: '/worker.js', loaderUrl: '/soffice.js', dataUrl: '/soffice.data', wasmUrl: '/dsh-office.wasm',
       metadataUrl: '/soffice.data.js.metadata', programDirectory: '/instdir/program' } }
 }
 afterEach(() => { vi.unstubAllGlobals(); ReadingWorker.instances = [] })
