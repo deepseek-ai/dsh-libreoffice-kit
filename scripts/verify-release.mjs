@@ -1,4 +1,5 @@
 /** A metadata check permits planned targets; a release check requires real payloads. */
+import { verifyBrowserPackage } from './build-browser.mjs';
 import { verifyKitMetadata } from './verify-kit.mjs';
 import { join } from 'node:path';
 import { assert, verifyEngineMetadata, verifyEnginePackage } from './verify-artifacts.mjs';
@@ -17,6 +18,9 @@ export function verifyRelease({ repo = root, platforms, metadataOnly = false } =
     'Release platform selection must be nonempty and unique');
   for (const platform of platforms) assert(platform === 'wasm' || Object.hasOwn(targets, platform), `Unknown release target: ${platform}`);
   assert(workspace.private === true && /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(workspace.version), 'The engine workspace must carry the family release version');
+  const browser = readJson(join(repo, 'packages/browser/package.json'));
+  assert(browser.private === true && browser.name === '@deepseek-ai/libreoffice-kit-browser-internal' && browser.version === workspace.version, 'Browser and engine family versions differ');
+  assert(browser.os === undefined && browser.cpu === undefined && browser.libc === undefined, 'Browser assets must be OS-independent');
   const matrix = packageMatrix(repo);
   assert(JSON.stringify(matrix.map((row) => row.prebuild.platform).sort()) === JSON.stringify([...Object.keys(targets), 'wasm'].sort()), 'Declared engine package matrix is incomplete or duplicated');
   for (const row of matrix) {
@@ -33,6 +37,7 @@ export function verifyRelease({ repo = root, platforms, metadataOnly = false } =
       assert(row, `Unknown release target: ${platform}`);
       verifyEnginePackage(row.dir);
     }
+    verifyBrowserPackage(join(repo, 'packages/entry'), join(repo, 'packages/wasm'));
   }
   return { version: workspace.version, check: metadataOnly ? 'metadata-only' : 'staged-artifacts', platforms: matrix.map((row) => ({ platform: row.prebuild.platform, status: row.prebuild.status })) };
 }

@@ -92,3 +92,17 @@ test('OIDC failures fail closed and suppress transport, response and token conte
     }
   }
 });
+
+test('browser staging verifies only the two requested portable packages', async () => {
+  const f = fixture();
+  const packages = ['@deepseek-ai/libreoffice-kit-wasm', '@deepseek-ai/libreoffice-kit'];
+  assert.deepEqual(await verifyNpmOidc({ ...f, packages }), { verifiedPackages: 2 });
+  assert.equal(f.calls.length, 4);
+  assert.ok(f.calls.filter(call => call.options.method === 'POST').every(call =>
+    packages.some(name => call.url.endsWith(encodeURIComponent(name)))));
+  for (const packages of [[], ['other-package'], ['@deepseek-ai/libreoffice-kit-browser', '@deepseek-ai/libreoffice-kit-browser']]) {
+    const invalid = fixture();
+    await assert.rejects(verifyNpmOidc({ ...invalid, packages }), /declared package names/);
+    assert.equal(invalid.calls.length, 0);
+  }
+});

@@ -1,6 +1,6 @@
 /** Conversion-local font imports and exact-family diagnostics. */
 import { extname } from 'node:path'
-import { SystemFontCatalog, fontFamilyPriority, normalize, readFont } from './fonts.ts'
+import { SystemFontCatalog, normalize, readFont } from './fonts.ts'
 import type { FontFace, FontMatchRequest } from './fonts.ts'
 import type { DocumentFontMetadata } from './ooxml.ts'
 import type { ResolvedOptions } from './options.ts'
@@ -80,18 +80,4 @@ export function preloadFonts(loader: FontLoader, options: ResolvedOptions, docum
   for (const family of families) loader.resolve({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: native ? document.codePoints : [] })
 }
 
-/**
- * Fontconfig XML restricts WASM discovery to imported originals in MEMFS.
- * @param families - Ordered family groups; the first name of each group is its canonical spelling.
- * @param requested - Additional family names the document declared.
- * @returns the fontconfig document written into the module's memory filesystem.
- */
-export function memoryFontConfig(families: readonly (readonly string[])[], requested: Iterable<string> = []): string {
-  const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;')
-  const names = [...new Map([...families.flatMap(group => group.slice(0, 1)), ...requested].map(name => [normalize(name), name])).values()]
-  const aliases = names.map((name) => {
-    const alternatives = fontFamilyPriority([name], families).filter(family => normalize(family) !== normalize(name))
-    return `<alias><family>${escape(name)}</family><accept>${alternatives.map(family => `<family>${escape(family)}</family>`).join('')}</accept></alias>`
-  })
-  return `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>/dsh-fonts</dir><cachedir>/dsh/font-cache</cachedir>${aliases.join('')}</fontconfig>`
-}
+export { memoryFontConfig } from './font-config.ts'

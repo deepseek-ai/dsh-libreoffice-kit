@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Current goal
 
-**Office conversion and spreadsheet recalculation in Node.js.** The Node API and public CLI use the same prebuilt LibreOffice engines. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
+**Office drawing, browser reading, conversion and spreadsheet recalculation using one portable WASM engine.** The Node API, public CLI and browser API share the same prebuilt LibreOffice engine. This repository owns the API, font loading, pinned LibreOffice source, patches, native helper, Node WebAssembly engine, and release packages.
 
 The priorities are document layout and readable text, explicit control over available fonts and substitutions, and an engine that applications can bundle and run offline. Size reduction serves that goal: retain the import, layout, drawing, and PDF-export machinery these documents need while removing unrelated desktop features and resources.
 
@@ -18,10 +18,10 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 
 ## Quick start
 
-Requires Linux and Node.js **22.19.0 or newer**. Install the `0.0.2-rc3` candidate package with its optional engines:
+Requires Node.js **22.19.0 or newer** on macOS, Windows or Linux. The main package requires its exact-version WASM dependency:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc3
+npm install @deepseek-ai/libreoffice-kit@0.0.2-rc7
 ```
 
 ```js
@@ -33,17 +33,23 @@ const converter = await createConverter({
   // fontDirectories: ['/absolute/path/to/fonts'],
 });
 try {
-  const result = await converter.render({
+  const result = await converter.renderImages({
     inputPath: '/private/work/document.docx',
-    outputPath: '/private/work/document.pdf',
+    outputDir: '/private/work/document-images',
   });
-  console.log(result.backend, result.missingFonts);
+  console.log(result.backend, result.images);
 } finally {
   await converter.dispose();
 }
 ```
 
-Supply absolute paths in caller-owned private directories; the output must not already exist. The PDF is written to `outputPath`, and `render` returns the selected backend and missing-font names. Each render owns a fresh native process or Node worker and private profile. Renders on one converter are serialized; cancellation and disposal wait for engine exit and cleanup. See the [Node API](packages/entry/README.md) for cancellation, errors, and resource limits.
+Supply absolute paths in caller-owned private directories; the output directory must not exist. `renderImages` writes PNG pages and returns their manifest without exporting PDF. DOCX uses pages, PPTX uses slides, and XLSX uses visible-sheet data areas or an explicit sheet/A1 range. The default is 144 DPI; large sheet regions split into bounded images with coordinates.
+
+```sh
+libreoffice-kit render --input /private/work/book.xlsx --output-dir /private/work/images --sheet Sheet1 --range A1:D20
+```
+
+Explicit `convert` to PDF and `recalculate` remain available. The compatibility API `render({inputPath, outputPath})` still exports PDF. Operations are serialized and cancellation/disposal join Worker exit. The browser entry at `@deepseek-ai/libreoffice-kit/browser` exposes retained read-only Office sessions, Writer continuous reflow and selection/copy; see [reading sessions](docs/browser-editing.md) and the [Node API](packages/entry/README.md).
 
 ## Font handling
 
@@ -52,23 +58,17 @@ Supply absolute paths in caller-owned private directories; the output must not a
 - **Make substitutions configurable.** Default `fontFallbacks` cover common Latin and Simplified Chinese families, including Carlito for missing Calibri and Caladea for missing Cambria. Caller-supplied groups replace the defaults. These preferences only select available fonts; they do not install them. See the [default groups](packages/entry/src/options.ts).
 - **Expose missing families and font budgets.** `missingFonts` reports unavailable families declared in readable document XML. `maxFontFiles`, `maxFontFileBytes`, and `maxLoadedFontBytes` bound indexing and explicit imports. A converter reuses its first font metadata snapshot; recreate it after changing fonts.
 
-No font collection is bundled or downloaded. Deployments supply fonts appropriate to their documents and redistribution rights; minimal containers need fonts installed or a configured font directory. WASM uses only imported fonts and rejects conversion with `unavailable` if none are usable. Native macOS and Windows can also use OS-managed fonts.
+No font collection is bundled or downloaded. Deployments supply fonts appropriate to their documents and redistribution rights; minimal containers need fonts installed or a configured font directory. WASM uses only imported fonts and rejects conversion with `unavailable` if none are usable.
 
-This improves control over font choice, but does not guarantee identical output to Microsoft Office or between engines. Native LibreOffice resolves installed originals and metric-compatible families before configured substitutions, and handles face selection itself. Font metrics can change line breaks and pagination; `missingFonts` is not a complete missing-glyph report. Comparing engines requires identical document bytes, fonts, and export options.
+This improves control over font choice, but does not guarantee identical output to Microsoft Office or between engines. Font metrics can change line breaks and pagination; `missingFonts` is not a complete missing-glyph report. Comparing engines requires identical document bytes, fonts, and export options.
 
 ## Engines and distribution
 
-The [Node package manifest](packages/entry/package.json) declares the released engine targets:
+Only two npm packages are published: `@deepseek-ai/libreoffice-kit` and `@deepseek-ai/libreoffice-kit-wasm`. Neither has an OS/CPU restriction. The main package includes Node/CLI, `./browser`, `./fonts` and `./browser-assets`; the large WASM payload exists only in its ordinary, exact-version dependency. Native recipes remain development tooling outside the released runtime.
 
-| Engine | Role |
-| --- | --- |
-| `@deepseek-ai/libreoffice-kit-wasm` | Shared Node WASM engine for Linux. |
+Office input is imported into LibreOffice and painted directly. Standalone PDF uses the same WASM module's dedicated PDFium page API, without PDF-to-Draw import. Browser Office font delivery uses subsets; PDFium preloads the configured complete fonts and prefers embedded fonts. This stage does not scan arbitrary PDFs for dynamic missing-glyph fallback.
 
-Native directories are development recipes, not additional released targets. The shared WASM package declares Linux as its npm OS, with no CPU or libc restriction; that declaration alone does not certify every Linux host. Native and WASM engines perform layout and PDF serialization on the CPU.
-
-This candidate publishes the Node API and Linux WASM engine only. npm installs `@deepseek-ai/libreoffice-kit-wasm` on Linux. macOS and Windows are not supported by this release; their development runtime still requires a separately prepared matching native engine and does not switch to WASM. A missing or invalid engine rejects `createConverter` with `unavailable`; conversion failures never switch engines.
-
-The Node API and engines share the kit version. Installation uses prepared packages; no install hook or conversion compiles LibreOffice, downloads extra engines, or discovers the user's LibreOffice installation. npm distributes standard `.tgz` packages. GitHub Release engine downloads use verified XZ transfer archives for application builders to prepare and bundle. See [packaging](docs/packaging.md) and [release procedures](docs/building.md) for these distribution paths and installed-conversion checks.
+Installations and document operations never compile or download engines, or discover a user's LibreOffice. Invalid/missing assets reject initialization. Release `.tgz` archives are independently installable with npm; a separate offline dependency bundle supports qualification. See [packaging](docs/packaging.md) and [release procedures](docs/building.md).
 
 ## What was reduced, and why
 

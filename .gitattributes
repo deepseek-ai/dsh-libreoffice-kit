@@ -1,2 +1,6 @@
+# The shared font receipt hashes this recipe before cross-platform verification.
+scripts/build-font-subset.mjs text eol=lf
 # Unified patches retain upstream whitespace in context and nested patch data.
 engine/**/*.patch -whitespace -text
+# The shared subset receipt hashes this recipe before cross-platform verification.
+scripts/build-font-subset.mjs text eol=lf

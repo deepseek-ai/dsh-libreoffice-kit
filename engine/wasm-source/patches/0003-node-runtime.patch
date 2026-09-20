@@ -7,7 +7,7 @@
 +$(eval $(call gb_Executable_add_ldflags,soffice_bin, \
 +    -sMODULARIZE=1 \
 +    -sEXPORT_NAME=createLibreOfficeModule \
-+    -sENVIRONMENT=node$(COMMA)worker \
++    -sENVIRONMENT=web$(COMMA)node$(COMMA)worker \
 +    -sSTACK_SIZE=1048576 \
 +    -sSTACK_OVERFLOW_CHECK=2 \
 +    -sALLOW_MEMORY_GROWTH=1 \
@@ -44,7 +44,7 @@
  
 --- a/desktop/util/Executable_soffice_bin-emscripten-exports
 +++ b/desktop/util/Executable_soffice_bin-emscripten-exports
-@@ -12,3 +12,10 @@
+@@ -12,3 +12,41 @@
  _lok_preinit_2
  _malloc
  _free
@@ -55,6 +55,37 @@
 +_dsh_lok_document_destroy
 +_dsh_lok_error
 +_dsh_lok_destroy
++_dsh_lok_document_initialize_rendering
++_dsh_lok_document_type
++_dsh_lok_document_parts
++_dsh_lok_document_page_rectangles
++_dsh_lok_document_size
++_dsh_lok_document_tile_mode
++_dsh_lok_document_paint
++_dsh_lok_document_save
++_dsh_lok_document_listen
++_dsh_lok_document_key
++_dsh_lok_document_mouse
++_dsh_lok_document_composition
++_dsh_lok_document_command
++_dsh_lok_document_command_values
++_dsh_lok_document_paste
++_dsh_lok_document_selection
++_dsh_lok_document_part
++_dsh_lok_document_part_name
++_dsh_lok_document_viewport
++_dsh_lok_pump
++_dsh_lok_document_part_info
++_dsh_lok_document_create_view
++_dsh_lok_document_get_view
++_dsh_lok_document_set_view
++_dsh_lok_document_destroy_view
++_dsh_pdf_open
++_dsh_pdf_page_count
++_dsh_pdf_page_size
++_dsh_pdf_paint
++_dsh_pdf_destroy
++_dsh_lok_document_configure_view
 --- a/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 +++ b/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 @@ -27,7 +27,7 @@

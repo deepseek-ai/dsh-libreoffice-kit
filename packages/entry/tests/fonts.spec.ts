@@ -2,19 +2,22 @@ import { expect, it } from 'vitest'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, extname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   absent, faceCoverage, faceMetrics, fontFamilyPriority, indexSystemFonts, indexedFace, normalize, readFont,
   mobileAssetFontDirectories, systemFontDirectories, SystemFontCatalog,
 } from '../src/fonts.ts'
+import { officeFontFace, officeFontFiles } from '../src/office-fonts.ts'
 import type { FontFace, FontMatchRequest } from '../src/fonts.ts'
 import type { Font } from 'fontkit'
 import { createFontLoader, memoryFontConfig, preloadFonts } from '../src/font-loader.ts'
 import { resolveOptions } from '../src/options.ts'
+import { fontScriptGroups, fontPreferences } from '../src/font-preferences.ts'
 
 function fontFace(family: string, characters: string, overrides: Partial<FontFace> = {}): FontFace {
   const coverage = Array.from(characters, character => [character.codePointAt(0) ?? 0, character.codePointAt(0) ?? 0] as [number, number])
   return { family, aliases: [normalize(family)], path: `${family}.ttf`, faceIndex: 0,
-    postscriptName: family, style: 'Regular', weight: 400, width: 5, italic: false, fixed: false,
+    postscriptName: family, style: 'Regular', weight: 400, width: 5, italic: false, fixed: false, decorative: false,
     size: 0, mtimeMs: 0, ctimeMs: 0, dev: 0, ino: 0, coverage, ...overrides }
 }
 
@@ -56,6 +59,33 @@ it('explicit installed families precede substitutions, including handwriting', (
   }
 })
 
+it.each(['', 'en-US', 'zh-CN', 'ko-KR'])('missing Carlito uses Korean body text independent of document language %j', (language) => {
+  const faces = [fontFace('Nanum Brush Script', '안녕', { path: '0-handwriting.ttc', decorative: true }),
+    fontFace('Arial', 'A'), fontFace('Apple SD Gothic Neo', '안녕'), fontFace('AppleMyungjo', '안녕')]
+  const attributes = { language, codePoints: [65, 0xc548, 0xb155] }
+  const result = matchFonts(faces, 'Carlito', {}, attributes)
+  expect(result.missingFamily).toBe('Carlito')
+  expect(result.fonts.map(face => face.family)).toEqual(['Arial', 'Apple SD Gothic Neo'])
+  expect(matchFonts(faces, 'serif', {}, attributes).fonts.map(face => face.family)).toEqual(['Arial', 'AppleMyungjo'])
+  expect(matchFonts(faces, 'monospace', {}, attributes).fonts.map(face => face.family)).toEqual(['Arial', 'Apple SD Gothic Neo'])
+})
+
+it.each(['Malgun Gothic', 'Noto Sans CJK KR', 'NanumGothic'])('Korean sans fallback uses %s when available', (family) => {
+  const faces = [fontFace('Nanum Brush Script', '안', { path: '0-handwriting.ttc', decorative: true }), fontFace(family, '안')]
+  expect(matchFonts(faces, 'Carlito', {}, { codePoints: [0xc548] }).fonts.map(face => face.family)).toEqual([family])
+})
+
+it('unlisted body faces outweigh handwriting locale/style scores without excluding unique glyphs', () => {
+  const faces = [fontFace('Unlisted Script KR', '안𐐀', { path: '0-script.ttf', decorative: true }),
+    fontFace('Unlisted Text', '안', { style: 'Medium', weight: 500 })]
+  const attributes = { language: 'ko-KR', style: 'Regular', codePoints: [0xc548, 0x10400] }
+  expect(matchFonts(faces, 'Carlito', {}, attributes).fonts.map(face => face.family))
+    .toEqual(['Unlisted Text', 'Unlisted Script KR'])
+  expect(matchFonts(faces, 'Unlisted Script KR', {}, attributes).fonts.map(face => face.family)).toEqual(['Unlisted Script KR'])
+  expect(matchFonts(faces, 'Carlito', { fontFallbacks: [['Carlito', 'Unlisted Script KR']] }, attributes).fonts.map(face => face.family))
+    .toEqual(['Unlisted Script KR'])
+})
+
 it('monospaced Latin uses common full-width CJK text before handwriting when CJK monospace is absent', () => {
   const faces = [fontFace('Courier New', 'A', { fixed: true }), fontFace('PingFang SC', '汉'),
     fontFace('Hannotate SC', '汉', { path: '0-handwriting.ttc' })]
@@ -93,6 +123,7 @@ it('WASM aliases include the same metric and CJK alternatives as matching', () =
   for (const [family, expected] of [
     ['Calibri', ['Carlito', 'PingFang SC']], ['Calibri Light', ['Carlito', 'PingFang SC']],
     ['Cambria', ['Caladea', 'Songti SC']], ['monospace', ['Courier New', 'Noto Sans Mono CJK SC']],
+    ['sans-serif', ['Arial', 'Apple SD Gothic Neo']], ['serif', ['Times New Roman', 'AppleMyungjo']],
   ] as const) {
     const alias = xml.match(new RegExp(`<alias><family>${family}</family><accept>(.*?)</accept></alias>`))?.[1]
     expect(alias, family).toBeTruthy()
@@ -144,6 +175,55 @@ it('macOS mobile font assets are discovered and sorted by name', () => {
   })
 })
 
+it('finds only common Office fonts from one macOS application and CloudFonts', () => {
+  withTemporaryDirectory((home) => {
+    const applications = join(home, 'Applications')
+    const word = join(applications, 'Microsoft Word.app/Contents/Resources/DFonts')
+    const excel = join(applications, 'Microsoft Excel.app/Contents/Resources/DFonts')
+    const cloud = join(home, 'Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts')
+    const preview = join(cloud, 'PreviewFont')
+    for (const directory of [word, excel, cloud, preview]) mkdirSync(directory, { recursive: true })
+    for (const [directory, name] of [[word, 'msyh.ttc'], [word, 'unrelated.ttf'], [excel, 'Calibri.ttf'],
+      [cloud, '26205970649.ttf'], [cloud, 'Aptos-Bold.ttf'], [cloud, 'msyh.ttc'],
+      [preview, 'Arial.ttf']] as const) writeFileSync(join(directory, name), 'font')
+    const files = officeFontFiles('darwin', home, {}, [applications])
+      .map(path => path.slice(home.length + 1).replaceAll('\\', '/'))
+    expect(files[0]).toBe('Applications/Microsoft Word.app/Contents/Resources/DFonts/msyh.ttc')
+    expect(files).toHaveLength(3)
+    expect(files).toEqual(expect.arrayContaining([
+      'Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/26205970649.ttf',
+      'Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/Aptos-Bold.ttf',
+    ]))
+    expect(officeFontFiles('linux', home, {}, [applications])).toEqual([])
+    expect(officeFontFiles('win32', 'C:\\Users\\example', { ProgramFiles: 'D:\\Programs',
+      'ProgramFiles(x86)': 'E:\\Programs', LOCALAPPDATA: 'D:\\Local' }, [])).toEqual([])
+    expect(officeFontFiles('win32', 'C:\\Users\\example', {}, [])).toEqual([])
+    expect(officeFontFace(fontFace('Microsoft YaHei', '中'))).toBe(true)
+    expect(officeFontFace(fontFace('Unrelated', 'A'))).toBe(false)
+  })
+})
+
+it('propagates irregular Office font roots instead of disclosing or skipping unexpected failures', () => {
+  withTemporaryDirectory((home) => {
+    const applications = join(home, 'Applications')
+    const parent = join(applications, 'Microsoft Word.app/Contents/Resources')
+    mkdirSync(parent, { recursive: true })
+    const loop = join(parent, 'DFonts')
+    symlinkSync(loop, loop)
+    expect(() => officeFontFiles('darwin', home, {}, [applications])).toThrow(/ELOOP/)
+  })
+})
+
+it('propagates unexpected CloudFonts traversal failures', () => {
+  withTemporaryDirectory((home) => {
+    const parent = join(home, 'Library/Group Containers/UBF8T346G9.Office')
+    mkdirSync(parent, { recursive: true })
+    const loop = join(parent, 'FontCache')
+    symlinkSync(loop, loop)
+    expect(() => officeFontFiles('darwin', home, {}, [])).toThrow(/ELOOP/)
+  })
+})
+
 it('known-absent filesystem failures are the only ones a font source tolerates', () => {
   const errno = (code: string) => Object.assign(new Error(code), { code })
   expect(absent(errno('ENOENT'))).toBe(true)
@@ -175,11 +255,19 @@ it('unreadable, missing, and non-font sources are skipped while real failures pr
 })
 
 it('VCL metrics default for faces without OS/2 or post tables and glyph decoding can reject', () => {
-  expect(faceMetrics({ 'OS/2': undefined, post: undefined })).toEqual({ weight: 400, width: 5, fixed: false })
-  expect(faceMetrics({ 'OS/2': { usWeightClass: 700, usWidthClass: 3 }, post: { isFixedPitch: 1 } }))
-    .toEqual({ weight: 700, width: 3, fixed: true })
+  expect(faceMetrics({ 'OS/2': undefined, post: undefined })).toEqual({ weight: 400, width: 5, fixed: false, decorative: false })
+  expect(faceMetrics({ 'OS/2': { usWeightClass: 700, usWidthClass: 3, sFamilyClass: 0, panose: [2] }, post: { isFixedPitch: 1 } }))
+    .toEqual({ weight: 700, width: 3, fixed: true, decorative: false })
   const damaged = { characterSet: [65], hasGlyphForCodePoint: () => { throw new Error('damaged cmap') } } as unknown as Font
   expect(faceCoverage(damaged)).toEqual([])
+})
+
+it.each([
+  [3, 0, true], [4, 0, true], [2, 9 << 8, true], [2, 10 << 8, true],
+  [2, 8 << 8, false], [0, 0, false],
+])('OS/2 design classification reads PANOSE %i and IBM family %i', (panose, sFamilyClass, decorative) => {
+  expect(faceMetrics({ 'OS/2': { usWeightClass: 400, usWidthClass: 5, panose: [panose], sFamilyClass }, post: undefined }).decorative)
+    .toBe(decorative)
 })
 
 it('regional priority prefers the requested writing system and stays neutral otherwise', () => {
@@ -188,12 +276,54 @@ it('regional priority prefers the requested writing system and stays neutral oth
     fontFace('Noto Sans JP', 'A汉', { path: 'NotoSansJP-Regular.otf' }),
     fontFace('Noto Sans KR', 'A汉', { path: 'NotoSansKR-Regular.otf' }),
     fontFace('Plain Face', 'A汉', { path: 'plain.ttf' })]
-  const select = (language: string) => matchFonts(faces, 'Missing Family', { fontFallbacks: [] }, { language, codePoints: [65] }).fonts[0]?.family
+  const select = (language: string) => matchFonts(faces, 'Missing Family', { fontFallbacks: [] }, { language, codePoints: [0x6c49] }).fonts[0]?.family
   expect(select('ja-JP')).toBe('Noto Sans JP')
   expect(select('ko-KR')).toBe('Noto Sans KR')
   expect(select('zh-TW')).toBe('Source Han Sans TC')
   expect(select('zh-CN')).toBe('Source Han Sans SC')
   expect(select('en-US')).toBe('Noto Sans JP')
+})
+
+it.each(['darwin', 'linux', 'win32'])('Han text follows accompanying Korean or Bopomofo on %s', (platform) => {
+  for (const [text, expected] of [['漢안', 'Noto Sans KR'], ['漢ㄅ', 'Noto Sans TC']] as const) {
+    const faces = ['Noto Sans SC', 'Noto Sans JP', 'Noto Sans TC', 'Noto Sans KR'].map(family => fontFace(family, text))
+    const result = new SystemFontCatalog({ faces, fallbackFamilies: [], platform })
+      .match(fontMatchRequest({ family: 'Carlito', language: 'en-US', codePoints: Array.from(text, character => character.codePointAt(0)!) }), new AbortController().signal)
+    expect(result.fonts.map(face => face.family), text).toEqual([expected])
+  }
+})
+
+it.each(['darwin', 'linux', 'win32'])('standalone kana and Bopomofo prefer their regional faces on %s', (platform) => {
+  for (const [text, expected] of [['あ', 'Noto Sans JP'], ['ア', 'Noto Sans JP'], ['ㄅ', 'Noto Sans TC']] as const) {
+    const faces = ['Noto Sans SC', 'Noto Sans JP', 'Noto Sans TC'].map(family => fontFace(family, text))
+    const result = new SystemFontCatalog({ faces, fallbackFamilies: [], platform })
+      .match(fontMatchRequest({ family: 'Carlito', language: 'en-US', codePoints: [text.codePointAt(0)!] }), new AbortController().signal)
+    expect(result.fonts.map(face => face.family), text).toEqual([expected])
+  }
+})
+
+it.each(['darwin', 'linux', 'win32'])('Hong Kong Han accepts Traditional Chinese before unknown and wrong regions on %s', (platform) => {
+  const choose = (families: string[]) => new SystemFontCatalog({ faces: families.map(family => fontFace(family, '漢')), fallbackFamilies: [], platform })
+    .match(fontMatchRequest({ family: 'Carlito', language: 'zh-HK', codePoints: [0x6f22] }), new AbortController().signal)
+    .fonts.map(face => face.family)
+  expect(choose(['Noto Sans SC', 'Unspecified Text', 'Noto Sans TC'])).toEqual(['Noto Sans TC'])
+  expect(choose(['Noto Sans SC', 'Unspecified Text'])).toEqual(['Unspecified Text'])
+  expect(choose(['Noto Sans SC', 'Unspecified Text', 'Noto Sans HK'])).toEqual(['Noto Sans HK'])
+})
+
+it.each(['darwin', 'linux', 'win32'])('Old Turkic uses the Chromium Orkhon font candidates on %s', (platform) => {
+  const faces = [fontFace('A Unlisted Body', '𐰀'), fontFace('Segoe UI Historic', '𐰀'), fontFace('Segoe UI Symbol', '𐰀')]
+  const result = new SystemFontCatalog({ faces, fallbackFamilies: [], platform })
+    .match(fontMatchRequest({ family: 'Missing Family', codePoints: [0x10c00] }), new AbortController().signal)
+  expect(result.fonts.map(face => face.family)).toEqual(['Segoe UI Historic'])
+})
+
+it('a configured monospaced generic keeps its explicit body face before system candidates', () => {
+  const faces = [fontFace('Noto Sans Mono CJK KR', '안', { fixed: true }), fontFace('Configured Mono', '안', { fixed: true })]
+  const result = matchFonts(faces, 'Document Mono', {
+    fontFallbacks: [['Document Mono', 'monospace'], ['monospace', 'Configured Mono']],
+  }, { language: 'en-US', codePoints: [0xc548] })
+  expect(result.fonts.map(face => face.family)).toEqual(['Configured Mono'])
 })
 
 it('an indexed face is located inside its file or reported as replaced', () => {
@@ -202,6 +332,46 @@ it('an indexed face is located inside its file or reported as replaced', () => {
   expect(() => indexedFace(parsed as unknown as Parameters<typeof indexedFace>[0], { faceIndex: 0, postscriptName: 'Other Face' }))
     .toThrow(/no longer available/)
   expect(() => indexedFace({ fonts: [] }, { faceIndex: 3, postscriptName: 'Missing Face' })).toThrow(/no longer available/)
+})
+
+it.each(['darwin', 'linux', 'win32'])('script body choices cover multilingual text on %s', (platform) => {
+  const cases = [
+    ['안', 'en-US', 'NanumGothic', 'Malgun Gothic'],
+    ['漢', 'ja-JP', 'Hiragino Sans', 'Meiryo'],
+    ['汉', 'zh-CN', 'PingFang SC', 'Microsoft YaHei'],
+    ['漢', 'zh-TW', 'PingFang TC', 'Microsoft JhengHei'],
+    ['س', 'ar', 'Kacst-Qr', 'Tahoma'],
+    ['न', 'hi', 'Raghindi', 'Nirmala UI'],
+    ['ก', 'th', 'Garuda', 'Tahoma'],
+  ]
+  for (const [text, language, unix, windows] of cases) {
+    const fonts = [fontFace('A Handwriting', text!, { decorative: true }), fontFace(unix!, text!), fontFace(windows!, text!)]
+    const result = new SystemFontCatalog({ faces: fonts, fallbackFamilies: resolveOptions().fontFallbacks, platform })
+      .match(fontMatchRequest({ family: 'Carlito', language: language!, codePoints: Array.from(text!, c => c.codePointAt(0)!) }), new AbortController().signal)
+    expect(result.fonts.map(face => face.family), `${platform}: ${language}`).toEqual([platform === 'win32' || language!.startsWith('zh') ? windows : unix])
+  }
+})
+
+it('script extensions keep Japanese marks with kana and preserve Unicode 17 scalars', () => {
+  expect([...fontScriptGroups([0x3042, 0x30fc, 0x1e6c0])]).toEqual([['Hiragana', [0x3042, 0x30fc]], ['Tai_Yo', [0x1e6c0]]])
+  expect(fontPreferences(fontMatchRequest({ family: 'Carlito', language: 'en-US' }), [], 'Han', ['Han', 'Katakana']).region).toBe('jp')
+  expect(fontPreferences(fontMatchRequest({ family: 'PingFang TC' }), [], 'Han', ['Han']).region).toBe('tc')
+})
+
+it('out-of-range numeric code points stay unknown without preventing valid glyph selection', () => {
+  const unknown = [-1, 0x110000, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]
+  const points = [65, ...unknown]
+  expect([...fontScriptGroups(points)]).toEqual([['Latin', [65]], ['Unknown', unknown]])
+  const result = matchFonts([fontFace('Arial', 'A')], 'Arial', {}, { language: 'en-US', codePoints: points })
+  expect(result.fonts.map(face => face.family)).toEqual(['Arial'])
+  expect(result.unresolvedCodePoints).toEqual(unknown)
+})
+
+it('Urdu body script faces remain eligible and uncovered characters are diagnosed', () => {
+  const faces = [fontFace('Urdu Nastaliq Unicode', 'س', { decorative: true }), fontFace('A Plain', 'س')]
+  const result = matchFonts(faces, 'serif', {}, { language: 'ur', codePoints: [0x633, 0x10ffff] })
+  expect(result.fonts[0]?.family).toBe('Urdu Nastaliq Unicode')
+  expect(result.unresolvedCodePoints).toEqual([0x10ffff])
 })
 
 it('the directory component of an unreadable path is not a font source', () => {
@@ -306,10 +476,21 @@ it('reading a replaced, irregular, or truncated indexed font rejects', () => {
     writeFileSync(path, 'four')
     const stat = statSync(path)
     const face: FontFace = { path, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, dev: stat.dev, ino: stat.ino,
-      faceIndex: 0, family: 'Face', style: 'Regular', aliases: ['face'], weight: 400, width: 5, italic: false, fixed: false,
+      faceIndex: 0, family: 'Face', style: 'Regular', aliases: ['face'], weight: 400, width: 5, italic: false, fixed: false, decorative: false,
       postscriptName: 'Face', coverage: [] }
     expect(readFont(face).toString()).toBe('four')
     expect(() => readFont({ ...face, path: root })).toThrow(/changed/)
+  })
+})
+
+it('reuses every unchanged face from a prior collection snapshot', () => {
+  withTemporaryDirectory((root) => {
+    const path = join(root, 'Faces.ttc')
+    copyFileSync(fileURLToPath(new URL('./fixtures/fonts/Faces.ttc', import.meta.url)), path)
+    const first = indexSystemFonts({ directories: [root], maxFiles: 2, maxFileBytes: 10_000_000 })
+    expect(first).toHaveLength(2)
+    const second = indexSystemFonts({ directories: [root], maxFiles: 2, maxFileBytes: 10_000_000 }, first)
+    expect(second[0]).toBe(first[0]); expect(second[1]).toBe(first[1])
   })
 })
 

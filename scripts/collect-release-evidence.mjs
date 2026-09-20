@@ -2,6 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { kitManifest, readJson, tarballName } from './platform-matrix.mjs';
+import { verifyBrowserReceipt } from './verify-browser-receipt.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
 
 const directory = resolve(process.argv[2]);
@@ -18,4 +19,6 @@ const platforms = release.platforms.map((platform) => {
     `Host receipt used different adapter bytes: ${platform}`);
   return receipt;
 });
-writeFileSync(join(directory, 'verification.json'), `${JSON.stringify({ sourceCommit, releaseManifestSha256, platforms }, null, 2)}\n`);
+const browser = readJson(join(directory, 'evidence/browser.json'));
+verifyBrowserReceipt(browser, { browserSha256: adapterSha256, wasmSha256: release.packages.find(record => record.platform === 'wasm').sha256, sourceCommit });
+writeFileSync(join(directory, 'verification.json'), `${JSON.stringify({ sourceCommit, releaseManifestSha256, platforms, browser }, null, 2)}\n`);

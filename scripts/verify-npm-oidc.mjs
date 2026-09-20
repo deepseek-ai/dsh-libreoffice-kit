@@ -23,7 +23,7 @@ async function requestJson(fetchImpl, url, options, expectedStatus, operation) {
  * that the publisher allows direct publishing instead of staging only.
  * https://api-docs.npmjs.com/#tag/OIDC/operation/exchangeOidcToken
  */
-export async function verifyNpmOidc({ env = process.env, fetchImpl = fetch } = {}) {
+export async function verifyNpmOidc({ env = process.env, fetchImpl = fetch, packages = [kitManifest().name, ...releaseTargets([]).map(platform => `${enginePrefix}-${platform}`)] } = {}) {
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_REPOSITORY !== sourceRepository) {
     throw new Error('npm OIDC verification requires this repository in GitHub Actions');
   }
@@ -41,7 +41,9 @@ export async function verifyNpmOidc({ env = process.env, fetchImpl = fetch } = {
     throw new Error('Invalid GitHub OIDC request URL');
   }
   tokenUrl.searchParams.set('audience', audience);
-  const packages = [kitManifest().name, ...releaseTargets([]).map(platform => `${enginePrefix}-${platform}`)];
+  const allowed = new Set([kitManifest().name, ...releaseTargets([]).map(platform => `${enginePrefix}-${platform}`)]);
+  if (!Array.isArray(packages) || packages.length === 0 || new Set(packages).size !== packages.length || packages.some(name => !allowed.has(name)))
+    throw new Error('npm OIDC verification requires declared package names');
   for (const name of packages) {
     const identity = await requestJson(fetchImpl, tokenUrl.href, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },

@@ -9,6 +9,8 @@ declare module 'fontkit' {
   interface OS2Table {
     readonly usWeightClass: number
     readonly usWidthClass: number
+    readonly sFamilyClass: number
+    readonly panose: readonly number[]
   }
 
   /** One physical face's `post` table. */
@@ -19,6 +21,8 @@ declare module 'fontkit' {
   /** One physical font face. */
   interface Font {
     readonly characterSet: number[]
+    /** Pinned fontkit parser's sfnt stream, used to extract Apple dfont resources. */
+    readonly stream: { readonly buffer: Uint8Array }
     readonly familyName: string
     readonly fullName: string | null
     readonly postscriptName: string | null
@@ -36,6 +40,7 @@ declare module 'fontkit' {
 
   /** A face collection (`.ttc`/`.otc`) and the faces it contains. */
   interface FontCollection {
+    readonly type: 'TTC' | 'DFont'
     readonly fonts: Font[]
   }
 

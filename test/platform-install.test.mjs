@@ -9,8 +9,8 @@ import { npm } from '../scripts/pack-utils.mjs';
 
 // Tiny package archives exercise npm's real OS/CPU selection without engine binaries or registry access.
 for (const [os, cpu, expected] of [
-  ['darwin', 'arm64', undefined], ['darwin', 'x64', undefined],
-  ['win32', 'arm64', undefined], ['win32', 'x64', undefined],
+  ['darwin', 'arm64', 'wasm'], ['darwin', 'x64', 'wasm'],
+  ['win32', 'arm64', 'wasm'], ['win32', 'x64', 'wasm'],
   ['linux', 'x64', 'wasm'], ['linux', 'arm64', 'wasm'],
 ]) test(`npm installs only ${expected ?? "no engine"} for ${os}/${cpu}`, t => {
   const work = mkdtempSync(join(tmpdir(), 'kit-platform-install-'));
@@ -18,18 +18,18 @@ for (const [os, cpu, expected] of [
   const entry = kitManifest();
   const declared = [...kitNativeTargets(entry), 'wasm'];
   const engines = packageMatrix().filter(row => declared.includes(row.prebuild.platform));
-  const optionalDependencies = {};
+  const dependencies = {};
   for (const { manifest, prebuild } of engines) {
     const archive = join(work, `${prebuild.platform}.tgz`);
     writeFileSync(archive, npmFixture(manifest));
-    optionalDependencies[manifest.name] = `file:${archive}`;
+    dependencies[manifest.name] = `file:${archive}`;
   }
   const adapter = join(work, 'adapter.tgz');
-  writeFileSync(adapter, npmFixture({ ...entry, dependencies: {}, optionalDependencies }));
+  writeFileSync(adapter, npmFixture({ ...entry, dependencies, optionalDependencies: {} }));
   const consumer = join(work, 'consumer');
   mkdirSync(consumer);
   writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies: { [entry.name]: `file:${adapter}` } }));
-  npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', `--os=${os}`, `--cpu=${cpu}`], consumer, work);
+  npm(['install', '--offline', '--ignore-scripts', '--package-lock=false', '--omit=optional', `--os=${os}`, `--cpu=${cpu}`], consumer, work);
   for (const { manifest, prebuild } of engines)
     assert.equal(existsSync(join(consumer, 'node_modules', manifest.name, 'package.json')), prebuild.platform === expected, manifest.name);
 });

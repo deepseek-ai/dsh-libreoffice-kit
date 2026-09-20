@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { browserReceiptFixture } from './release-browser-fixture.mjs';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,7 +38,7 @@ function fixture(t, changeManifest = manifest => manifest) {
   const adapterFile = tarballName(adapterManifest);
   writeFileSync(join(directory, adapterFile), npmFixture(adapterManifest, { 'package/lib/index.js': 'export const fixture = true;' }));
   const adapter = { sha256: sha256(join(directory, adapterFile)) };
-  save('verification.json', { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, platforms: platforms.map(platform => ({
+  save('verification.json', { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, browser: browserReceiptFixture(adapter.sha256, release.packages.find(record => record.platform === 'wasm').sha256, env.GITHUB_SHA), platforms: platforms.map(platform => ({
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
@@ -363,4 +364,16 @@ test('the Node API never accepts a gzip-only equivalence exception', async () =>
     assert.equal(args[2], 'dist.integrity');
     return args[1].startsWith(`${record.name}@`) ? present(integrityOf(remote)) : absent();
   }, download: async () => { assert.fail('only qualified engines may compare inner tar bytes'); } }), /already exists with different bytes/);
+});
+
+test('a rehashed main-package browser replacement cannot replace the qualified archive', async t => {
+  const { directory, destination, env, publication, savePublication } = fixture(t);
+  const record = publication.packages.at(-1);
+  assert.equal(record.name, '@deepseek-ai/libreoffice-kit');
+  const file = join(destination, record.file);
+  writeFileSync(file, npmFixture(record, { 'package/lib/browser/index.js': 'different browser' }));
+  record.bytes = statSync(file).size;
+  record.sha256 = sha256(file);
+  savePublication();
+  await assert.rejects(validateNpmPublication(directory, destination, env), /Node API differs/);
 });

@@ -7,6 +7,7 @@ import { assert, sha256 } from './verify-artifacts.mjs';
 import { auditReleaseCandidate } from './release-privacy.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
 import { enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
+import { verifyBrowserReceipt } from './verify-browser-receipt.mjs';
 import { verifyEngineArchiveRecord } from './engine-archive.mjs';
 
 /**
@@ -31,6 +32,7 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     verifyEngineArchiveRecord(record);
     assert(record.version === release.version && statSync(join(directory, record.file)).size === record.bytes && sha256(join(directory, record.file)) === record.sha256, `Invalid release tarball: ${record.file}`);
   }
+  assert(release.browser === undefined && release.fonts === undefined, 'Standalone browser/font packages are not part of this release');
   const evidence = readJson(join(directory, 'verification.json'));
   assert(evidence.sourceCommit === env.GITHUB_SHA && /^[a-f0-9]{40}$/.test(evidence.sourceCommit), 'Verification is not for this release commit');
   assert(evidence.releaseManifestSha256 === sha256(join(directory, 'release.json')), 'Verification belongs to different release bytes');
@@ -47,6 +49,8 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     assert(conversion?.embeddedGraphics?.pdfInEmf === true,
       `Missing embedded PDF graphic conversion evidence: ${platform}`);
   }
+  verifyBrowserReceipt(evidence.browser, { browserSha256: adapterSha256,
+    wasmSha256: release.packages.find(record => record.platform === 'wasm').sha256, sourceCommit: evidence.sourceCommit });
   auditReleaseCandidate(directory, release, undefined, { target });
   return release;
 }
@@ -97,7 +101,7 @@ export function writeReleaseNotes(work, manifest) {
     `| \`${record.platform}\` | \`${record.name}\` | ${record.bytes} | \`${record.sha256}\` |`);
   const file = join(work, 'release-notes.md');
   writeFileSync(file, [
-    'Office and OpenDocument conversion and spreadsheet recalculation for Node.js on Linux, through the public API and CLI. This candidate publishes the Node API and WASM engine only; macOS and Windows runtime migration is not included.',
+    'Read-only Office browsing, direct PNG rendering, format conversion and spreadsheet recalculation use the portable WASM engine. The existing main package contains the Node API, CLI, browser entry and font service; the existing WASM package contains the engine.',
     '',
     `Source: [${manifest.source.repository}@${manifest.source.commit}](https://github.com/${manifest.source.repository}/tree/${manifest.source.commit}). GitHub downloads require repository access. npm distribution uses standard .tgz packages; conversion runs without network access.`,
     '',
@@ -105,7 +109,7 @@ export function writeReleaseNotes(work, manifest) {
     '| --- | --- | ---: | --- |',
     ...rows,
     '',
-    '`artifact-manifest.json` records every published asset and `SHA256SUMS` verifies a download. The Node API and all declared prebuilt engines belong to this verified candidate. Engine archives retain their matching source recipes and license notices.',
+    '`artifact-manifest.json` records every published asset and `SHA256SUMS` verifies a download. The main package and portable WASM engine belong to this verified candidate. Engine archives retain their matching source recipes and license notices.',
     '',
   ].join('\n'));
   return file;

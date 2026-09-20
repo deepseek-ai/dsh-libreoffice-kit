@@ -41,7 +41,7 @@ async function fontFile(): Promise<FontFace> {
   return {
     path, dev, ino, size, mtimeMs, ctimeMs,
     faceIndex: 0, family: 'Fixture', style: 'Regular', aliases: ['fixture'],
-    weight: 400, width: 5, italic: false, fixed: false, postscriptName: 'Fixture-Regular',
+    weight: 400, width: 5, italic: false, fixed: false, decorative: false, postscriptName: 'Fixture-Regular',
   }
 }
 
@@ -70,10 +70,10 @@ it('skips nonregular sources and regular files without a font extension', async 
 it('retains physical face indices when decoding a font collection', async () => {
   const face = await fontFile()
   const font = (family: string) => ({
-    familyName: family, fullName: family, postscriptName: `${family}-Regular`, subfamilyName: 'Regular',
+    stream: { buffer: Uint8Array.of() }, familyName: family, fullName: family, postscriptName: `${family}-Regular`, subfamilyName: 'Regular',
     italicAngle: 0, 'OS/2': undefined, post: undefined, characterSet: [65], hasGlyphForCodePoint: () => true,
   })
-  vi.mocked(create).mockReturnValueOnce({ fonts: [font('First'), font('Second')] })
+  vi.mocked(create).mockReturnValueOnce({ type: 'TTC', fonts: [font('First'), font('Second')] })
   const canonical = realpathSync(face.path)
   expect(index(face.path)).toMatchObject([
     { family: 'First', faceIndex: 0, path: canonical },
@@ -101,7 +101,7 @@ it.each([undefined, { records: { fontFamily: { en: 'Fixture', undecoded: new Uin
   'keeps usable font aliases when optional names are absent or undecoded', async (name) => {
     const face = await fontFile()
     vi.mocked(create).mockReturnValueOnce({
-      ...(name === undefined ? {} : { name }), familyName: 'Fixture', fullName: null, postscriptName: null, subfamilyName: 'Regular',
+      stream: { buffer: Uint8Array.of() }, ...(name === undefined ? {} : { name }), familyName: 'Fixture', fullName: null, postscriptName: null, subfamilyName: 'Regular',
       italicAngle: 0, 'OS/2': undefined, post: undefined, characterSet: [], hasGlyphForCodePoint: () => false,
     })
     expect(index(face.path)).toMatchObject([{ family: 'Fixture', aliases: ['fixture'], postscriptName: null }])
@@ -160,4 +160,24 @@ it.each(['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'] as const)('rejects font %s 
   vi.mocked(fstatSync).mockReturnValueOnce(before).mockReturnValueOnce(after)
   expect(() => readFont(face)).toThrow('An indexed font changed while reading.')
   expect(closeSync).toHaveBeenCalledOnce()
+})
+
+it.each(['ENOENT', 'EIO'])('index refresh handles a file disappearing or failing with %s after enumeration', async code => {
+  const face = await fontFile()
+  const status = statSync(face.path)
+  const failure = Object.assign(new Error('refresh failed'), { code })
+  vi.mocked(statSync).mockReturnValueOnce(status).mockImplementationOnce(() => { throw failure })
+  const refresh = () => indexSystemFonts({ directories: [face.path], maxFiles: 10, maxFileBytes: 1024 }, [{ ...face, path: realpathSync(face.path) }])
+  if (code === 'ENOENT') expect(refresh()).toEqual([])
+  else expect(refresh).toThrow(failure)
+})
+
+it.each(['irregular', 'oversized'])('index refresh rechecks formerly indexed %s files', async change => {
+  const face = await fontFile()
+  const before = statSync(face.path)
+  const current = statSync(face.path)
+  if (change === 'irregular') current.isFile = () => false
+  else current.size = 2048
+  vi.mocked(statSync).mockReturnValueOnce(before).mockReturnValueOnce(current)
+  expect(indexSystemFonts({ directories: [face.path], maxFiles: 10, maxFileBytes: 1024 }, [{ ...face, path: realpathSync(face.path) }])).toEqual([])
 })

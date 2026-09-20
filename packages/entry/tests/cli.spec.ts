@@ -3,9 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { resolve } from 'node:path'
 
 const api = vi.hoisted(() => ({
-  convert: vi.fn(), recalculate: vi.fn(), dispose: vi.fn(), create: vi.fn(), discover: vi.fn(),
+  renderImages: vi.fn(), convert: vi.fn(), recalculate: vi.fn(), dispose: vi.fn(), create: vi.fn(), discover: vi.fn(),
 }))
 vi.mock('../src/index.ts', () => ({
+  IMAGE_FORMATS: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf'],
   CONVERSION_FORMATS: [{ inputs: ['docx'], outputs: ['pdf'] }],
   createConverter: api.create, discoverRuntime: api.discover,
 }))
@@ -26,7 +27,7 @@ beforeEach(() => {
     if (event === 'SIGINT') cancel = listener as () => void
     return process
   })
-  api.create.mockResolvedValue({ convert: api.convert, recalculate: api.recalculate, dispose: api.dispose })
+  api.create.mockResolvedValue({ renderImages: api.renderImages, convert: api.convert, recalculate: api.recalculate, dispose: api.dispose })
   api.convert.mockResolvedValue({ backend: 'native', missingFonts: [] })
   api.recalculate.mockResolvedValue({ backend: 'native', missingFonts: [] })
   api.discover.mockResolvedValue({ version: 'test', backend: 'wasm', cliPath: '/cli.js', nodeApiPath: '/index.js' })
@@ -42,6 +43,7 @@ async function run(args: string[]) {
 it('discovers capabilities without creating a converter', async () => {
   const result = await run(['capabilities', '--json'])
   expect(JSON.parse(result.stdout).runtime.backend).toBe('wasm')
+  expect(JSON.parse(result.stdout).imageRendering.maxDimension).toBe(8192)
   expect(api.create).not.toHaveBeenCalled()
 })
 it('passes conversion, limits, font configuration, and exact sheet names through the public API', async () => {
@@ -63,6 +65,7 @@ it.each([
   [['convert', '--input', 'a.docx', '--output', 'b.pdf', '--timeout-ms', 'abc'], /positive integer/],
   [['recalculate', '--input', 'a.xls', '--output', 'b.xlsx', '--sheet', 'Sheet1'], /only for CSV/],
   [['convert', '--unknown'], /Unknown option/],
+  [['convert', '--input', 'a.docx', '--output', 'b.pdf', '--max-dimension', '512'], /require the render/],
 ] as const)('rejects invalid CLI arguments %j', async (args, message) => {
   const result = await run([...args])
   expect(JSON.parse(result.stderr).error).toMatch(message)
@@ -82,4 +85,34 @@ it('reports converter failures including non-Error rejections', async () => {
   api.create.mockRejectedValue('unavailable engine')
   const result = await run(['convert', '--input', 'a.docx', '--output', 'b.pdf'])
   expect(JSON.parse(result.stderr)).toEqual({ code: 'failed', error: 'unavailable engine' })
+})
+it('renders a complete selected PNG batch through the existing converter with its limits', async () => {
+  api.renderImages.mockResolvedValue({ backend: 'wasm', rasterEngine: 'pdfium', source: 'saved', images: [] })
+  const result = await run(['render', '--input', 'a.pdf', '--output-dir', './images', '--pages', '3,1', '--dpi', '144',
+    '--max-pages', '4', '--max-pixels', '12345', '--max-dimension', '512', '--max-output-bytes', '67890', '--timeout-ms', '700'])
+  expect(api.create).toHaveBeenCalledWith({ maxOutputBytes: 67890, timeoutMs: 700 })
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.pdf'), outputDir: resolve('images'), pages: [3, 1], dpi: 144, maxPages: 4, maxPixels: 12345, maxDimension: 512 }, expect.any(AbortSignal))
+  expect(JSON.parse(result.stdout).rasterEngine).toBe('pdfium')
+  expect(api.dispose).toHaveBeenCalledOnce()
+})
+it.each([
+  [['render', '--input', 'a.pdf'], /requires --output-dir/],
+  [['render', '--input', 'a.pdf', '--output-dir', 'images', '--output', 'a.png'], /does not accept/],
+  [['convert', '--input', 'a.docx'], /--input and --output/],
+  [['render', '--input', 'a.pdf', '--output-dir', 'images', '--pages', '1,bad'], /--pages/],
+] as const)('rejects incomplete or conflicting image arguments %j', async (args, message) => {
+  const result = await run([...args])
+  expect(JSON.parse(result.stderr).error).toMatch(message)
+  expect(api.renderImages).not.toHaveBeenCalled()
+  if (api.create.mock.calls.length) expect(api.dispose).toHaveBeenCalledOnce()
+})
+it('preserves exact sheet selections and lets the API resolve omitted image limits', async () => {
+  api.renderImages.mockResolvedValue({ images: [] })
+  await run(['render', '--input', 'a.xlsx', '--output-dir', 'images', '--sheet', '表 A', '--range', '$B$2:C3'])
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.xlsx'), outputDir: resolve('images'), sheet: '表 A', range: '$B$2:C3' }, expect.any(AbortSignal))
+})
+it('forwards the explicit all-pages selector without treating it as a numeric list', async () => {
+  api.renderImages.mockResolvedValue({ images: [] })
+  await run(['render', '--input', 'a.pdf', '--output-dir', 'images', '--pages', 'all'])
+  expect(api.renderImages).toHaveBeenCalledWith({ inputPath: resolve('a.pdf'), outputDir: resolve('images'), pages: 'all' }, expect.any(AbortSignal))
 })
