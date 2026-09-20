@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
   "description": "WASM Office previews, document images, and conversion for Node and browsers",
-  "version": "0.0.2-rc6",
+  "version": "0.0.2-rc7",
   "publishConfig": {
     "access": "public"
   },

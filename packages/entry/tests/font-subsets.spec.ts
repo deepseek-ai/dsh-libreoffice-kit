@@ -170,6 +170,24 @@ it('keeps one installed-font snapshot and a new source observes later files', as
   await expect(service.read('unknown' as FontAssetId)).rejects.toThrow(/not selected/)
 })
 
+it('adds only missing families from the supplemental Office file list', async () => {
+  const primary = scratch('LatinGreek.ttf')
+  const supplemental = scratch('LatinGreek.ttf', 'Arabic.ttf')
+  const office = await import('../src/office-fonts.ts')
+  vi.spyOn(office, 'officeFontFiles').mockReturnValue([join(supplemental, 'LatinGreek.ttf'), join(supplemental, 'Arabic.ttf')])
+  vi.spyOn(office, 'officeFontFace').mockReturnValue(true)
+  const service = new FontSubsetSource({ directories: [primary], fallbackFamilies: [], maxFiles: 20,
+    maxFileBytes: 256 * 1024 * 1024, maxCachedSubsetBytes: 128 * 1024 * 1024, includeOfficeFonts: true })
+  service.prepare()
+  const snapshot = (service as unknown as { snapshot: readonly { family: string }[] }).snapshot
+  expect(snapshot.filter(face => face.family === 'Roboto')).toHaveLength(1)
+  expect(snapshot.some(face => face.family === 'Noto Nastaliq Urdu')).toBe(true)
+  const bounded = new FontSubsetSource({ directories: [primary], fallbackFamilies: [], maxFiles: 1,
+    maxFileBytes: 256 * 1024 * 1024, maxCachedSubsetBytes: 128 * 1024 * 1024, includeOfficeFonts: true })
+  bounded.prepare()
+  expect((bounded as unknown as { snapshot: readonly { family: string }[] }).snapshot).toHaveLength(1)
+})
+
 it('large font buffers grow the subset heap without losing glyph outlines', { timeout: 30_000 }, async () => {
   const original = readFileSync(join(fixtures, 'LatinGreek.ttf'))
   // Real collections can exceed the upstream module's fixed 65 MiB heap before glyph closure starts.

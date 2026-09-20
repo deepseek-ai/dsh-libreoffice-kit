@@ -4,8 +4,9 @@ import { BrowserRenderError } from './types.ts'
 import type { BrowserDocument, BrowserDocumentOptions, BrowserTile, BrowserTileRequest } from './types.ts'
 export { BrowserRenderError } from './types.ts'
 export { openOfficeDocument } from './office.ts'
+export { prepareOfficeBrowser } from './preparation.ts'
 export type * from './office-types.ts'
-export type { BrowserDocument, BrowserDocumentOptions, BrowserEngineAssets, BrowserFontIdentity, BrowserFontRequest, BrowserFontResult, BrowserPage, BrowserRenderErrorCode, BrowserResolvedFont, BrowserTile, BrowserTileRequest } from './types.ts'
+export type { BrowserDocument, BrowserDocumentOptions, BrowserEngineAssets, BrowserFontIdentity, BrowserFontRequest, BrowserFontResult, BrowserPage, BrowserRenderErrorCode, BrowserResolvedFont, BrowserTile, BrowserTileRequest, PreparedBrowserEngine } from './types.ts'
 
 /**
  * Open a read-only document; each call owns an independent Worker.

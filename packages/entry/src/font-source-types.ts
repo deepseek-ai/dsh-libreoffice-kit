@@ -44,6 +44,11 @@ export interface FontSource {
   /** Resolved ordered font family preferences shared with browser Fontconfig. */
   readonly fontFallbacks: readonly (readonly string[])[]
   /**
+   * Start the lifetime font snapshot without matching a document request.
+   * @param signal - Checked before dispatch and after the shared preparation settles.
+   */
+  prepare(signal?: AbortSignal): Promise<void>
+  /**
    * Select deterministic Unicode-script subsets using LibreOffice's requested attributes.
    * @param request - Family, style, language, and required Unicode scalars.
    * @param signal - Checked before dispatch and before publishing the result.
@@ -63,11 +68,13 @@ export interface FontSource {
 
 /** Parent-to-worker operations; neither message contains a caller-selected file path. */
 export type FontCommand =
+  | { readonly id: number; readonly kind: 'prepare' }
   | { readonly id: number; readonly kind: 'resolve'; readonly request: FontResolveRequest }
   | { readonly id: number; readonly kind: 'read'; readonly asset: FontAssetId }
 
 /** Worker replies retain their operation discriminator across structured cloning. */
 export type FontReply =
+  | { readonly id: number; readonly kind: 'prepared' }
   | { readonly id: number; readonly kind: 'resolved'; readonly value: FontResolution }
   | { readonly id: number; readonly kind: 'bytes'; readonly value: Uint8Array }
   | { readonly id: number; readonly kind: 'failed'; readonly message: string }

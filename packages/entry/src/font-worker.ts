@@ -11,12 +11,15 @@ const source = new FontSubsetSource(workerData as FontSubsetOptions)
 let queue = Promise.resolve()
 
 port.on('message', (command: FontCommand) => {
-  if (!Number.isSafeInteger(command?.id) || (command.kind !== 'resolve' && command.kind !== 'read')) {
+  if (!Number.isSafeInteger(command?.id) || !['prepare', 'resolve', 'read'].includes(command.kind)) {
     throw new Error('The font Worker received an invalid operation.')
   }
   queue = queue.then(async () => {
     try {
-      if (command.kind === 'resolve') {
+      if (command.kind === 'prepare') {
+        source.prepare()
+        port.postMessage({ id: command.id, kind: 'prepared' } satisfies FontReply)
+      } else if (command.kind === 'resolve') {
         const value = await source.resolve(command.request)
         port.postMessage({ id: command.id, kind: 'resolved', value } satisfies FontReply)
       } else {

@@ -52,6 +52,11 @@ it.each(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const)('enforces the re
   expect(f.reader.state.layout).toBe('paginated')
   expect(f.reader.state).not.toHaveProperty('revision'); expect(f.reader.state).not.toHaveProperty('commands')
 })
+it('rejects a presentation whose capture view cannot be created', async () => {
+  const f = fixture('pptx')
+  f.overrides.set('dsh_lok_document_create_view', -1)
+  await expect(f.reader.start()).rejects.toMatchObject({ code: 'render-failed' })
+})
 it.each(['input', 'command', 'paste', 'save', 'capture', 'composition', 'key'])('rejects legacy mutation operation %s before entering LibreOffice', async type => {
   const f = fixture(); await f.reader.start(); vi.mocked(f.module.ccall).mockClear()
   await expect(f.reader.operation({ type, event: { type: 'composition', text: '中文' }, command: '.uno:Bold' } as unknown as OfficeOperation)).rejects.toMatchObject({ code: 'render-failed' })

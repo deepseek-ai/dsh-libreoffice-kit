@@ -33,14 +33,16 @@ Writer starts in `paginated` layout. `setLayout({mode: 'continuous', width, anch
 
 Serve the resources declared in `assets.json` unchanged through `BrowserEngineAssets`. A secure cross-origin-isolated context is required (`COOP: same-origin`, `COEP: credentialless`), with a Content Security Policy permitting the engine Worker, nested pthread Workers and WebAssembly. The loader starts pthreads from the same loader URL; the Worker bundle has no external JavaScript imports.
 
+`prepareOfficeBrowser(assets, signal?)` compiles the WASM resource without creating a Worker or `WebAssembly.Memory`. Pass its opaque result as `preparedEngine` when opening documents. The handle is structured-cloned into each document Worker and must match the supplied WASM URL; omitting it retains on-demand compilation.
+
 `@deepseek-ai/libreoffice-kit/fonts` provides the shared Host font service. Office requests reusable subsets with canonical family names; PDFium requests original TTF/OTF/TTC bytes. The platform/script fallback rules and optional uncovered-code-point diagnostics are shared by Node, CLI and browser. Production fonts are not bundled. The main package owns `./browser`, `./browser-assets` and `./fonts`; the existing `-wasm` dependency owns the engine resources. No extra npm package is required.
 
-Office starts its initial fallback-font request before loading engine assets so Host font discovery can overlap engine startup. The response uses the same bounded, cancellable channel as later requests.
+Office starts its initial fallback-font request before loading engine assets so Host font discovery can overlap engine startup. For OOXML subset requests, the first request for one font-attribute and Unicode-script group covers that script's document repertoire; later calls use the installed coverage. The response uses the same bounded, cancellable channel as later requests.
 
 The browser font channel transfers each immutable font asset once per document. `resolveFonts(request, known, signal)` receives the installed identities and may return metadata-only references for them; new assets carry bytes. Later resolutions therefore avoid both Host downloads and Worker transfer, including multiple family aliases in one TTC. Installation failures and incomplete transfers do not create reusable identities.
 
 ## Building and qualification
 
-Build with `node scripts/build-browser.mjs --stage` after staging the version-matched WASM engine. `resolveBrowserAssets()` from `@deepseek-ai/libreoffice-kit/browser-assets` resolves and verifies resources from the two installed packages. Qualification must install archived packages outside the checkout and cover three-format reading, selection/copy, refusal of editing operations, Writer layouts, source-byte preservation and Worker disposal. Unit fixtures do not establish real-document fidelity or input latency.
+Build with `node scripts/build-browser.mjs --stage` after staging the version-matched WASM engine. `resolveBrowserAssets()` from `@deepseek-ai/libreoffice-kit/browser-assets` resolves and verifies resources from the two installed packages. Candidate verification caps the main archive at 512 KiB and the WASM archive at 60 MiB. Qualification must install archived packages outside the checkout and cover three-format reading, selection/copy, refusal of editing operations, Writer layouts, source-byte preservation and Worker disposal. Unit fixtures do not establish real-document fidelity or input latency.
 
 The Worker bundles fflate, saxes and xmlchars; notices are included under `licenses/javascript/`. The saxes 6.0.0 archive omits its license, so `third-party/saxes-6.0.0-LICENSE` preserves the [upstream versioned license](https://github.com/lddubeau/saxes/blob/v6.0.0/LICENSE).

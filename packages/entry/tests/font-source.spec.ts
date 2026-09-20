@@ -32,6 +32,7 @@ it('validates cache limits, copies options, and starts no Worker until needed', 
   const disposed = source.dispose()
   expect(source.dispose()).toBe(disposed)
   await disposed
+  await expect(source.prepare()).rejects.toThrow(/disposed/)
   await expect(source.resolve(request)).rejects.toThrow(/disposed/)
 })
 
@@ -50,6 +51,38 @@ it('pairs queued replies by identity and ignores replies for completed operation
     worker().emit('message', { id: command().id, kind: 'bytes', value: Uint8Array.of(1) })
     expect(await read).toEqual(Uint8Array.of(1))
     expect(state.workers).toHaveLength(1)
+  } finally { await source.dispose() }
+})
+
+it('shares font preparation, retries a failed scan, and observes caller cancellation after settlement', async () => {
+  const source = createFontSource()
+  try {
+    const first = source.prepare()
+    const second = source.prepare()
+    expect(worker().postMessage).toHaveBeenCalledOnce()
+    worker().emit('message', { id: command().id, kind: 'failed', message: 'scan failed' })
+    await expect(first).rejects.toThrow('scan failed')
+    await expect(second).rejects.toThrow('scan failed')
+    const abort = new AbortController()
+    const retried = source.prepare(abort.signal)
+    abort.abort(new Error('caller stopped'))
+    expect(worker().postMessage).toHaveBeenCalledTimes(2)
+    worker().emit('message', { id: command().id, kind: 'prepared' })
+    await expect(retried).rejects.toThrow('caller stopped')
+    await expect(source.prepare()).resolves.toBeUndefined()
+    expect(worker().postMessage).toHaveBeenCalledTimes(2)
+  } finally { await source.dispose() }
+})
+
+it('rejects a mismatched preparation reply and permits a later retry', async () => {
+  const source = createFontSource()
+  try {
+    const invalid = source.prepare()
+    worker().emit('message', { id: command().id, kind: 'resolved', value: { fonts: [] } })
+    await expect(invalid).rejects.toThrow(/wrong operation/)
+    const retry = source.prepare()
+    worker().emit('message', { id: command().id, kind: 'prepared' })
+    await expect(retry).resolves.toBeUndefined()
   } finally { await source.dispose() }
 })
 

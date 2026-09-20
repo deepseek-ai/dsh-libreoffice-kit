@@ -10,6 +10,10 @@ export interface BrowserEngineAssets {
   readonly programDirectory: string
 }
 
+declare const preparedBrowserEngine: unique symbol
+/** Compiled engine code bound to one WASM resource identity. */
+export interface PreparedBrowserEngine { readonly [preparedBrowserEngine]: true }
+
 /** VCL attributes passed unchanged to the Host's font matcher. */
 export interface BrowserFontRequest {
   readonly mode?: 'full'
@@ -71,6 +75,8 @@ export interface BrowserDocumentOptions {
   readonly data: Uint8Array
   readonly extension: 'pdf'
   readonly assets: BrowserEngineAssets
+  /** Optional compiled WASM code created by prepareOfficeBrowser for these assets. */
+  readonly preparedEngine?: PreparedBrowserEngine
   /** Maximum time for each load, render, font request, or teardown operation. */
   readonly timeoutMs: number
   /** Maximum ZIP entries inspected before LibreOffice loads OOXML. */

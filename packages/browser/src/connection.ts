@@ -3,6 +3,7 @@ import { FONT_CHUNK_BYTES, FONT_HEADER_BYTES, FontState } from './protocol.ts'
 import type { OwnerMessage, OwnerRequest, WorkerMessage, WorkerOptions } from './protocol.ts'
 import { fontFrames, fontViews } from './font-channel.ts'
 import { BrowserRenderError } from './types.ts'
+import { preparedBrowserModule } from './preparation.ts'
 import type { BrowserDocumentOptions } from './types.ts'
 import type { OfficeDocumentEvent, OfficeDocumentOptions } from './office-types.ts'
 
@@ -23,6 +24,7 @@ export async function openBrowserConnection(options: BrowserDocumentOptions | Of
   if (!globalThis.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined' || typeof Worker === 'undefined') throw new BrowserRenderError('unavailable', 'LibreOffice requires an isolated secure browser context with Worker and SharedArrayBuffer support.')
   if (![options.timeoutMs, options.maxLoadedFontBytes, options.maxArchiveEntries, options.maxUncompressedBytes].every(value => Number.isSafeInteger(value) && value > 0) || options.timeoutMs > 0x7fffffff) throw new TypeError('Document limits must be positive integers and timeoutMs must fit a browser timer.')
   if (!(office ? ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] : ['pdf']).includes(options.extension) || options.data.byteLength === 0) throw new BrowserRenderError('invalid-document', 'The document is empty or has an unsupported extension.')
+  if (options.preparedEngine !== undefined) preparedBrowserModule(options.preparedEngine, options.assets)
   const worker = new Worker(options.assets.workerUrl, { name: 'libreoffice-document' })
   const channel = new SharedArrayBuffer(FONT_HEADER_BYTES + FONT_CHUNK_BYTES)
   const { control, bytes } = fontViews(channel)
@@ -136,7 +138,10 @@ export async function openBrowserConnection(options: BrowserDocumentOptions | Of
 
   try {
     const data = new Uint8Array(options.data)
-    const engineOptions: WorkerOptions = { data, extension: options.extension, assets: options.assets, timeoutMs: options.timeoutMs, maxLoadedFontBytes: options.maxLoadedFontBytes, fontFallbacks: options.fontFallbacks, maxArchiveEntries: options.maxArchiveEntries, maxUncompressedBytes: options.maxUncompressedBytes }
+    const engineOptions: WorkerOptions = { data, extension: options.extension, assets: options.assets,
+      ...(options.preparedEngine === undefined ? {} : { preparedEngine: options.preparedEngine }),
+      timeoutMs: options.timeoutMs, maxLoadedFontBytes: options.maxLoadedFontBytes, fontFallbacks: options.fontFallbacks,
+      maxArchiveEntries: options.maxArchiveEntries, maxUncompressedBytes: options.maxUncompressedBytes }
     const result = await post({ type: 'open', id: ++sequence, options: engineOptions, channel, ...(office ? { office: true } : {}) }, [data.buffer])
     if (result.type !== 'opened') throw new BrowserRenderError('invalid-document', 'LibreOffice returned an unexpected load response.')
     opened = result

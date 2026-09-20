@@ -23,6 +23,7 @@ export function createFontSource(options: FontSourceOptions = {}): FontSource {
   let nextId = 0
   let failure: Error | undefined
   let closing: Promise<void> | undefined
+  let preparing: Promise<void> | undefined
   const pending = new Map<number, { resolve: (reply: FontReply) => void; reject: (reason: Error) => void }>()
 
   const fail = (error: Error): void => {
@@ -37,11 +38,12 @@ export function createFontSource(options: FontSourceOptions = {}): FontSource {
       execArgv: [], workerData: {
         directories: resolved.fontDirectories, fallbackFamilies: resolved.fontFallbacks,
         maxFiles: resolved.maxFontFiles, maxFileBytes: resolved.maxFontFileBytes, maxCachedSubsetBytes,
+        includeOfficeFonts: fontDirectories === undefined,
       },
     })
     worker.on('message', (value: unknown) => {
       if (typeof value !== 'object' || value === null || !('id' in value) || typeof value.id !== 'number'
-        || !('kind' in value) || !['resolved', 'bytes', 'failed'].includes(String(value.kind))) {
+        || !('kind' in value) || !['prepared', 'resolved', 'bytes', 'failed'].includes(String(value.kind))) {
         fail(new Error('The font Worker returned an invalid reply.'))
         void worker?.terminate()
         return
@@ -74,6 +76,22 @@ export function createFontSource(options: FontSourceOptions = {}): FontSource {
   }
   return {
     fontFallbacks: resolved.fontFallbacks,
+    async prepare(signal?: AbortSignal): Promise<void> {
+      signal?.throwIfAborted()
+      if (failure !== undefined) throw failure
+      if (preparing === undefined) {
+        const operation = call({ id: ++nextId, kind: 'prepare' }).then((reply) => {
+          if (reply.kind !== 'prepared') throw new Error('The font Worker returned the wrong operation.')
+        })
+        const shared = operation.catch((error: unknown) => {
+          preparing = undefined
+          throw error
+        })
+        preparing = shared
+      }
+      await preparing
+      signal?.throwIfAborted()
+    },
     async resolve(request: FontResolveRequest, signal?: AbortSignal): Promise<FontResolution> {
       const reply = await call({ id: ++nextId, kind: 'resolve', request }, signal)
       if (reply.kind !== 'resolved') throw new Error('The font Worker returned the wrong operation.')

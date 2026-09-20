@@ -2,10 +2,12 @@ import { expect, it } from 'vitest'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, extname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   absent, faceCoverage, faceMetrics, fontFamilyPriority, indexSystemFonts, indexedFace, normalize, readFont,
   mobileAssetFontDirectories, systemFontDirectories, SystemFontCatalog,
 } from '../src/fonts.ts'
+import { officeFontFace, officeFontFiles } from '../src/office-fonts.ts'
 import type { FontFace, FontMatchRequest } from '../src/fonts.ts'
 import type { Font } from 'fontkit'
 import { createFontLoader, memoryFontConfig, preloadFonts } from '../src/font-loader.ts'
@@ -170,6 +172,55 @@ it('macOS mobile font assets are discovered and sorted by name', () => {
     symlinkSync(loop, loop)
     expect(() => mobileAssetFontDirectories(loop)).toThrow(/ELOOP/)
     rmSync(loop)
+  })
+})
+
+it('finds only common Office fonts from one macOS application and CloudFonts', () => {
+  withTemporaryDirectory((home) => {
+    const applications = join(home, 'Applications')
+    const word = join(applications, 'Microsoft Word.app/Contents/Resources/DFonts')
+    const excel = join(applications, 'Microsoft Excel.app/Contents/Resources/DFonts')
+    const cloud = join(home, 'Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts')
+    const preview = join(cloud, 'PreviewFont')
+    for (const directory of [word, excel, cloud, preview]) mkdirSync(directory, { recursive: true })
+    for (const [directory, name] of [[word, 'msyh.ttc'], [word, 'unrelated.ttf'], [excel, 'Calibri.ttf'],
+      [cloud, '26205970649.ttf'], [cloud, 'Aptos-Bold.ttf'], [cloud, 'msyh.ttc'],
+      [preview, 'Arial.ttf']] as const) writeFileSync(join(directory, name), 'font')
+    const files = officeFontFiles('darwin', home, {}, [applications])
+      .map(path => path.slice(home.length + 1).replaceAll('\\', '/'))
+    expect(files[0]).toBe('Applications/Microsoft Word.app/Contents/Resources/DFonts/msyh.ttc')
+    expect(files).toHaveLength(3)
+    expect(files).toEqual(expect.arrayContaining([
+      'Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/26205970649.ttf',
+      'Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/Aptos-Bold.ttf',
+    ]))
+    expect(officeFontFiles('linux', home, {}, [applications])).toEqual([])
+    expect(officeFontFiles('win32', 'C:\\Users\\example', { ProgramFiles: 'D:\\Programs',
+      'ProgramFiles(x86)': 'E:\\Programs', LOCALAPPDATA: 'D:\\Local' }, [])).toEqual([])
+    expect(officeFontFiles('win32', 'C:\\Users\\example', {}, [])).toEqual([])
+    expect(officeFontFace(fontFace('Microsoft YaHei', '中'))).toBe(true)
+    expect(officeFontFace(fontFace('Unrelated', 'A'))).toBe(false)
+  })
+})
+
+it('propagates irregular Office font roots instead of disclosing or skipping unexpected failures', () => {
+  withTemporaryDirectory((home) => {
+    const applications = join(home, 'Applications')
+    const parent = join(applications, 'Microsoft Word.app/Contents/Resources')
+    mkdirSync(parent, { recursive: true })
+    const loop = join(parent, 'DFonts')
+    symlinkSync(loop, loop)
+    expect(() => officeFontFiles('darwin', home, {}, [applications])).toThrow(/ELOOP/)
+  })
+})
+
+it('propagates unexpected CloudFonts traversal failures', () => {
+  withTemporaryDirectory((home) => {
+    const parent = join(home, 'Library/Group Containers/UBF8T346G9.Office')
+    mkdirSync(parent, { recursive: true })
+    const loop = join(parent, 'FontCache')
+    symlinkSync(loop, loop)
+    expect(() => officeFontFiles('darwin', home, {}, [])).toThrow(/ELOOP/)
   })
 })
 
@@ -429,6 +480,17 @@ it('reading a replaced, irregular, or truncated indexed font rejects', () => {
       postscriptName: 'Face', coverage: [] }
     expect(readFont(face).toString()).toBe('four')
     expect(() => readFont({ ...face, path: root })).toThrow(/changed/)
+  })
+})
+
+it('reuses every unchanged face from a prior collection snapshot', () => {
+  withTemporaryDirectory((root) => {
+    const path = join(root, 'Faces.ttc')
+    copyFileSync(fileURLToPath(new URL('./fixtures/fonts/Faces.ttc', import.meta.url)), path)
+    const first = indexSystemFonts({ directories: [root], maxFiles: 2, maxFileBytes: 10_000_000 })
+    expect(first).toHaveLength(2)
+    const second = indexSystemFonts({ directories: [root], maxFiles: 2, maxFileBytes: 10_000_000 }, first)
+    expect(second[0]).toBe(first[0]); expect(second[1]).toBe(first[1])
   })
 })
 

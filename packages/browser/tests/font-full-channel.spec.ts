@@ -8,7 +8,8 @@ const defaultAttributes: BrowserFontRequest = { family: 'Test Sans', style: '', 
 const attributes: BrowserFontRequest = { ...defaultAttributes, mode: 'full' }
 const data = new Uint8Array([1, 2, 3])
 
-function channel(response: (input: BrowserFontRequest) => BrowserFontResult, limit = data.length) {
+function channel(response: (input: BrowserFontRequest) => BrowserFontResult, limit = data.length,
+  documentCodePoints: readonly number[] = []) {
   const shared = new SharedArrayBuffer(FONT_HEADER_BYTES + FONT_CHUNK_BYTES)
   const { control, bytes } = fontViews(shared)
   let frames: ReturnType<typeof fontFrames>
@@ -27,7 +28,7 @@ function channel(response: (input: BrowserFontRequest) => BrowserFontResult, lim
     frames = fontFrames(response(input), known)
     pump()
   })
-  const read = createFontReader(shared, 10, limit, new Map(), request, pump, install, vi.fn())
+  const read = createFontReader(shared, 10, limit, new Map(), request, pump, install, vi.fn(), documentCodePoints)
   return { read, install, request, transfers }
 }
 
@@ -97,6 +98,27 @@ it('reuses a complete-font fallback for later code points', () => {
   const first = exchange.read({ ...defaultAttributes, codePoints: [0x41] })
   expect(exchange.read({ ...defaultAttributes, codePoints: [0x3a9] })).toEqual(first)
   expect(exchange.request).toHaveBeenCalledOnce()
+})
+
+it('resolves each document script once for a subset attribute group', () => {
+  const exchange = channel(() => ({ fonts: [{ id: 'document', data, family: 'Test Sans', alias: 'Document' }] }),
+    data.length, [0x3a9, 0x42, 0x41, 0x3a9])
+  const first = exchange.read({ ...defaultAttributes, codePoints: [0x41] })
+  expect(exchange.read({ ...defaultAttributes, codePoints: [0x42] })).toEqual(first)
+  exchange.read({ ...defaultAttributes, codePoints: [0x3a9] })
+  expect(exchange.request.mock.calls.map(([request]) => request.codePoints)).toEqual([[0x41, 0x42], [0x3a9]])
+  const full = channel(() => ({ fonts: [{ id: 'full-document', data, family: 'Test Sans', alias: 'Test Sans', format: 'ttf' }] }),
+    data.length, [0x3a9])
+  full.read({ ...attributes, codePoints: [0x41] })
+  expect(full.request).toHaveBeenCalledWith({ ...attributes, codePoints: [0x41] }, [])
+})
+
+it('batches unlisted scripts by Unicode block without merging adjacent blocks', () => {
+  const exchange = channel(() => ({ fonts: [{ id: 'other', data, family: 'Test Sans', alias: 'Other' }] }),
+    data.length, [0x10400, 0x10401, 0x10500])
+  exchange.read({ ...defaultAttributes, codePoints: [0x10400] })
+  exchange.read({ ...defaultAttributes, codePoints: [0x10500] })
+  expect(exchange.request.mock.calls.map(([request]) => request.codePoints)).toEqual([[0x10400, 0x10401], [0x10500]])
 })
 
 it.each([{ id: 'same', alias: 'Other' }, { id: 'other', alias: 'Subset' }])(

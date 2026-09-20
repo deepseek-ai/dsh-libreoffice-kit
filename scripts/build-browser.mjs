@@ -56,7 +56,7 @@ export function verifyBrowserPackage(target = directory, engineDirectory = join(
   for (const helper of helpers) regularFile(target, `lib/${helper}.js`);
   const declarations = join(target, 'lib/browser/types');
   const declarationText = readdirSync(declarations).filter(name => name.endsWith('.d.ts')).map(name => readFileSync(join(declarations, name), 'utf8')).join('\n');
-  assert(declarationText.includes('openOfficeDocument') && !declarationText.includes('openEditor')
+  assert(declarationText.includes('openOfficeDocument') && declarationText.includes('prepareOfficeBrowser') && !declarationText.includes('openEditor')
     && !readdirSync(declarations).some(name => name.startsWith('editor')), 'Browser package retains a removed editing SDK');
   const receipt = readJson(regularFile(target, 'lib/browser/assets.json'));
   const worker = receipt.files?.worker;

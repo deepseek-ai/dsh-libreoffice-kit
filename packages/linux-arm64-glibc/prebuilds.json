@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.0.2-rc6",
+  "version": "0.0.2-rc7",
   "platform": "linux-arm64-glibc",
   "status": "unbuilt",
   "engine": {

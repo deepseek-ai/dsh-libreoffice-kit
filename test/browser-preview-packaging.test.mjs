@@ -1,12 +1,12 @@
 /** Independent preview distribution rejects missing bytes and native dependency coupling. */
 import assert from 'node:assert/strict';
 import { browserReceiptFixture } from './release-browser-fixture.mjs';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { verifyFontMetadata, verifyFontPackage } from '../scripts/build-fonts.mjs';
-import { verifyBrowserPreview } from '../scripts/verify-browser-preview.mjs';
+import { BROWSER_PREVIEW_MAX_BYTES, verifyBrowserPreview } from '../scripts/verify-browser-preview.mjs';
 import { verifyBrowserReceipt } from '../scripts/verify-browser-receipt.mjs';
 import { readJson, root, tarballName } from '../scripts/platform-matrix.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
@@ -59,6 +59,17 @@ test('preview verification rejects changed archives, wrong font evidence and inj
   delete candidate.packages.native; save();
   writeFileSync(join(directory, candidate.packages.wasm.file), 'changed archive');
   assert.throws(() => verifyBrowserPreview(directory), /archive checksum differs/);
+});
+
+test('preview verification bounds the existing main and WASM package archives', t => {
+  for (const kind of ['kit', 'wasm']) {
+    const { directory, candidate, save } = candidateFixture(t);
+    const record = candidate.packages[kind];
+    record.bytes = BROWSER_PREVIEW_MAX_BYTES[kind] + 1;
+    truncateSync(join(directory, record.file), record.bytes);
+    save();
+    assert.throws(() => verifyBrowserPreview(directory), new RegExp(`${kind} size budget`));
+  }
 });
 
 

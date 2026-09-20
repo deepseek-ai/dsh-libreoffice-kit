@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openDocument } from '../src/index.ts'
 import { openOfficeDocument } from '../src/office.ts'
+import { prepareOfficeBrowser } from '../src/preparation.ts'
 import type { OfficeDocumentState } from '../src/office-types.ts'
 import type { BrowserDocumentOptions } from '../src/types.ts'
 import { FONT_CHUNK_BYTES, FontState } from '../src/protocol.ts'
@@ -53,6 +54,21 @@ describe('browser document ownership', () => {
     await first
     expect(worker.terminated).toBe(true)
     await expect(document.renderTile({ pageIndex: 0, x: 0, y: 0, width: 10, height: 10, scale: 1 })).rejects.toMatchObject({ code: 'disposed' })
+  })
+  it('clones a matching precompiled module into the document Worker', async () => {
+    supported()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0),
+      { headers: { 'content-type': 'application/wasm' } })))
+    const input = options()
+    const preparedEngine = await prepareOfficeBrowser(input.assets)
+    const document = await openDocument({ ...input, preparedEngine })
+    const opened = ControlledWorker.instances[0]!.messages[0]!
+    expect(opened.type).toBe('open')
+    if (opened.type === 'open') expect((opened.options.preparedEngine as unknown as { module: unknown }).module)
+      .toBeInstanceOf(WebAssembly.Module)
+    await document.dispose()
+    await expect(openDocument({ ...input, preparedEngine, assets: { ...input.assets, wasmUrl: '/other.wasm' } }))
+      .rejects.toThrow(/does not match/)
   })
   it('serializes tiles while cancellation discards only the obsolete result', async () => {
     supported()

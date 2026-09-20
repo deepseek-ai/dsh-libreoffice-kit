@@ -133,7 +133,8 @@ try {
       const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('');
       check(crossOriginIsolated, 'Preview is not cross-origin isolated');
       const api = await import(`${origin}/browser/lib/browser/index.js`);
-      check(typeof api.openOfficeDocument === 'function' && !('openEditor' in api), 'Installed package still exposes the editing SDK');
+      check(typeof api.openOfficeDocument === 'function' && typeof api.prepareOfficeBrowser === 'function'
+        && !('openEditor' in api), 'Installed package has an invalid browser API');
       const manifest = await (await fetch(`${origin}/assets.json`)).json();
       const assets = { programDirectory: manifest.programDirectory };
       for (const [name, file] of Object.entries(manifest.files)) assets[`${name}Url`] = `${origin}/asset/${file.path}`;

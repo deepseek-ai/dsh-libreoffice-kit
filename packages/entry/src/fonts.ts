@@ -64,6 +64,7 @@ export interface SystemFontCatalogOptions {
 /** Host font roots and physical file limits. */
 export interface FontIndexOptions {
   readonly directories: readonly string[]
+  readonly files?: readonly string[]
   readonly maxFiles: number
   readonly maxFileBytes: number
 }
@@ -299,7 +300,7 @@ export function indexSystemFonts(options: FontIndexOptions, previous: readonly F
     if (group) group.push(face)
     else reusable.set(face.path, [face])
   }
-  return fontPaths(options.directories, options.maxFiles).flatMap((path) => {
+  return fontPaths([...options.directories, ...(options.files ?? [])], options.maxFiles).flatMap((path) => {
     const prior = reusable.get(path)
     if (prior !== undefined) {
       let current: Stats

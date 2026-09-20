@@ -2,6 +2,7 @@
 import { inspectDocument } from '@deepseek-ai/libreoffice-kit/document-inspection'
 import { memoryFontConfig } from '@deepseek-ai/libreoffice-kit/font-config'
 import { createFontReader } from './font-channel.ts'
+import { instantiatePreparedModule, preparedBrowserModule } from './preparation.ts'
 import { BrowserRenderError } from './types.ts'
 import type { BrowserRenderErrorCode, BrowserTileRequest } from './types.ts'
 import type { OwnerMessage, WorkerMessage, WorkerOptions } from './protocol.ts'
@@ -39,6 +40,7 @@ function error(code: BrowserRenderErrorCode): BrowserRenderError {
 
 async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading = false): Promise<void> {
   const { assets } = options
+  const prepared = options.preparedEngine === undefined ? undefined : preparedBrowserModule(options.preparedEngine, assets)
   let metadata: ReturnType<typeof inspectDocument>
   try { metadata = options.extension === 'pdf' ? { families: new Map(), codePoints: [] } : inspectDocument(options.data, options.extension, options) } catch (failure) { throw new BrowserRenderError('invalid-document', failure instanceof Error ? failure.message : String(failure)) }
   const initialFont = { family: 'sans-serif', style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }
@@ -66,6 +68,10 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading 
       }
     },
     getPreloadedPackage: () => data,
+    ...(prepared === undefined ? {} : { instantiateWasm(imports: WebAssembly.Imports,
+      receive: (instance: WebAssembly.Instance, compiled: WebAssembly.Module) => void) {
+      return instantiatePreparedModule(prepared, imports, receive)
+    } }),
     dshResolveSystemFontFaces(request: Parameters<NonNullable<typeof resolveFonts>>[0]) {
       if (!resolveFonts) throw new BrowserRenderError('font-unavailable', 'LibreOffice requested fonts before MEMFS initialization.')
       try { return resolveFonts(request) } catch (failure) { fontFailure = failure; throw failure }
@@ -79,7 +85,7 @@ async function open(options: WorkerOptions, channel: SharedArrayBuffer, reading 
           if (initialFontPending) initialFontPending = false
           else send({ type: 'font', request, known })
         }, () => send({ type: 'font-next' }),
-        (path, bytes) => loaded.FS.writeFile(path, bytes), families => send({ type: 'missing-fonts', families }))
+        (path, bytes) => loaded.FS.writeFile(path, bytes), families => send({ type: 'missing-fonts', families }), metadata.codePoints)
       if (options.extension === 'pdf') {
         for (const family of new Set(options.fontFallbacks.flat())) resolveFonts({ ...initialFont, family, mode: 'full' })
       } else resolveFonts(initialFont)

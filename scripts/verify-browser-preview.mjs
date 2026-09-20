@@ -7,6 +7,8 @@ import { assert, sha256 } from './verify-artifacts.mjs';
 import { verifyBrowserReceipt } from './verify-browser-receipt.mjs';
 import { verifyPreviewRuntime } from './verify-preview-runtime.mjs';
 
+export const BROWSER_PREVIEW_MAX_BYTES = { kit: 512 * 1024, wasm: 60 * 1024 * 1024 };
+
 /** This development candidate never requires native-engine archives or conversion receipts. */
 export function verifyBrowserPreview(directory, receipt) {
   const candidate = readJson(join(directory, 'browser-preview.json'));
@@ -16,6 +18,7 @@ export function verifyBrowserPreview(directory, receipt) {
   for (const [kind, record] of Object.entries(candidate.packages)) {
     assert(record.name === (kind === 'kit' ? '@deepseek-ai/libreoffice-kit' : '@deepseek-ai/libreoffice-kit-wasm') && /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(record.version)
       && record.file === tarballName(record), 'Noncanonical preview package');
+    assert(Number.isSafeInteger(record.bytes) && record.bytes <= BROWSER_PREVIEW_MAX_BYTES[kind], `Preview archive exceeds the ${kind} size budget`);
     assert(Number.isSafeInteger(record.bytes) && record.bytes > 0 && statSync(join(directory, record.file)).size === record.bytes
       && /^[a-f0-9]{64}$/.test(record.sha256) && sha256(join(directory, record.file)) === record.sha256, `Preview archive checksum differs: ${kind}`);
   }

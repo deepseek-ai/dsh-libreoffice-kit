@@ -39,15 +39,38 @@ export function* fontFrames(result: BrowserFontResult, known: readonly FontIdent
 /** One MEMFS font face registered under a document-local family alias. */
 export interface EngineFontFace { readonly path: string; readonly family: string }
 
+const SCRIPT_GROUPS = [
+  ['arabic', /\p{Script_Extensions=Arabic}/u], ['cyrillic', /\p{Script_Extensions=Cyrillic}/u],
+  ['devanagari', /\p{Script_Extensions=Devanagari}/u], ['greek', /\p{Script_Extensions=Greek}/u],
+  ['han', /\p{Script_Extensions=Han}/u], ['hangul', /\p{Script_Extensions=Hangul}/u],
+  ['hebrew', /\p{Script_Extensions=Hebrew}/u], ['hiragana', /\p{Script_Extensions=Hiragana}/u],
+  ['katakana', /\p{Script_Extensions=Katakana}/u], ['latin', /\p{Script_Extensions=Latin}/u],
+  ['thai', /\p{Script_Extensions=Thai}/u], ['common', /[\p{Script=Common}\p{Script=Inherited}]/u],
+] as const
+
+function scriptGroup(point: number): string {
+  const character = String.fromCodePoint(point)
+  return SCRIPT_GROUPS.find(([, pattern]) => pattern.test(character))?.[0] ?? `other-${point >>> 8}`
+}
+
 /** The synchronous reader installs immutable font assets before returning their MEMFS paths and aliases. */
 export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, maxLoadedFontBytes: number,
   declaredFamilies: ReadonlyMap<string, string>, request: (request: BrowserFontRequest, known: readonly FontIdentity[]) => void, next: () => void,
-  install: (path: string, bytes: Uint8Array) => void, missing: (families: readonly string[]) => void): (request: BrowserFontRequest) => EngineFontFace[] {
+  install: (path: string, bytes: Uint8Array) => void, missing: (families: readonly string[]) => void,
+  documentCodePoints: readonly number[] = []): (request: BrowserFontRequest) => EngineFontFace[] {
   const { control, bytes } = fontViews(channel)
   const installed = new Map<string, { face: EngineFontFace; bytes: number; format: FontIdentity['format'] }>()
   const aliases = new Map<string, { id: string; family: string }>()
   const requests = new Map<string, EngineFontFace[]>()
   const coverage = new Map<string, { readonly points: Set<number>; readonly faces: EngineFontFace[]; complete: boolean }>()
+  const expanded = new Map<string, Set<string>>()
+  const documentGroups = new Map<string, number[]>()
+  for (const point of [...new Set(documentCodePoints)].sort((left, right) => left - right)) {
+    const group = scriptGroup(point)
+    const points = documentGroups.get(group)
+    if (points) points.push(point)
+    else documentGroups.set(group, [point])
+  }
   const families = new Set<string>()
   let loadedBytes = 0
   function read(): { state: FontState; data: Uint8Array } {
@@ -80,7 +103,12 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
       requests.set(key, covered.faces)
       return covered.faces
     }
-    request(original, [...installed].map(([id, font]) => ({ id, bytes: font.bytes, ...(font.format ? { format: font.format } : {}) })))
+    const groups = new Set(codePoints.map(scriptGroup))
+    const expandedGroups = expanded.get(coverageKey)
+    const newGroups = original.mode === 'full' ? [] : [...groups].filter(group => !expandedGroups?.has(group))
+    const requestedPoints = newGroups.length === 0 ? codePoints : [...new Set([...codePoints,
+      ...newGroups.flatMap(group => documentGroups.get(group) ?? [])])].sort((left, right) => left - right)
+    request({ ...original, codePoints: requestedPoints }, [...installed].map(([id, font]) => ({ id, bytes: font.bytes, ...(font.format ? { format: font.format } : {}) })))
     const first = read()
     if (first.state !== FontState.Header) throw new BrowserRenderError('font-unavailable', 'Expected font transfer metadata.')
     let header: FontHeader
@@ -117,9 +145,10 @@ export function createFontReader(channel: SharedArrayBuffer, timeoutMs: number, 
     const absentFamily = header.missingFamily === undefined ? undefined : declaredFamilies.get(normalize(header.missingFamily))
     if (absentFamily !== undefined && !families.has(absentFamily)) { families.add(absentFamily); missing([...families]) }
     requests.set(key, faces)
-    if (codePoints.length > 0) {
+    if (newGroups.length > 0) expanded.set(coverageKey, new Set([...(expandedGroups ?? []), ...newGroups]))
+    if (requestedPoints.length > 0) {
       const group = { points: new Set(covered?.points), faces: [...(covered?.faces ?? [])], complete: covered?.complete ?? false }
-      for (const point of codePoints) group.points.add(point)
+      for (const point of requestedPoints) group.points.add(point)
       for (const face of faces) {
         if (!group.faces.some(existing => existing.path === face.path && existing.family === face.family)) group.faces.push(face)
       }

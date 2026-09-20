@@ -4,6 +4,7 @@ import { statSync } from 'node:fs'
 import { extname } from 'node:path'
 import { create } from 'fontkit'
 import { indexSystemFonts, indexedFace, readFont, SystemFontCatalog } from './fonts.ts'
+import { officeFontFace, officeFontFiles } from './office-fonts.ts'
 import type { FontFace, FontIndexOptions } from './fonts.ts'
 import type { FontAsset, FontAssetId, FontResolution, FontResolveRequest } from './font-source-types.ts'
 import { fontFileFormat, fullFontFile } from './font-full.ts'
@@ -14,6 +15,7 @@ import { FONT_PARTITION_VERSION, fontScriptCodePoints, requestedFontScripts } fr
 export interface FontSubsetOptions extends FontIndexOptions {
   readonly fallbackFamilies: readonly (readonly string[])[]
   readonly maxCachedSubsetBytes: number
+  readonly includeOfficeFonts?: boolean
 }
 interface SelectedSubset {
   readonly asset: FontAsset
@@ -45,6 +47,25 @@ export class FontSubsetSource {
 
   /** @param options - Resolved discovery, fallback, and retained subset limits. */
   constructor(private readonly options: FontSubsetOptions) {}
+
+  /** Build the immutable lifetime catalog, adding only Office families absent from normal system roots. */
+  prepare(): SystemFontCatalog {
+    if (this.catalog === undefined) {
+      const primary = indexSystemFonts(this.options)
+      const primaryFiles = new Set(primary.map(face => face.path))
+      const remaining = Math.max(0, this.options.maxFiles - primaryFiles.size)
+      const supplementalFiles = this.options.includeOfficeFonts ? officeFontFiles() : []
+      const supplemental = remaining === 0 ? [] : indexSystemFonts({ directories: [],
+        files: supplementalFiles.slice(0, remaining), maxFiles: remaining,
+        maxFileBytes: this.options.maxFileBytes })
+      const aliases = new Set(primary.flatMap(face => face.aliases))
+      this.snapshot = [...primary, ...supplemental.filter(face => officeFontFace(face)
+        && !face.aliases.some(alias => aliases.has(alias)))]
+      this.catalog = new SystemFontCatalog({ faces: this.snapshot, fallbackFamilies: this.options.fallbackFamilies,
+        deduplicateBy: 'face' })
+    }
+    return this.catalog
+  }
 
   private retain(key: string, bytes: Uint8Array): void {
     const existing = this.cached.get(key)
@@ -111,11 +132,7 @@ export class FontSubsetSource {
    */
   async resolve(request: FontResolveRequest): Promise<FontResolution> {
     if (request.mode !== undefined && request.mode !== 'subset' && request.mode !== 'full') throw new TypeError('Unknown font asset mode.')
-    if (this.catalog === undefined) {
-      this.snapshot = indexSystemFonts(this.options)
-      this.catalog = new SystemFontCatalog({ faces: this.snapshot, fallbackFamilies: this.options.fallbackFamilies, deduplicateBy: 'face' })
-    }
-    const matched = this.catalog.match(request, new AbortController().signal)
+    const matched = this.prepare().match(request, new AbortController().signal)
     const fonts: FontAsset[] = []
     for (const face of matched.fonts) {
       if (request.mode === 'full') { fonts.push(await this.describe(face, 'full')); continue }
