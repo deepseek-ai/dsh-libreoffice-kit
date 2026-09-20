@@ -20,7 +20,7 @@ export async function open(data, extension, { fontPath = process.env.READONLY_FO
   const idleReplies = new Set();
   module = await require(`${assets}/soffice.cjs`)({
     noInitialRun: true, mainScriptUrlOrBlob: `${assets}/soffice.cjs`,
-    locateFile: name => `${assets}/${basename(name)}`,
+    locateFile: name => `${assets}/${basename(name) === 'soffice.wasm' ? 'dsh-office.wasm' : basename(name)}`,
     getPreloadedPackage: () => raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
     dshResolveSystemFontFaces: () => [{ path: '/dsh-fonts/Arial.ttf', family: 'Arial' }],
     dshOnCallback(type, payload) {

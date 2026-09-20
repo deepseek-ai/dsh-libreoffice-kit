@@ -15,5 +15,5 @@ try {
   const after = await r.paint(816, 720);
   const xml = strFromU8(r.exportFiles()['word/document.xml']);
   console.log(JSON.stringify({ kind, action, changedPixels: pixelDifference(before, after), undo,
-    fields: [...xml.matchAll(/<(?:w14:checked|w:checked)[^>]*>/g)].map(match => match[0]), failures: r.failures }));
+    fields: [...xml.matchAll(/<(?:w:ffData|w:checked|w14:checked)[^>]*>/g)].map(match => match[0]), failures: r.failures }));
 } finally { await r.close(); }
