@@ -54,7 +54,7 @@ const identityFile = path.join(build, 'dsh-build-identity.json');
 env.MAKE = env.GNUMAKE || env.MAKE || (process.platform === 'darwin' ? 'gmake' : 'make');
 const artifacts = {
   'soffice.cjs': 'soffice.js',
-  'soffice.wasm': 'soffice.wasm',
+  'dsh-office.wasm': 'soffice.wasm',
   'soffice.data': 'soffice.data',
   'soffice.data.js.metadata': 'soffice.data.js.metadata',
 };
@@ -229,7 +229,7 @@ function packageArtifacts() {
     schemaVersion: 2,
     runtime: 'node',
     entry: 'soffice.cjs',
-    wasm: 'soffice.wasm',
+    wasm: 'dsh-office.wasm',
     data: 'soffice.data',
     metadata: 'soffice.data.js.metadata',
     programPath: '/instdir/program',

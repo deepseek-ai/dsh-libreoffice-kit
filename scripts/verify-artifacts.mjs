@@ -89,7 +89,7 @@ export function verifyEngineMetadata(manifest, prebuild) {
   const exact = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);
   if (prebuild.platform === 'wasm') {
     assert(manifest.os === undefined && manifest.cpu === undefined && manifest.libc === undefined, 'WASM package must install across operating systems, CPUs and libc variants');
-    assert(engine?.kind === 'wasm' && engine.loader === 'assets/soffice.cjs' && engine.wasm === 'assets/soffice.wasm'
+    assert(engine?.kind === 'wasm' && engine.loader === 'assets/soffice.cjs' && engine.wasm === 'assets/dsh-office.wasm'
       && engine.data === 'assets/soffice.data' && engine.metadata === 'assets/soffice.data.js.metadata'
       && engine.programDirectory === '/instdir/program', 'Unsupported WASM engine paths');
   } else {

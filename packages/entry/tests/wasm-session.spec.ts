@@ -43,7 +43,7 @@ module.exports=async options=>{
  options.dshOnCallback(16,JSON.stringify({commandName:'.uno:ReportWhenIdle',idleID:'different-owner'}));
  options.preRun.forEach(hook=>hook(module));return module;
 }`)
-  const engine: WasmEngine = { backend: 'wasm', root, loader, data, wasm: join(root, 'soffice.wasm'), metadata: join(root, 'soffice.metadata'), programDirectory: '/instdir/program' }
+  const engine: WasmEngine = { backend: 'wasm', root, loader, data, wasm: join(root, 'dsh-office.wasm'), metadata: join(root, 'soffice.metadata'), programDirectory: '/instdir/program' }
   const faces = behavior.preloadFonts ? indexSystemFonts({ directories: [join(import.meta.dirname, 'fixtures/fonts')], maxFiles: 20, maxFileBytes: 10000000 }) : []
   const options = resolveOptions({ fontDirectories: [], fontFallbacks: [], initialFontFamilies: faces.slice(0, 1).map(face => face.family), timeoutMs: behavior.timeoutMs ?? 100 })
   const request = { engine, bytes: new Uint8Array([1, 2, 3]), extension: behavior.extension ?? 'docx', options, faces,

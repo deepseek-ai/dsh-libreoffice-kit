@@ -51,7 +51,7 @@ module.exports = async function factory(options) {
   options.preRun.forEach(hook=>hook(module));return module
 }`)
   const data = join(root, 'soffice.data'); await writeFile(data, '')
-  const engine: WasmEngine = { backend: 'wasm', root, loader, data, wasm: join(root, 'soffice.wasm'), metadata: join(root, 'soffice.data.js.metadata'), programDirectory: '/instdir/program' }
+  const engine: WasmEngine = { backend: 'wasm', root, loader, data, wasm: join(root, 'dsh-office.wasm'), metadata: join(root, 'soffice.data.js.metadata'), programDirectory: '/instdir/program' }
   const base = { engine, extension, bytes: new TextEncoder().encode(extension === 'pdf' ? '%PDF-1.7 fixture' : 'document'),
     options: resolveOptions({ fontDirectories: [], fontFallbacks: [] }), document: { families: new Map<string, string>(), codePoints: [] }, faces: [] }
   return { root, outputDir, log, base }

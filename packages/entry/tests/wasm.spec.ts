@@ -101,7 +101,7 @@ async function wasmFixture(root: string, behavior: LoaderBehavior) {
   await mkdir(directory, { recursive: true })
   const loader = join(directory, 'loader.cjs')
   await writeFile(loader, loaderSource(behavior))
-  const wasm = join(directory, 'soffice.wasm')
+  const wasm = join(directory, 'dsh-office.wasm')
   await writeFile(wasm, 'wasm bytes')
   const data = join(directory, 'soffice.data')
   await writeFile(data, 'data bytes')

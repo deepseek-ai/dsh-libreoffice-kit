@@ -73,14 +73,14 @@ The WASM manifest uses `platform: "wasm"` and this `engine` object:
 {
   "kind": "wasm",
   "loader": "assets/soffice.cjs",
-  "wasm": "assets/soffice.wasm",
+  "wasm": "assets/dsh-office.wasm",
   "data": "assets/soffice.data",
   "metadata": "assets/soffice.data.js.metadata",
   "programDirectory": "/instdir/program"
 }
 ```
 
-Only the WASM `programDirectory` is a virtual filesystem path. Its other paths resolve relative to the installed package. The Emscripten loader exports a CommonJS factory consumed from the Node worker.
+Only the WASM `programDirectory` is a virtual filesystem path. Its other paths resolve relative to the installed package. The Emscripten loader exports a CommonJS factory consumed from the Node worker. It still requests the internal build name `soffice.wasm`; the Node and browser adapters map that request to the packaged `assets/dsh-office.wasm` path.
 
 Resolve either manifest to `{ backend, packageName, packageRoot, manifest, ...paths }`. Native `paths` are `{ executablePath, programDirectory }`; WASM `paths` are `{ loaderPath, wasmPath, dataPath, metadataPath, programDirectory }`. Every `*Path` and the native `programDirectory` is absolute. The released entry consumes the WASM descriptor; native descriptors remain available to explicit development tooling.
 

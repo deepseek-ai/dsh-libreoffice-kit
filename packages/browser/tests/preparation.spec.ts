@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { instantiatePreparedModule, preparedBrowserModule, prepareOfficeBrowser } from '../src/preparation.ts'
 
-const assets = { workerUrl: '/worker.js', loaderUrl: '/soffice.js', dataUrl: '/soffice.data', wasmUrl: '/soffice.wasm',
+const assets = { workerUrl: '/worker.js', loaderUrl: '/soffice.js', dataUrl: '/soffice.data', wasmUrl: '/dsh-office.wasm',
   metadataUrl: '/soffice.data.js.metadata', programDirectory: '/instdir/program' }
 const emptyModule = Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0)
 
@@ -13,7 +13,7 @@ it('compiles one successful WASM response into a cloneable asset-bound handle', 
   const prepared = await prepareOfficeBrowser(assets)
   const module = preparedBrowserModule(prepared, assets)
   expect(structuredClone(module)).toBeInstanceOf(WebAssembly.Module)
-  expect(fetch).toHaveBeenCalledExactlyOnceWith('/soffice.wasm', { credentials: 'same-origin' })
+  expect(fetch).toHaveBeenCalledExactlyOnceWith('/dsh-office.wasm', { credentials: 'same-origin' })
   expect(() => preparedBrowserModule(prepared, { ...assets, wasmUrl: '/other.wasm' })).toThrow(/does not match/)
 })
 
