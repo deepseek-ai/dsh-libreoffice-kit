@@ -22,6 +22,7 @@ export type { RuntimeInfo } from './runtime.ts'
 import type { Engine, NativeEngine } from './engine.ts'
 import type { FontFace } from './fonts.ts'
 import type { FontSubstitution } from './font-loader.ts'
+import type { FontResolutionCacheEntry } from './font-loader.ts'
 import type { WorkerRequest } from './worker.ts'
 export { ConversionError } from './errors.ts'
 export type { ConversionErrorCode } from './errors.ts'
@@ -55,6 +56,8 @@ export interface ConverterOptions {
   maxFontFileBytes?: number
   /** Complete original font bytes imported per conversion. Default: 512 MiB. Native platform fonts remain OS-managed. */
   maxLoadedFontBytes?: number
+  /** Maximum font match records retained by each compatible process cache. Default: 4096. */
+  maxFontResolutionEntries?: number
 }
 
 /** Result of one conversion. */
@@ -117,6 +120,7 @@ interface NativeWorkerResult {
 /** One message the conversion worker sends before it settles. */
 type WorkerMessage =
   | { readonly kind: 'fonts'; readonly faces: FontFace[] }
+  | { readonly kind: 'font-cache'; readonly entries: FontResolutionCacheEntry[] }
   | WasmWorkerResult
   | ImagesWorkerResult
   | NativeWorkerResult
@@ -146,7 +150,8 @@ async function readBounded(path: string, limit: number, signal: AbortSignal, rol
   } finally { await file.close() }
 }
 
-async function runWorker(data: WorkerRequest, signal: AbortSignal, onFonts: (faces: FontFace[]) => void):
+async function runWorker(data: WorkerRequest, signal: AbortSignal, onFonts: (faces: FontFace[]) => void,
+  onFontCache: (entries: FontResolutionCacheEntry[]) => void):
 Promise<WasmWorkerResult | NativeWorkerResult | ImagesWorkerResult> {
   signal.throwIfAborted()
   const worker = new Worker(new URL('./worker.js', import.meta.url), {
@@ -162,6 +167,7 @@ Promise<WasmWorkerResult | NativeWorkerResult | ImagesWorkerResult> {
   worker.once('exit', (code) => { settled.reject(new ConversionError('failed', `LibreOffice worker exited before returning a result (${code}).`)) })
   worker.on('message', (message: WorkerMessage) => {
     if (message.kind === 'fonts') onFonts(message.faces)
+    else if (message.kind === 'font-cache') onFontCache(message.entries)
     else if (message.ok) settled.resolve(message)
     else settled.reject(new ConversionError(failureCode(message), message.error))
   })
@@ -171,6 +177,53 @@ Promise<WasmWorkerResult | NativeWorkerResult | ImagesWorkerResult> {
     signal.removeEventListener('abort', abort)
     await worker.terminate()
   }
+}
+
+interface SharedConverterState {
+  fontFaces: FontFace[] | undefined
+  readonly fontCache: Map<string, FontResolutionCacheEntry>
+}
+
+const DEFAULT_SHARED_STATE_LIMIT = 16
+const defaultSharedStates = new Map<string, SharedConverterState>()
+
+function sharedStateKey(options: ReturnType<typeof resolveOptions>, engine: Engine): string {
+  return JSON.stringify({ engine, fontDirectories: options.fontDirectories, fontFallbacks: options.fontFallbacks,
+    initialFontFamilies: options.initialFontFamilies, maxFontFiles: options.maxFontFiles,
+    maxFontFileBytes: options.maxFontFileBytes, maxLoadedFontBytes: options.maxLoadedFontBytes,
+    maxFontResolutionEntries: options.maxFontResolutionEntries })
+}
+
+function defaultSharedState(options: ReturnType<typeof resolveOptions>, engine: Engine): SharedConverterState {
+  const key = sharedStateKey(options, engine)
+  const existing = defaultSharedStates.get(key)
+  if (existing !== undefined) {
+    defaultSharedStates.delete(key)
+    defaultSharedStates.set(key, existing)
+    return existing
+  }
+  const state: SharedConverterState = { fontFaces: undefined, fontCache: new Map() }
+  defaultSharedStates.set(key, state)
+  while (defaultSharedStates.size > DEFAULT_SHARED_STATE_LIMIT)
+    defaultSharedStates.delete(defaultSharedStates.keys().next().value as string)
+  return state
+}
+
+function mergeFontCache(shared: SharedConverterState, limit: number, entries: FontResolutionCacheEntry[]): void {
+  for (const entry of entries) {
+    const prior = shared.fontCache.get(entry.key)
+    const faces = new Map((prior?.faces ?? []).map(face => [`${face.path}\0${face.faceIndex}`, face]))
+    for (const face of entry.faces) faces.set(`${face.path}\0${face.faceIndex}`, face)
+    const merged: FontResolutionCacheEntry = { ...entry,
+      codePoints: [...new Set([...(prior?.codePoints ?? []), ...entry.codePoints])].sort((left, right) => left - right),
+      emptyRequest: prior?.emptyRequest === true || entry.emptyRequest,
+      faces: [...faces.values()],
+      ...((prior?.missingFamily ?? entry.missingFamily) === undefined ? {}
+        : { missingFamily: prior?.missingFamily ?? entry.missingFamily }) }
+    shared.fontCache.delete(entry.key)
+    shared.fontCache.set(entry.key, merged)
+  }
+  while (shared.fontCache.size > limit) shared.fontCache.delete(shared.fontCache.keys().next().value as string)
 }
 
 /**
@@ -184,12 +237,12 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
   const resolvedOptions = resolveOptions(options)
   let engine: Engine
   try { engine = await resolveEngine() } catch (cause) { throw new ConversionError('unavailable', (cause as Error).message, { cause }) }
+  const shared = defaultSharedState(resolvedOptions, engine)
   const lifetime = new AbortController()
   const active = new Set<Promise<RenderResult | RenderImagesResult>>()
   const waiting = new Set<() => void>()
   let running = false
   let disposal: Promise<void> | undefined
-  let fontFaces: FontFace[] | undefined
   async function acquire(signal: AbortSignal): Promise<void> {
     while (running) {
       signal.throwIfAborted()
@@ -222,8 +275,9 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       const inputPath = join(scratch, `document.${extension}`)
       const input = await open(inputPath, 'wx', 0o600)
       try { await input.writeFile(sourceBytes) } finally { await input.close() }
-      const result = await runWorker({ inputPath, extension, operation: request, options: resolvedOptions, engine, scratch, fontFaces },
-        stopped, (faces) => { fontFaces = faces })
+      const result = await runWorker({ inputPath, extension, operation: request, options: resolvedOptions, engine, scratch,
+        fontFaces: shared.fontFaces, fontCache: [...shared.fontCache.values()] }, stopped,
+      (faces) => { shared.fontFaces ??= faces }, entries => mergeFontCache(shared, resolvedOptions.maxFontResolutionEntries, entries))
       if ('images' in result) throw new ConversionError('failed', 'Conversion worker returned an image batch for an export request.')
       let bytes: Uint8Array
       if ('output' in result) bytes = result.output
@@ -280,8 +334,9 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       scratch = await mkdtemp(join(tmpdir(), 'libreoffice-kit-images-'))
       const inputPath = join(scratch, `document.${request.extension}`)
       await writeFile(inputPath, source, { flag: 'wx', mode: 0o600 })
-      const result = await runWorker({ inputPath, extension: request.extension, operation: request, options: resolvedOptions, engine, scratch, fontFaces },
-        stopped, faces => { fontFaces = faces })
+      const result = await runWorker({ inputPath, extension: request.extension, operation: request, options: resolvedOptions,
+        engine, scratch, fontFaces: shared.fontFaces, fontCache: [...shared.fontCache.values()] }, stopped,
+      faces => { shared.fontFaces ??= faces }, entries => mergeFontCache(shared, resolvedOptions.maxFontResolutionEntries, entries))
       if (!('images' in result)) throw new ConversionError('failed', 'Image worker did not return its manifest.')
       stopped.throwIfAborted()
       await writeFile(join(request.outputDir, 'manifest.json'), `${JSON.stringify(result.images, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
