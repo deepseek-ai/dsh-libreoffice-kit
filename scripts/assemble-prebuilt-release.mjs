@@ -2,7 +2,7 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { materializeEngineArchive, packEngineArchive } from './engine-archive.mjs';
@@ -11,13 +11,11 @@ import { packDependencies } from './pack-dependencies.mjs';
 import { npm } from './pack-utils.mjs';
 import { stagePackage, workflowRepositoryUrl } from './pack-release.mjs';
 import { verifyPreparedEngine } from './prepare-artifacts.mjs';
-import { reversionEngineTar } from './reversion-engine.mjs';
-import { readCoreSource } from '../engine/core-source.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
-import { isMain, kitDirectory, kitManifest, kitNativeTargets, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
+import { isMain, kitDirectory, kitManifest, readJson, releaseTargets, root, tarballName } from './platform-matrix.mjs';
 
 /** Newly promoted targets must match one source snapshot saved in this checkout or its ancestry. */
-export function verifyPromotedRecipe(tar, repo = root, platform = 'native') {
+export function verifyPromotedRecipe(tar, repo = root) {
   const files = [];
   const recipes = new Map();
   const differences = [];
@@ -38,11 +36,8 @@ export function verifyPromotedRecipe(tar, repo = root, platform = 'native') {
     recipes.set(file, new Set([blobHash(data), ...(file.endsWith('.mjs') ? [blobHash(Buffer.from(normalizeJs(data)))] : [])]));
     files.push(file);
   });
-  assert(platform === 'wasm'
-    ? files.includes('engine/wasm-source/lok.cxx') && files.includes('engine/wasm-source/build.mjs')
-      && files.some(file => file.startsWith('engine/wasm-source/patches/'))
-    : files.includes('engine/native/worker.cxx') && files.includes('engine/native/build-helper.mjs')
-      && files.some(file => file.startsWith('engine/native/patches/')), `Promoted engine lacks its ${platform} source recipe`);
+  assert(files.includes('engine/native/worker.cxx') && files.includes('engine/native/build-helper.mjs')
+    && files.some(file => file.startsWith('engine/native/patches/')), 'Promoted engine lacks its native source recipe');
   if (differences.length) {
     // Later platform support may extend shared build scripts. Accept the old complete
     // recipe only if every archived source file coexisted in one ancestor of HEAD.
@@ -72,15 +67,12 @@ export function supplementalEngine(receipt, platform, version) {
   return record;
 }
 
-export function assemblePrebuiltRelease(input, destination, preparedPlatforms = [], { repackageFromVersion = '', repo = root } = {}) {
+export function assemblePrebuiltRelease(input, destination, preparedPlatforms = []) {
   const previous = readJson(join(input, 'release.json'));
   const remote = readJson(join(input, 'github-assets.json'));
-  const manifest = kitManifest(repo);
-  const platforms = releaseTargets([], kitNativeTargets(manifest));
-  const version = manifest.version;
-  const repack = repackageFromVersion !== '';
-  assert(repack ? previous.version === repackageFromVersion && previous.version !== version && preparedPlatforms.length === 0
-    : previous.version === version, 'Existing release has a different version; version-only repacking must be explicit');
+  const platforms = releaseTargets([]);
+  const version = kitManifest().version;
+  assert(previous.version === version, 'Existing release has a different version');
   assert(new Set(preparedPlatforms).size === preparedPlatforms.length
     && preparedPlatforms.every(platform => platform !== 'wasm' && platforms.includes(platform)), 'Invalid prepared native platforms');
   const verifyDownload = file => {
@@ -97,21 +89,21 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
     if (!platforms.includes(platform) || preparedPlatforms.includes(platform) || records.some(record => record.platform === platform)) continue;
     verifyDownload(file);
     auditBytes(readFileSync(join(input, file)), file);
-    records.push(supplementalEngine(readJson(join(input, file)), platform, previous.version));
+    records.push(supplementalEngine(readJson(join(input, file)), platform, version));
   }
   mkdirSync(destination);
   const work = mkdtempSync(join(tmpdir(), 'kit-prebuilt-candidate-'));
   try {
     const packages = platforms.map(platform => {
       if (preparedPlatforms.includes(platform)) {
-        const directory = join(repo, 'packages', platform);
-        verifyPreparedEngine(platform, directory, repo);
+        const directory = join(root, 'packages', platform);
+        verifyPreparedEngine(platform, directory);
         const manifest = readJson(join(directory, 'package.json'));
         const staged = join(work, platform);
         stagePackage(directory, staged, manifest, workflowRepositoryUrl());
         npm(['pack', '--json', '--ignore-scripts', '--pack-destination', work], staged, work);
         const gzip = join(work, tarballName(manifest));
-        verifyPromotedRecipe(gzip, repo);
+        verifyPromotedRecipe(gzip);
         const record = { name: manifest.name, version, platform, ...packEngineArchive(gzip, destination, manifest) };
         rmSync(gzip);
         return record;
@@ -119,34 +111,18 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
       const matches = records.filter(record => record.platform === platform);
       assert(matches.length === 1, `Missing or duplicate engine: ${platform}`);
       const record = matches[0];
-      assert(record.name === `@deepseek-ai/libreoffice-kit-${platform}` && record.version === previous.version, 'Engine identity differs from the release declaration');
+      assert(record.name === `@deepseek-ai/libreoffice-kit-${platform}` && record.version === version, 'Engine identity differs from the release declaration');
       verifyDownload(record.file);
       const tar = materializeEngineArchive(input, record, work);
       const checked = auditNpmArchive(tar);
-      assert(checked.manifest.name === record.name && checked.manifest.version === previous.version, 'Inner package identity differs from its record');
-      if (repack) {
-        verifyPromotedRecipe(tar, repo, platform === 'wasm' ? 'wasm' : 'native');
-        const bytes = readFileSync(tar);
-        const pinned = readCoreSource(repo);
-        let source;
-        visitTar(bytes, ({ name, data }) => { if (name === 'package/prebuilds.json') source = JSON.parse(data.toString()).source; });
-        assert(source?.repository === pinned.repository && source?.revision === pinned.revision, 'Repackaged engine upstream pin differs');
-        const manifest = { ...checked.manifest, version };
-        const gzip = join(work, tarballName(manifest));
-        writeFileSync(gzip, gzipSync(reversionEngineTar(bytes, { name: record.name, platform, fromVersion: previous.version, version })));
-        const result = { name: record.name, version, platform, ...packEngineArchive(gzip, destination, manifest),
-          repackagedFrom: { version: record.version, file: record.file, sha256: record.sha256, install: record.install } };
-        rmSync(gzip); rmSync(tar);
-        return result;
-      }
-      if (!previous.platforms.includes(platform)) verifyPromotedRecipe(tar, repo);
+      assert(checked.manifest.name === record.name && checked.manifest.version === version, 'Inner package identity differs from its record');
+      if (!previous.platforms.includes(platform)) verifyPromotedRecipe(tar);
       copyFileSync(join(input, record.file), join(destination, record.file));
       rmSync(tar);
       return record;
     });
-    const dependencies = packDependencies(kitDirectory(repo), join(destination, 'dependencies'), work);
-    const result = { schemaVersion: 1, version, platforms, packages, dependencies,
-      ...(repack ? { repackagedFrom: { version: previous.version, releaseManifestSha256: sha256(join(input, 'release.json')) } } : {}) };
+    const dependencies = packDependencies(kitDirectory(), join(destination, 'dependencies'), work);
+    const result = { schemaVersion: 1, version, platforms, packages, dependencies };
     writeFileSync(join(destination, 'release.json'), `${JSON.stringify(result, null, 2)}\n`);
     // Old conversion receipts are intentionally not copied: every host must test these candidate bytes.
     return result;
@@ -158,6 +134,5 @@ export function assemblePrebuiltRelease(input, destination, preparedPlatforms = 
 
 if (isMain(import.meta.url)) {
   assert(process.argv.length >= 4, 'Usage: node scripts/assemble-prebuilt-release.mjs <downloads> <new-candidate> [prepared-native-platform ...]');
-  console.log(JSON.stringify(assemblePrebuiltRelease(resolve(process.argv[2]), resolve(process.argv[3]), process.argv.slice(4),
-    { repackageFromVersion: process.env.REPACKAGE_FROM_VERSION ?? '' }), null, 2));
+  console.log(JSON.stringify(assemblePrebuiltRelease(resolve(process.argv[2]), resolve(process.argv[3]), process.argv.slice(4)), null, 2));
 }

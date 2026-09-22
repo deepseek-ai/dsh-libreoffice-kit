@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-workspace",
-  "version": "0.0.2-rc7",
+  "version": "0.0.3",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
@@ -11,7 +11,7 @@
   "scripts": {
     "build:adapter": "node scripts/build-kit.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:packaging": "node --test test/packaging.test.mjs test/selection.test.mjs test/release-publish.test.mjs test/publish-npm-release.test.mjs test/npm-oidc.test.mjs test/browser-preview-packaging.test.mjs test/browser-npm-staging.test.mjs",
+    "test:packaging": "node --test test/packaging.test.mjs test/selection.test.mjs test/release-publish.test.mjs",
     "verify:metadata": "node scripts/verify-release.mjs --metadata-only",
     "gha:matrix": "node scripts/github-matrix.mjs",
     "release:verify": "node scripts/verify-release.mjs",
@@ -19,27 +19,19 @@
     "release:verify-packed-install": "node scripts/verify-packed-install.mjs",
     "release:audit": "node scripts/release-privacy.mjs",
     "release:prepare-npm": "node scripts/prepare-npm-release.mjs",
-    "release:publish-npm": "node scripts/publish-npm-release.mjs",
     "release:publish": "node scripts/release-publish.mjs",
     "test:adapter": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -b packages/entry packages/browser",
-    "build:browser": "node scripts/build-browser.mjs",
-    "build:font-subset": "node scripts/build-font-subset.mjs",
-    "build:fonts": "node scripts/build-fonts.mjs",
-    "preview:pack": "node scripts/pack-browser-preview.mjs",
-    "preview:verify": "node scripts/verify-browser-preview.mjs"
+    "typecheck": "tsc -b packages/entry"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "@vitest/coverage-v8": "^4.1.8",
-    "harfbuzzjs": "1.6.1",
-    "js-yaml": "^4.2.0",
     "tsdown": "^0.22.2",
-    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
-    "playwright": "1.58.2"
+    "tsx": "^4.22.4",
+    "js-yaml": "^4.2.0",
+    "@types/js-yaml": "^4.0.9"
   }
 }

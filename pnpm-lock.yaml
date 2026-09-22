@@ -19,15 +19,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.8
         version: 4.1.11(vitest@4.1.11)
-      harfbuzzjs:
-        specifier: 1.6.1
-        version: 1.6.1
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.2
-      playwright:
-        specifier: 1.58.2
-        version: 1.58.2
       tsdown:
         specifier: ^0.22.2
         version: 0.22.14(tsx@4.23.13)(typescript@6.0.3)
@@ -41,24 +35,12 @@ importers:
         specifier: ^4.1.8
         version: 4.1.11(@types/node@22.20.2)(@vitest/coverage-v8@4.1.11)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.28.2)(tsx@4.23.13))
 
-  packages/browser:
-    devDependencies:
-      '@deepseek-ai/libreoffice-kit':
-        specifier: workspace:*
-        version: link:../entry
-
   packages/darwin-arm64: {}
 
   packages/darwin-x64: {}
 
   packages/entry:
     dependencies:
-      '@unicode/unicode-17.0.0':
-        specifier: 2.0.7
-        version: 2.0.7
-      '@deepseek-ai/libreoffice-kit-wasm':
-        specifier: workspace:*
-        version: link:../wasm
       fflate:
         specifier: 0.8.2
         version: 0.8.2
@@ -68,15 +50,22 @@ importers:
       saxes:
         specifier: 6.0.0
         version: 6.0.0
-
-  packages/fonts:
-    dependencies:
-      '@unicode/unicode-17.0.0':
-        specifier: 2.0.7
-        version: 2.0.7
-      fontkit:
-        specifier: 2.0.4
-        version: 2.0.4
+    optionalDependencies:
+      '@deepseek-ai/libreoffice-kit-darwin-arm64':
+        specifier: workspace:*
+        version: link:../darwin-arm64
+      '@deepseek-ai/libreoffice-kit-darwin-x64':
+        specifier: workspace:*
+        version: link:../darwin-x64
+      '@deepseek-ai/libreoffice-kit-wasm':
+        specifier: workspace:*
+        version: link:../wasm
+      '@deepseek-ai/libreoffice-kit-win32-arm64':
+        specifier: workspace:*
+        version: link:../win32-arm64
+      '@deepseek-ai/libreoffice-kit-win32-x64':
+        specifier: workspace:*
+        version: link:../win32-x64
 
   packages/linux-arm64-glibc: {}
 
@@ -403,9 +392,6 @@ packages:
   '@types/node@22.20.2':
     resolution: {integrity: sha512-xlvWf4Vs9n1PEVYwP1n4vvG07M6y8WgvJ2t0vbrWTmijsIHp1cS+uJ2kMIRdY3nHZK0nCYKrPeD171+SzF4/zw==}
 
-  '@unicode/unicode-17.0.0@2.0.7':
-    resolution: {integrity: sha512-XdCUsw7exiSD8QICrzwb99xx9O/e7qMx/Oew1e8MBQGavCIIR0VO6vID7OSH/wQjUjogcfydqmsuRLkGM6LfLA==}
-
   '@vitest/coverage-v8@4.1.11':
     resolution: {integrity: sha512-8MVGEFnJIcdGjcbfKmeq8z0pZHH0JlVtoVZH9Q/qwUp6wyFnEJUBMrw9DCaj+ra3vShGmhavjalMIhPNxZAUcw==}
     peerDependencies:
@@ -670,11 +656,6 @@ packages:
   fontkit@2.0.4:
     resolution: {integrity: sha512-syetQadaUEDNdxdugga9CpEYVaQIxOwk7GlwZWWZ19//qW4zE5bknOKeMBDYAASwnpaSHKJITRLMF9m1fp3s6g==}
 
-  fsevents@2.3.2:
-    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
-    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
-    os: [darwin]
-
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -683,9 +664,6 @@ packages:
   get-tsconfig@5.0.0-beta.5:
     resolution: {integrity: sha512-/6gFNr0N04nob252sTQxyFLi3eKFRqIg1I87YcqAMT1i6SQrSF6KujUEQrtrjMV0H/eejTCltLdDSTEMzHbnsQ==}
     engines: {node: '>=20.20.0'}
-
-  harfbuzzjs@1.6.1:
-    resolution: {integrity: sha512-+JeJmO+HzXjDwpfCOdGSyM2bNP8WzJNFKl/8TKivbInMYDtfRIuPIDLtnBNmQzcJw6GptbhHY6o5gaH6deCMEw==}
 
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
@@ -825,16 +803,6 @@ packages:
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
-
-  playwright-core@1.58.2:
-    resolution: {integrity: sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==}
-    engines: {node: '>=18'}
-    hasBin: true
-
-  playwright@1.58.2:
-    resolution: {integrity: sha512-vA30H8Nvkq/cPBnNw4Q8TWz1EJyqgpuinBcHET0YVJVFldr8JDNiU9LaWAE1KqSkRYazuaBhTpB5ZzShOezQ6A==}
-    engines: {node: '>=18'}
-    hasBin: true
 
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
@@ -1263,8 +1231,6 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
-  '@unicode/unicode-17.0.0@2.0.7': {}
-
   '@vitest/coverage-v8@4.1.11(vitest@4.1.11)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
@@ -1487,17 +1453,12 @@ snapshots:
       unicode-properties: 1.4.1
       unicode-trie: 2.0.0
 
-  fsevents@2.3.2:
-    optional: true
-
   fsevents@2.3.3:
     optional: true
 
   get-tsconfig@5.0.0-beta.5:
     dependencies:
       resolve-pkg-maps: 1.0.0
-
-  harfbuzzjs@1.6.1: {}
 
   has-flag@4.0.0: {}
 
@@ -1600,14 +1561,6 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
-
-  playwright-core@1.58.2: {}
-
-  playwright@1.58.2:
-    dependencies:
-      playwright-core: 1.58.2
-    optionalDependencies:
-      fsevents: 2.3.2
 
   postcss@8.5.28:
     dependencies:

@@ -114,7 +114,6 @@ export function visitTar(bytes, visit) {
   let extended = {};
   const names = new Set();
   while (cursor + 512 <= bytes.length) {
-    const headerOffset = cursor;
     const header = bytes.subarray(cursor, cursor + 512);
     if (header.every(byte => byte === 0)) {
       if (bytes.subarray(cursor).some(byte => byte !== 0)) throw new Error('Unexpected bytes after tar terminator');
@@ -152,7 +151,7 @@ export function visitTar(bytes, visit) {
     const name = extended.path ?? `${prefix ? `${prefix}/` : ''}${field(0, 100)}`;
     if (names.has(name)) throw new Error('Duplicate tar entry');
     names.add(name);
-    visit({ name, data, type, uid: number(108, 8), gid: number(116, 8), uname: field(265, 32), gname: field(297, 32), extended, headerOffset, endOffset: cursor });
+    visit({ name, data, type, uid: number(108, 8), gid: number(116, 8), uname: field(265, 32), gname: field(297, 32), extended });
     extended = {};
   }
   throw new Error('Tar terminator missing');

@@ -38,7 +38,7 @@ export interface RenderedImage {
 }
 export interface RenderImagesResult {
   readonly schemaVersion: 1
-  readonly backend: 'wasm'
+  readonly backend: 'native' | 'wasm'
   readonly rasterEngine: 'libreoffice' | 'pdfium'
   readonly source: 'saved'
   readonly inputPath: string

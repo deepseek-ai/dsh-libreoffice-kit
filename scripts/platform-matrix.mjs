@@ -53,7 +53,7 @@ export function releaseAssetUrl(version, file) {
 /** Return the complete declared matrix, including targets without built assets. */
 export function packageMatrix(repo = root) {
   return readdirSync(join(repo, 'packages'), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !['entry', 'browser', 'fonts'].includes(entry.name))
+    .filter((entry) => entry.isDirectory() && entry.name !== 'entry')
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((entry) => {
       const dir = join(repo, 'packages', entry.name);

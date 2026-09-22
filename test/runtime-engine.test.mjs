@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { commentedDocumentFixture, documentFixture } from './runtime-fixture.mjs';
+import { documentFixture, officeFuzzFixture } from './runtime-fixture.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {
@@ -33,16 +33,6 @@ test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and
       assert.ok(bytes.length > 100, `${extension} PDF is empty`);
       formats[extension] = { backend: converted.backend, pdfBytes: bytes.length };
     }
-    const commentedInput = join(root, 'commented.docx');
-    const commentedOutput = join(root, 'commented.pdf');
-    await writeFile(commentedInput, commentedDocumentFixture());
-    const commentedResult = await converter.render({ inputPath: commentedInput, outputPath: commentedOutput });
-    const commentedPdf = await readFile(commentedOutput);
-    assert.equal(commentedResult.backend, converter.backend);
-    assert.equal(commentedPdf.subarray(0, 5).toString('ascii'), '%PDF-');
-    assert.match(commentedPdf.subarray(-2048).toString('latin1'), /%%EOF/);
-    assert.ok(commentedPdf.length > 100, 'commented DOCX PDF is empty');
-    formats.commentedDocx = { backend: commentedResult.backend, pdfBytes: commentedPdf.length };
     await assert.rejects(converter.render({ inputPath, outputPath }), error => error.code === 'EEXIST');
     assert.equal((await readFile(outputPath)).subarray(0, 5).toString(), '%PDF-');
     const wrong = join(root, 'invalid.docx');
@@ -73,5 +63,26 @@ test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and
     await converter.dispose();
     await assert.rejects(converter.render({ inputPath, outputPath: join(root, 'disposed.pdf') }), /disposed/);
     console.log(JSON.stringify({ backend: converter.backend, pdfBytes: (await stat(outputPath)).size, missingFonts: result.missingFonts, formats }));
+  } finally { await converter.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('real engine converts a deterministic generated DOCX, PPTX, and XLSX corpus', { skip: !enabled, timeout: 240_000 }, async () => {
+  const { createConverter } = await import(pathToFileURL(enabled).href);
+  const root = await mkdtemp(join(tmpdir(), 'libreoffice-generated-corpus-'));
+  const converter = await createConverter({ timeoutMs: 90_000 });
+  try {
+    for (const extension of ['docx', 'pptx', 'xlsx']) {
+      for (let seed = 0; seed < 4; seed++) {
+        const inputPath = join(root, `${extension}-${seed}.${extension}`);
+        const outputPath = join(root, `${extension}-${seed}.pdf`);
+        await writeFile(inputPath, officeFuzzFixture(extension, seed));
+        const result = await converter.render({ inputPath, outputPath });
+        const output = await readFile(outputPath);
+        assert.equal(result.backend, converter.backend);
+        assert.equal(output.subarray(0, 5).toString('ascii'), '%PDF-');
+        assert.match(output.subarray(-2048).toString('latin1'), /%%EOF/);
+        assert.ok(output.length > 100);
+      }
+    }
   } finally { await converter.dispose(); await rm(root, { recursive: true, force: true }); }
 });

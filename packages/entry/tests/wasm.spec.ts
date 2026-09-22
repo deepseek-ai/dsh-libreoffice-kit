@@ -118,14 +118,15 @@ async function wasmFixture(root: string, behavior: LoaderBehavior) {
 }
 
 /** Convert one request through the fake engine inside a private directory. */
-async function convert(behavior: LoaderBehavior, limits: { maxOutputBytes?: number } = {}, operation: WasmConversionRequest['operation'] = { format: 'pdf', recalculate: false }):
+async function convert(behavior: LoaderBehavior, limits: { maxOutputBytes?: number } = {}, operation?: WasmConversionRequest['operation']):
 Promise<Awaited<ReturnType<typeof convertWithWasm>>> {
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-kit-wasm-'))
   try {
     const { engine, face } = await wasmFixture(root, behavior)
-    const request: WasmConversionRequest = { engine, bytes: new Uint8Array([1, 2, 3]), extension: 'docx', operation,
+    const request: WasmConversionRequest = { engine, bytes: new Uint8Array([1, 2, 3]), extension: 'docx',
       options: resolveOptions({ fontDirectories: [], initialFontFamilies: ['Fixture Face'], ...limits }),
-      document: { families: new Map([['fixtureface', 'Fixture Face']]), codePoints: [65] }, faces: [face] }
+      document: { families: new Map([['fixtureface', 'Fixture Face']]), codePoints: [65] }, faces: [face],
+      ...(operation === undefined ? {} : { operation }) }
     return await convertWithWasm(request)
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 3 }) }
 }

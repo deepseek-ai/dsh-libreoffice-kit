@@ -1,6 +1,6 @@
-/** Conversion-local font imports and exact-family diagnostics. */
+/** Conversion-local font imports backed by a factory-lifetime match cache. */
 import { extname } from 'node:path'
-import { SystemFontCatalog, normalize, readFont } from './fonts.ts'
+import { SystemFontCatalog, fontFamilyPriority, normalize, readFont } from './fonts.ts'
 import type { FontFace, FontMatchRequest, FontMatchResult } from './fonts.ts'
 import type { DocumentFontMetadata } from './ooxml.ts'
 import type { ResolvedOptions } from './options.ts'
@@ -12,7 +12,7 @@ export interface FontSubstitution {
   readonly substitute: string
 }
 
-/** Serializable font match state shared by compatible process-local converters. */
+/** Serializable match state shared by converters created from one factory. */
 export interface FontResolutionCacheEntry {
   readonly key: string
   readonly codePoints: number[]
@@ -23,33 +23,21 @@ export interface FontResolutionCacheEntry {
 
 /** One conversion's font imports: a serialized resolver plus its diagnostics. */
 export interface FontLoader {
-  /** Declared document families no installed face provides, in discovery order. */
   readonly missingFonts: string[]
-  /** Missing families the catalog resolved to an installed substitute. */
   readonly substitutions: FontSubstitution[]
-  /** Installed file paths this conversion received, deduplicated by origin. */
   readonly files: string[]
-  /** Most-recently-used entries safe to merge into the process cache. */
+  /** Most-recently-used entries safe to merge into the owning factory. */
   readonly cacheEntries: FontResolutionCacheEntry[]
-  /**
-   * @param request - VCL family/style attributes and the scalars it still needs.
-   * @returns installed file paths for the selected faces.
-   */
   resolve(request: FontMatchRequest): string[]
 }
 
-/**
- * Place installed original bytes where the engine can read them.
- * @param name - Unique file name within this conversion's font directory.
- * @param bytes - Complete original font bytes.
- * @returns the path the engine should read.
- */
+/** Place installed original bytes where the engine can read them. */
 export type FontInstaller = (name: string, bytes: Buffer) => string
 
 const faceKey = (face: Pick<FontFace, 'path' | 'faceIndex'>): string => `${face.path}\0${face.faceIndex}`
 const requestKey = ({ codePoints: _codePoints, ...request }: FontMatchRequest): string => JSON.stringify(request)
 
-/** Build the metadata catalog inside a cancellable conversion worker. */
+/** Build one operation's loader over a factory-owned immutable font snapshot. */
 export function createFontLoader(options: ResolvedOptions, document: DocumentFontMetadata, install: FontInstaller,
   faces: readonly FontFace[], cache: readonly FontResolutionCacheEntry[] = []): FontLoader {
   const catalog = new SystemFontCatalog({ faces, fallbackFamilies: options.fontFallbacks })
@@ -134,4 +122,13 @@ export function preloadFonts(loader: FontLoader, options: ResolvedOptions, docum
   for (const family of families) loader.resolve({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: native ? document.codePoints : [] })
 }
 
-export { memoryFontConfig } from './font-config.ts'
+/** Fontconfig XML restricts WASM discovery to imported originals in MEMFS. */
+export function memoryFontConfig(families: readonly (readonly string[])[], requested: Iterable<string> = []): string {
+  const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;')
+  const names = [...new Map([...families.flatMap(group => group.slice(0, 1)), ...requested].map(name => [normalize(name), name])).values()]
+  const aliases = names.map((name) => {
+    const alternatives = fontFamilyPriority([name], families).filter(family => normalize(family) !== normalize(name))
+    return `<alias><family>${escape(name)}</family><accept>${alternatives.map(family => `<family>${escape(family)}</family>`).join('')}</accept></alias>`
+  })
+  return `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>/dsh-fonts</dir><cachedir>/dsh/font-cache</cachedir>${aliases.join('')}</fontconfig>`
+}

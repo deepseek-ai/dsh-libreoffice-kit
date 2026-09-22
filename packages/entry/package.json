@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
-  "description": "WASM Office previews, document images, and conversion for Node and browsers",
-  "version": "0.0.2-rc7",
+  "description": "Convert, recalculate, and render Office documents with prebuilt LibreOffice",
+  "version": "0.0.3",
   "publishConfig": {
     "access": "public"
   },
@@ -23,39 +23,7 @@
       "default": "./lib/index.js"
     },
     "./package.json": "./package.json",
-    "./fonts": {
-      "types": "./lib/types/font-source.d.ts",
-      "default": "./lib/font-source.js"
-    },
-    "./font-config": {
-      "types": "./lib/types/font-config.d.ts",
-      "default": "./lib/font-config.js"
-    },
-    "./document-inspection": {
-      "types": "./lib/types/document.d.ts",
-      "default": "./lib/document.js"
-    },
-    "./cli": "./lib/cli.js",
-    "./browser-assets": {
-      "types": "./lib/types/browser-assets.d.ts",
-      "default": "./lib/browser-assets.js"
-    },
-    "./internal/rendering": {
-      "types": "./lib/types/rendering.d.ts",
-      "default": "./lib/rendering.js"
-    },
-    "./internal/engine-rendering": {
-      "types": "./lib/types/engine-rendering.d.ts",
-      "default": "./lib/engine-rendering.js"
-    },
-    "./internal/sheet-geometry": {
-      "types": "./lib/types/sheet-geometry.d.ts",
-      "default": "./lib/sheet-geometry.js"
-    },
-    "./browser": {
-      "types": "./lib/browser/types/index.d.ts",
-      "import": "./lib/browser/index.js"
-    }
+    "./cli": "./lib/cli.js"
   },
   "files": [
     "README.zh.md",
@@ -63,28 +31,18 @@
     "lib/cli.js",
     "lib/worker.js",
     "NOTICE",
-    "lib/types/**/*.d.ts",
-    "lib/font-source.js",
-    "lib/font-worker.js",
-    "lib/font-config.js",
-    "lib/document.js",
-    "assets/font-subset.wasm",
-    "assets/font-subset.json",
-    "sources/font-subset/",
-    "licenses/font-subset/",
-    "lib/browser-assets.js",
-    "lib/rendering.js",
-    "lib/engine-rendering.js",
-    "lib/sheet-geometry.js",
-    "lib/browser/",
-    "sources/browser/",
-    "licenses/javascript/"
+    "lib/types/**/*.d.ts"
   ],
   "dependencies": {
-    "@unicode/unicode-17.0.0": "2.0.7",
     "fflate": "0.8.2",
     "fontkit": "2.0.4",
-    "saxes": "6.0.0",
+    "saxes": "6.0.0"
+  },
+  "optionalDependencies": {
+    "@deepseek-ai/libreoffice-kit-darwin-arm64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-darwin-x64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-win32-arm64": "workspace:*",
+    "@deepseek-ai/libreoffice-kit-win32-x64": "workspace:*",
     "@deepseek-ai/libreoffice-kit-wasm": "workspace:*"
   },
   "bin": {

@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { requiredUiResources } from '../engine/ui-resource-policy.mjs';
 import { pruneNativePayload, stripNativePayload } from '../scripts/slim-native.mjs';
 
 function fixture(t) {
@@ -23,10 +22,9 @@ for (const platform of ['darwin-arm64', 'linux-arm64-glibc']) test(`${platform} 
   const resources = `${dirname(program)}/${platform.startsWith('darwin-') ? 'Resources' : 'share'}`;
   const desktop = ['gallery/picture.svg', 'template/blank.ott', 'wizards/index.py', 'tipoftheday/tips.txt', 'config/images_colibre.zip', 'config/images.zip', 'main.icns', 'intro-highres.png',
     'basic/Standard/script.xlb', 'Scripts/python/ScriptForgeHelper.py',
-    'config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui', 'config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
     'config/soffice.cfg/modules/swriter/ui/notebookbar.ui', 'config/soffice.cfg/modules/scalc/ui/notebookbar_compact.ui',
     'config/soffice.cfg/modules/swriter/toolbar/standardbar.xml', 'config/soffice.cfg/modules/simpress/menubar/menubar.xml'];
-  const runtime = ['config/soffice.cfg/settings.xml', ...requiredUiResources.map(file => `config/soffice.cfg/${file}`),
+  const runtime = ['config/soffice.cfg/settings.xml', 'config/soffice.cfg/modules/swriter/ui/formatobjectdialog.ui', 'config/soffice.cfg/modules/schart/ui/charttypedialog.ui',
     'registry/writer.xcd', 'filter/ooxml.xcu', 'fonts/font.ttf', 'liblangtag/language.xml', 'LICENSE', 'NOTICE'];
   const programResources = platform.startsWith('darwin-') ? resources : program;
   const presets = `${platform.startsWith('darwin-') ? resources : dirname(program)}/presets`;
@@ -226,57 +224,4 @@ for (const library of ['libucpdav1.dylib', 'libldapbe2lo.dylib']) test(`staging 
   put(`${contents}/Frameworks/${library}`);
   put(`${contents}/Resources/services/services.rdb`, `<component uri="vnd.sun.star.expand:$LO_LIB_DIR/${library}"/>`);
   assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', `${contents}/Frameworks`), /remains registered.*reconfigure/);
-});
-
-for (const platform of ['darwin-arm64', 'darwin-x64']) test(`${platform} drops the unopkg-only library after checking retained Mach-O consumers`, t => {
-  const { directory, put } = fixture(t);
-  const contents = 'program/Office.app/Contents';
-  const program = `${contents}/Frameworks`;
-  const unopkg = `${program}/libunopkgapp.dylib`;
-  const image = Buffer.alloc(32); image.writeUInt32LE(0xfeedfacf);
-  for (const file of ['bin/worker', `${program}/libretained.dylib`, `${contents}/MacOS/unopkg`, unopkg]) put(file, image);
-  const inspected = [];
-  const result = pruneNativePayload(directory, platform, program, file => {
-    inspected.push(file);
-    return `${file}:\nLoad command 0\n          cmd LC_LOAD_DYLIB\n         name @rpath/libretained.dylib (offset 24)\n`;
-  });
-  assert.equal(existsSync(join(directory, unopkg)), false);
-  assert.equal(existsSync(join(directory, contents, 'MacOS/unopkg')), false);
-  assert.equal(result.removedBytes, image.length * 2);
-  assert.deepEqual(inspected, ['bin/worker', `${program}/libretained.dylib`].map(file => join(directory, file)));
-  assert.deepEqual(pruneNativePayload(directory, platform, program, () => assert.fail('Already removed')), { removed: [], removedBytes: 0 });
-});
-
-for (const registry of ['services/services.rdb', 'ure/share/misc/services.rdb']) test(`unopkg pruning rejects a registration in ${registry}`, t => {
-  const { directory, put } = fixture(t);
-  const contents = 'program/Office.app/Contents';
-  const program = `${contents}/Frameworks`;
-  put(`${program}/libunopkgapp.dylib`);
-  put(`${contents}/Resources/${registry}`, '<component uri="vnd.sun.star.expand:$LO_LIB_DIR/libunopkgapp.dylib"/>');
-  assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', program), /remains registered: libunopkgapp/);
-  assert.equal(existsSync(join(directory, program, 'libunopkgapp.dylib')), true);
-});
-
-for (const command of ['LOAD_DYLIB', 'LOAD_WEAK_DYLIB', 'REEXPORT_DYLIB', 'LAZY_LOAD_DYLIB', 'LOAD_UPWARD_DYLIB'])
-  test(`unopkg pruning refuses a retained LC_${command} consumer`, t => {
-    const { directory, put } = fixture(t);
-    const program = 'program/Office.app/Contents/Frameworks';
-    const image = Buffer.alloc(32); image.writeUInt32LE(0xfeedfacf);
-    put(`${program}/libunopkgapp.dylib`, image);
-    put('bin/worker', image);
-    assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', program,
-      () => `Load command 0\n          cmd LC_${command}\n         name @rpath/libunopkgapp.dylib (offset 24)\n`), /is required by bin\/worker/);
-    assert.equal(existsSync(join(directory, program, 'libunopkgapp.dylib')), true);
-  });
-
-test('unopkg pruning rejects unreadable or malformed Mach-O inspection', t => {
-  const { directory, put } = fixture(t);
-  const program = 'program/Office.app/Contents/Frameworks';
-  const image = Buffer.alloc(32); image.writeUInt32LE(0xfeedfacf);
-  put(`${program}/libunopkgapp.dylib`, image);
-  put('bin/worker', image);
-  for (const output of ['', 'Load command 0\n cmd LC_LOAD_DYLIB\n invalid dependency\n'])
-    assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', program, () => output), /Cannot inspect Mach-O/);
-  assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', program, () => { throw new Error('otool failed'); }), /otool failed/);
-  assert.equal(existsSync(join(directory, program, 'libunopkgapp.dylib')), true);
 });

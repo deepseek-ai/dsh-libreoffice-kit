@@ -82,7 +82,8 @@ export function nativeEnvironment(profile: string, programDirectory: string, sou
  * @throws ConversionError for a reported conversion failure, and the abort reason for cancellation.
  */
 export async function runNative(engine: NativeEngine, options: ResolvedOptions, input: string, output: string, profile: string,
-  fonts: readonly string[], substitutions: readonly FontSubstitution[], signal: AbortSignal, operation: Pick<ConversionSpec, 'format' | 'recalculate' | 'sheet'>): Promise<void> {
+  fonts: readonly string[], substitutions: readonly FontSubstitution[], signal: AbortSignal,
+  operation: Pick<ConversionSpec, 'format' | 'recalculate' | 'sheet'> = { format: 'pdf', recalculate: false }): Promise<void> {
   signal.throwIfAborted()
   await prepareNativeFontProfile(profile, substitutions)
   signal.throwIfAborted()

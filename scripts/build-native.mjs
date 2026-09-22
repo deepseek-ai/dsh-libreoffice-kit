@@ -44,23 +44,12 @@ function shellPath(file) {
   if (result.status !== 0) throw new Error('Cygwin cygpath is required for the Windows Core build');
   return result.stdout.trim();
 }
-const resumedFlags = args.includes('--resume') ? readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n') : undefined;
-const compilerCache = value('--compiler-cache', resumedFlags?.includes('--enable-ccache') ? 'ccache' : 'none');
-if (!['none', 'ccache'].includes(compilerCache)) throw new Error('--compiler-cache must be none or ccache');
-const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO, crossCompile, compilerCache);
-if (resumedFlags) {
-  verifyConfigureInput(platform, resumedFlags);
-  if (resumedFlags.includes('--enable-ccache') !== (compilerCache === 'ccache'))
-    throw new Error('Compiler cache configuration changed; use a fresh Core build directory');
-}
+const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO, crossCompile);
+if (args.includes('--resume')) verifyConfigureInput(platform, readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n'));
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
 const identityPaths = { workspace: root, source: core, build, tarballs };
 const buildEnvironment = identityEnvironment({ ...process.env, MAKE: shellPath(make) }, platform, identityPaths);
-if (compilerCache === 'ccache') {
-  buildEnvironment.CCACHE = 'ccache';
-  delete buildEnvironment.SCCACHE;
-}
 if (process.platform === 'win32') {
   // UCRT's builtin offsetof supports the constant expressions required by Skia and PDFium.
   buildEnvironment.ENVCFLAGSCXX = `${buildEnvironment.ENVCFLAGSCXX ?? ''} -D_CRT_USE_BUILTIN_OFFSETOF=1`.trim();
@@ -70,8 +59,7 @@ if (process.platform === 'win32') {
   // Keep MSVC's linker ahead of Cygwin's unrelated link.exe utility.
   buildEnvironment[pathKey] = [dirname(make), dirname(compiler.stdout.trim().split(/\r?\n/)[0]), join(cygwin, 'bin'), buildEnvironment[pathKey]].join(';');
 }
-const identity = { ...buildIdentity(platform, identityPaths, buildEnvironment), ...(crossCompile ? { crossCompile: true } : {}),
-  ...(compilerCache === 'ccache' ? { compilerCache } : {}) };
+const identity = { ...buildIdentity(platform, identityPaths, buildEnvironment), ...(crossCompile ? { crossCompile: true } : {}) };
 const identityFile = join(build, 'dsh-build-identity.json');
 if (args.includes('--resume') || existsSync(join(build, 'config_host.mk'))) {
   if (!existsSync(identityFile) || JSON.stringify(JSON.parse(readFileSync(identityFile, 'utf8'))) !== JSON.stringify(identity))

@@ -1,71 +1,81 @@
 # @deepseek-ai/libreoffice-kit
 
-The Node API, CLI, browser adapters and font service share this package. Its exact-version dependency, `@deepseek-ai/libreoffice-kit-wasm`, carries the prebuilt engine for all supported hosts. Installation and document operations never compile, download, or discover a system LibreOffice. Node.js 22.19 or newer is required.
+English | [中文](README.zh.md)
 
-```ts
-import { createConverter, discoverRuntime } from '@deepseek-ai/libreoffice-kit'
+Convert, recalculate, and directly render local Office documents with prebuilt LibreOffice engines. Use the same API in a server, desktop application, or document-processing job, with configurable fonts, cancellation, and resource limits.
 
-const converter = await createConverter({ timeoutMs: 120_000 })
-try {
-  // Office paints directly from its model; PDF inputs use PDFium.
-  const images = await converter.renderImages({
-    inputPath: '/private/report.docx', outputDir: '/private/new-images', pages: [1, 3], dpi: 144,
-  })
-  await converter.convert({ inputPath: '/private/report.doc', outputPath: '/private/new-report.docx' })
-  await converter.recalculate({ inputPath: '/private/book.xlsx', outputPath: '/private/recalculated.xlsx' })
-} finally {
-  await converter.dispose()
-}
-const runtime = await discoverRuntime() // installed CLI and API paths; no engine start
-```
+Binary `.doc`, `.xls`, and `.ppt` inputs must be OLE compound documents, such as Office 97–2003 files. Renamed RTF/HTML and `.wps` inputs are unsupported. `missingFonts` is empty for binary inputs because their font tables are interpreted by LibreOffice rather than the OOXML inspector.
 
-## Direct image rendering
+## Installation and usage
 
-`renderImages(request, signal?)` loads one saved input snapshot and produces `page-0001.png`, subsequent images, and `manifest.json` in a **new** directory. It supports DOC/DOCX/ODT, XLS/XLSX/ODS, PPT/PPTX/ODP, and PDF. Office rasterization never exports an intermediate PDF. The existing `render({inputPath,outputPath})` method still exports PDF for compatibility.
-
-- Writer, Impress and PDF use distinct, one-based `pages`, preserving the requested order. Omit it or specify `'all'` for all physical pages/slides.
-- Calc uses an exact `sheet` name and optional `range: 'A1:D20'`; a range requires a sheet. Without selectors, every visible sheet's data area is captured. `pages` is rejected for worksheets. Hidden/filtered rows and columns retain their display behavior. The default data area excludes formatting-only cells and standalone drawings; select an explicit range to include additional content. An empty sheet renders A1.
-- `dpi` defaults to 144 and accepts 24–600. Each image is bounded by `maxPixels` (default and maximum 16,777,216) and `maxDimension` (default 8192 pixels per side). Large worksheet regions split on the output-pixel grid in row order. Each fragment retains the requested `sheet`/`range`; its `rectangle` identifies the exact source portion. Writer, Impress and PDF keep whole pages and reject an oversized page.
-- `maxPages` defaults to 100 and limits the total output image count, including worksheet fragments across all selected sheets. The complete batch is checked before painting; limits reject the request instead of truncating it.
-- `maxInputBytes`, aggregate PNG `maxOutputBytes`, font limits, and `timeoutMs` come from `ConverterOptions`. Defaults and all options are in the shipped TypeScript declarations.
-- The manifest identifies `source: 'saved'`, the original `inputPath`, `sourceSha256`, `backend: 'wasm'`, `rasterEngine: 'libreoffice' | 'pdfium'`, total `pageCount`, selected images, dimensions, source rectangles at 96 DPI, and OOXML missing-font diagnostics. For Calc, `pageCount` is the visible sheet count and each image has `sheet`/`range` instead of `page`.
-
-Absolute paths must be caller-authorized, private, and protected against concurrent path replacement. Input must be a nonempty regular file. The output directory must not exist. Cancellation, timeout, disposal or any failure waits for Worker exit and removes the whole newly owned output batch; it never removes a pre-existing output directory. Calls on one converter are serialized. Every operation starts a fresh Worker/model; retained browser editor sessions use the browser adapter.
-
-## CLI and conversions
+Install with Node.js 22.19.0 or newer:
 
 ```sh
-libreoffice-kit capabilities --json
-libreoffice-kit render --input report.docx --output-dir new-images --pages 1,3 --dpi 144
-libreoffice-kit render --input book.xlsx --output-dir new-sheet --sheet 'Summary' --range A1:D20
-libreoffice-kit render --input document.pdf --output-dir new-pdf-images
-libreoffice-kit convert --input report.docx --output report.pdf
-libreoffice-kit convert --input book.xlsx --output table.csv --sheet 'Summary'
-libreoffice-kit recalculate --input book.xlsx --output checked.xlsx
+npm install @deepseek-ai/libreoffice-kit@0.0.3
 ```
 
-CLI paths resolve against its working directory. Success writes one JSON object to stdout; failure writes `{code,error}` to stderr and exits with status 1. SIGINT/SIGTERM cancel and await cleanup. `render` accepts `--max-pages`, `--max-pixels`, `--max-dimension`, and the common `--timeout-ms`, `--max-input-bytes`, `--max-output-bytes`, archive/font limits, repeated `--font-directory`/`--initial-font-family`, and JSON `--font-fallbacks`.
+npm installs the matching native engine on macOS/Windows ARM64 or x64, and the shared WASM engine on Linux. macOS and Windows require their native package; a missing or invalid package rejects `createConverter` with `unavailable`, without switching to WASM. Linux uses WASM unless a compatible development native package was installed explicitly. Conversion failures never switch engines.
 
-`convert` supports Writer → PDF/DOCX/ODT/TXT, Calc → PDF/XLSX/ODS/CSV, Impress → PDF/PPTX/ODP. CSV requires an exact sheet for multi-sheet inputs and emits UTF-8 with a comma delimiter. `recalculate` synchronously recalculates XLS/XLSX/ODS and saves XLSX/ODS with formulas and refreshed cached results; it does not validate business logic. Conversion outputs must be fresh exclusive files. Macros and external-link updates remain disabled.
+```js
+import { createConverter } from '@deepseek-ai/libreoffice-kit';
 
-## Fonts and PDF scope
+const converter = await createConverter({ timeoutMs: 120_000 });
+try {
+  const result = await converter.render({
+    inputPath: '/private/work/document.docx',
+    outputPath: '/private/work/document.pdf',
+  });
+  console.log(result.backend, result.missingFonts);
+} finally {
+  await converter.dispose();
+}
+```
 
-Node operations and the Host font service use bounded system-font discovery. Exact installed families and explicit aliases precede Unicode-script and regional body-text preferences, then other glyph-covering fonts. Windows preferences derive from pinned Chromium data; macOS/Linux use Fontconfig categories, with the other source supplying additional candidates. Unicode 17 Script/Script_Extensions data keeps mixed text independent of incorrectly declared document languages. Only unlisted Latin/CJK decorative faces are demoted; cursive writing traditions such as Urdu Nastaliq remain normal body fonts. No fonts are downloaded or bundled by these rules. Full original files retain shaping and encoding. Compatible `createConverter()` calls transparently share process-local font metadata and bounded match results; `maxFontResolutionEntries` defaults to 4096, and at most 16 distinct font configurations remain indexed. Restart the process after changing installed fonts. `missingFonts` reports unavailable declared OOXML families; font-service `unresolvedCodePoints` separately reports scalars no installed face covers. The rule data and licenses are regenerated with `node scripts/generate-font-preferences.mjs` and retained in `NOTICE`.
+Native and WASM engines are platform-filtered optional dependencies. Application builders must verify the required engine is installed: native on macOS/Windows, WASM on Linux. A missing required engine rejects `createConverter()` with `unavailable`.
 
-`createFontSource` from `@deepseek-ai/libreoffice-kit/fonts` provides an independent Worker service. `prepare()` builds its lifetime font snapshot before the first document request. Default discovery supplements normal system roots with a small compatibility set from an installed Microsoft Office on macOS or Windows; explicit `fontDirectories` replace all defaults. No font bytes or Host paths enter the package. `resolve(attributes)` retains the Unicode-script subset behavior for interactive Office. `resolve({...attributes, mode:'full'})` returns opaque `full_…` identities, original family names and `format` (`ttf`, `otf`, `ttc`); `read(id)` returns complete original font bytes. Apple dfont resources are extracted as complete sfnt faces. Reads reject unknown or changed sources and do not expose host paths.
+Each converter serializes renders. A render creates a separate native process or Node worker and private profile, so fonts, document state, and failures do not leak into later renders. The deadline begins after acquiring its conversion slot. An `AbortSignal` cancels queued or active work; cancellation and `dispose()` await process or worker exit and scratch cleanup. Disposed converters reject further work.
 
-Full-mode selections from the same unchanged TTC share one file read and retained byte entry while keeping each selected family's name and alias. The existing cache budget counts unique full assets once; eviction may require a later read to regenerate them. Subsets and dfont resources remain specific to each physical face.
+Converters created through the compatibility `createConverter(options)` API transparently share bounded font metadata and match results with other process-local converters using the same engine and font configuration. Disposing a converter still joins only its own work; the metadata cache remains available to later compatible converters and is bounded both by configuration count and by `maxFontResolutionEntries`, which defaults to 4096. Restart the process after changing font files.
 
-PDFium is an experimental direct raster path, separate from PDF.js and Office reading sessions. Embedded PDF fonts remain PDFium-owned. A fixed, bounded set of regular faces selected from `initialFontFamilies` and fallback groups is mounted before PDFium's first font enumeration. This does not infer every arbitrary PDF font or repair custom encodings. Password-protected PDFs are rejected; forms are rasterized by the upstream PDFium wrapper, while ordinary annotations and advanced PDF features require further qualification.
+For a long-lived service that wants one explicit lifecycle owner for concurrent conversion slots, create one `createConverterFactory(options)` and obtain converters through `factory.create()`. Those converters use a factory-private cache while retaining separate Workers, native helpers, profiles, and output ownership. Dispose the factory to stop and join every converter it created.
 
-## Browser and font entries
+`convert()` exports the format named by the output suffix, `recalculate()` refreshes spreadsheet formula results before saving, and `renderImages()` writes a fresh directory containing PNG tiles plus `manifest.json`. Office images are painted directly from one loaded model; PDF images use PDFium. The CLI exposes the same operations through `libreoffice-kit capabilities|convert|recalculate|render`.
 
-`@deepseek-ai/libreoffice-kit/browser` provides retained read-only Office sessions through `openOfficeDocument`, Writer paginated/continuous layouts, selection/copy, and standalone PDFium viewing. The rc5 browser API has no editing, snapshot-save or capture operations; Node/CLI conversion and recalculation retain their explicit output APIs. `@deepseek-ai/libreoffice-kit/browser-assets` resolves the local browser Worker and validates the assets in the exact-version WASM dependency. Host asset servers expose these resources as opaque URLs; the main package does not duplicate the LibreOffice payload.
+Conversion workers run the package's shipped JavaScript with an empty `execArgv`; consumer launch flags such as `--input-type=module` are not inherited.
 
-`./fonts` provides the Host font service described above. Browser-safe `./font-config` and `./document-inspection` share font configuration and input validation with the Node API. `./internal/*` exports are implementation details used by the bundled browser Worker.
+On Linux, the native child searches the selected engine's program directory before system paths for shared libraries. Caller-provided `LD_LIBRARY_PATH` and `LD_PRELOAD` are not inherited.
 
-Subsets use Unicode 17 script data and HarfBuzz layout/composite closure. Their bounded in-memory cache can regenerate evicted entries from unchanged originals. [The subset build recipe](../../engine/font-subset/README.md) pins source and redistribution notices.
+The caller authorizes input access and owns private input/output directories; paths must be absolute and remain unchanged during conversion. Input files must be regular Office files within the configured byte limits. ZIP entry and uncompressed-size limits apply to OOXML; binary DOC/XLS/PPT files use OLE compound containers validated by the LibreOffice importer. Binary formats retain the same conversion deadline and input/output limits. Output creation uses exclusive mode and permissions `0600`; an existing output is never overwritten. Failed or cancelled renders remove newly created outputs. `maxOutputBytes` limits the returned PDF and its read buffer; native temporary disk files can grow until export completes, then oversized PDFs are rejected and deleted before Node reads them. The caller owns successful PDFs and may send their bytes to a browser PDF viewer.
+
+`ConversionError.code` distinguishes `invalid-document`, `unsupported-format`, `input-too-large`, `output-too-large`, `invalid-output`, `timeout`, `unavailable`, and `failed`. These codes survive the worker/native transports. Invalid installation assets reject creation as `unavailable`; they never enable fallback. Filesystem errors such as `EEXIST`, invalid configuration errors, and caller cancellation reasons remain unchanged.
+
+## Engines, fonts, and runtime behavior
+
+The Node API and engine packages share the kit release version. `ENGINE_VERSION` pins both WASM and native optional dependencies to the exact engine version. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
+
+Defaults and all options are documented in the shipped TypeScript declarations in `lib/types/index.d.ts`. Font directories use conventional system/user paths for the selected OS. Indexing skips missing or protected sources and propagates other filesystem errors. `fontkit` indexes original font files and selects installed faces and glyph coverage; it does not rewrite fonts. The converter reuses its first font metadata snapshot; recreate the converter after changing installed fonts. Original font bytes and decoded glyph coverage remain conversion-local. `missingFonts` contains absent families declared in readable document XML, excluding unrelated engine defaults. Missing glyphs without a named missing family are not a complete document accessibility report.
+
+When `fontDirectories` is omitted on macOS or Windows, default discovery also checks Microsoft Office's bundled/private font directory and the user's Office font cache. Only curated Office-compatible families absent from normal system roots are added, including SimSun and Microsoft YaHei. Explicit `fontDirectories` disables this supplemental discovery.
+
+Exact installed families take priority in font matching, including explicitly requested handwriting or decorative fonts. Default `fontFallbacks` prefer common serif, sans-serif, and monospaced text families and corresponding Simplified Chinese faces, with Carlito for Calibri and Calibri Light, and Caladea for Cambria. Catalog matching retains the weight and italic style supplied by WASM font requests when matching faces are installed. The complete indexed catalog remains available for glyphs absent from the preferred families. Caller-provided groups replace the defaults; `[]` removes these preferences without disabling catalog discovery. WASM uses the same ordered aliases for imported fonts. The shipped option types describe `fontFallbacks`.
+
+Native conversion writes missing-family choices into its private LibreOffice profile. LibreOffice resolves installed originals and its metric-compatible fonts before consulting these choices, so custom groups can produce different substitutions across engines. Native weight and italic selection depend on the engine and the fonts it can discover; native font preloading requests regular faces.
+
+`maxFontFiles` and `maxFontFileBytes` bound font indexing; `maxLoadedFontBytes` bounds original files explicitly imported by this kit per conversion. WASM uses only imported originals and rejects with `unavailable` when no usable fonts are found; install fonts or configure `fontDirectories` before converting in a minimal container. Native macOS and Windows engines can also use OS-managed fonts, so the import limit is not a cap on native total font memory. Font matching and XML work run inside the cancellable worker; no browser font RPC or DOM is involved.
+
+Node WASM image downscaling uses LibreOffice's CPU image filter. Text layout, font matching, and PDF serialization are CPU work as well.
+
+For reproducible comparisons, use identical documents, fonts, DPI, and limits; WASM installations run on Linux. Report engine startup together with conversion time; every render starts a fresh engine. The WASM assets and platform payloads carry their source, license, and integrity manifests.
 
 ## Source and license
 
-This package is licensed under [MPL-2.0](LICENSE). Engine `prebuilds.json` inventories, corresponding pinned source recipes and patches in `sources/`, and third-party notices in `licenses/` accompany the engine payload. The font subsetter carries its own pinned recipe and redistribution notices. Applications bundling the engine must retain these resources and notices. Declared targets and source-level tests do not substitute for testing the installed engine on representative files.
+This package is licensed under [MPL-2.0](LICENSE). The engine packages include `prebuilds.json` integrity inventories, corresponding source recipes and patches in `sources/`, and third-party redistribution notices in `licenses/`.
+
+## Limitations
+
+- Fidelity depends on source formatting, installed fonts, and the selected engine. Missing-font names do not report every missing glyph.
+- DOC/DOCX/ODT, XLS/XLSX/ODS, and PPT/PPTX/ODP conversion is supported; direct image rendering additionally accepts PDF. Conversion does not discover system LibreOffice or download engines and fonts.
+- Font import and output limits do not bound all native memory or temporary disk use. Native platform engines may resolve fonts differently from WASM.
+- Installations from npm use platform-specific optional packages. Applications that bundle engines must retain the complete selected package, including its resources and notices.
+- Windows requires the Microsoft Visual C++ v14 Redistributable matching the Node.js architecture (x64 or ARM64); it is not bundled. Use ARM64 Node.js for the Windows ARM64 engine.
+- Version `0.0.3` ships macOS and Windows native engines for ARM64 and x64 and a shared Node WASM engine for Linux. Other native platforms are development recipes.

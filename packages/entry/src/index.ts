@@ -10,6 +10,7 @@ import type { ImageRenderSpec, RenderImagesRequest, RenderImagesResult } from '.
 export { IMAGE_FORMATS } from './image-operations.ts'
 export type { RenderImagesRequest, RenderImagesResult, RenderedImage } from './image-operations.ts'
 import { runNative } from './native.ts'
+import { renderImagesWithNative } from './native-image-renderer.ts'
 import { resolveOptions } from './options.ts'
 import { resolveEngine } from './engine.ts'
 import { ConversionError, failureCode } from './errors.ts'
@@ -56,7 +57,7 @@ export interface ConverterOptions {
   maxFontFileBytes?: number
   /** Complete original font bytes imported per conversion. Default: 512 MiB. Native platform fonts remain OS-managed. */
   maxLoadedFontBytes?: number
-  /** Maximum font match records retained by each compatible process cache. Default: 4096. */
+  /** Maximum font match records retained by each compatible process cache or explicit factory. Default: 4096. */
   maxFontResolutionEntries?: number
 }
 
@@ -95,6 +96,15 @@ export interface Converter {
    */
   recalculate(request: Omit<ConversionRequest, 'sheet'>, signal?: AbortSignal): Promise<RenderResult>
   /** Abort queued and active work, await exit and cleanup, and permanently reject further renders. */
+  dispose(): Promise<void>
+}
+
+/** Factory-scoped engine and font metadata shared by concurrent converters. */
+export interface ConverterFactory {
+  readonly backend: 'native' | 'wasm'
+  /** Create one serial converter sharing this factory's bounded font cache. */
+  create(): Promise<Converter>
+  /** Abort and join every converter created by this factory. */
   dispose(): Promise<void>
 }
 
@@ -179,6 +189,13 @@ Promise<WasmWorkerResult | NativeWorkerResult | ImagesWorkerResult> {
   }
 }
 
+/**
+ * Resolve the installed engine and deployment limits without starting LibreOffice.
+ * @param options - Conversion, font, and output limits.
+ * @returns A serial converter; dispose it after use.
+ * @throws TypeError for invalid options, or an unavailable ConversionError for invalid installed engines.
+ * An absent native engine or a known unsupported glibc version selects WASM.
+ */
 interface SharedConverterState {
   fontFaces: FontFace[] | undefined
   readonly fontCache: Map<string, FontResolutionCacheEntry>
@@ -188,10 +205,10 @@ const DEFAULT_SHARED_STATE_LIMIT = 16
 const defaultSharedStates = new Map<string, SharedConverterState>()
 
 function sharedStateKey(options: ReturnType<typeof resolveOptions>, engine: Engine): string {
-  return JSON.stringify({ engine, fontDirectories: options.fontDirectories, fontFallbacks: options.fontFallbacks,
-    initialFontFamilies: options.initialFontFamilies, maxFontFiles: options.maxFontFiles,
-    maxFontFileBytes: options.maxFontFileBytes, maxLoadedFontBytes: options.maxLoadedFontBytes,
-    maxFontResolutionEntries: options.maxFontResolutionEntries })
+  return JSON.stringify({ engine, fontDirectories: options.fontDirectories, includeOfficeFonts: options.includeOfficeFonts,
+    fontFallbacks: options.fontFallbacks, initialFontFamilies: options.initialFontFamilies,
+    maxFontFiles: options.maxFontFiles, maxFontFileBytes: options.maxFontFileBytes,
+    maxLoadedFontBytes: options.maxLoadedFontBytes, maxFontResolutionEntries: options.maxFontResolutionEntries })
 }
 
 function defaultSharedState(options: ReturnType<typeof resolveOptions>, engine: Engine): SharedConverterState {
@@ -209,40 +226,40 @@ function defaultSharedState(options: ReturnType<typeof resolveOptions>, engine: 
   return state
 }
 
-function mergeFontCache(shared: SharedConverterState, limit: number, entries: FontResolutionCacheEntry[]): void {
-  for (const entry of entries) {
-    const prior = shared.fontCache.get(entry.key)
-    const faces = new Map((prior?.faces ?? []).map(face => [`${face.path}\0${face.faceIndex}`, face]))
-    for (const face of entry.faces) faces.set(`${face.path}\0${face.faceIndex}`, face)
-    const merged: FontResolutionCacheEntry = { ...entry,
-      codePoints: [...new Set([...(prior?.codePoints ?? []), ...entry.codePoints])].sort((left, right) => left - right),
-      emptyRequest: prior?.emptyRequest === true || entry.emptyRequest,
-      faces: [...faces.values()],
-      ...((prior?.missingFamily ?? entry.missingFamily) === undefined ? {}
-        : { missingFamily: prior?.missingFamily ?? entry.missingFamily }) }
-    shared.fontCache.delete(entry.key)
-    shared.fontCache.set(entry.key, merged)
-  }
-  while (shared.fontCache.size > limit) shared.fontCache.delete(shared.fontCache.keys().next().value as string)
-}
-
-/**
- * Resolve the installed engine and deployment limits without starting LibreOffice.
- * @param options - Conversion, font, and output limits.
- * @returns A serial converter; dispose it after use.
- * @throws TypeError for invalid options, or an unavailable ConversionError for invalid installed engines.
- * An absent native engine or a known unsupported glibc version selects WASM.
- */
-export async function createConverter(options?: ConverterOptions): Promise<Converter> {
+async function resolveConverter(options?: ConverterOptions): Promise<{
+  readonly options: ReturnType<typeof resolveOptions>
+  readonly engine: Engine
+}> {
   const resolvedOptions = resolveOptions(options)
   let engine: Engine
   try { engine = await resolveEngine() } catch (cause) { throw new ConversionError('unavailable', (cause as Error).message, { cause }) }
-  const shared = defaultSharedState(resolvedOptions, engine)
+  return { options: resolvedOptions, engine }
+}
+
+function createConverterWith(resolvedOptions: ReturnType<typeof resolveOptions>, engine: Engine,
+  shared: SharedConverterState, onDispose?: (converter: Converter) => void): Converter {
   const lifetime = new AbortController()
   const active = new Set<Promise<RenderResult | RenderImagesResult>>()
   const waiting = new Set<() => void>()
   let running = false
   let disposal: Promise<void> | undefined
+  const mergeCache = (entries: FontResolutionCacheEntry[]): void => {
+    for (const entry of entries) {
+      const prior = shared.fontCache.get(entry.key)
+      const faces = new Map((prior?.faces ?? []).map(face => [`${face.path}\0${face.faceIndex}`, face]))
+      for (const face of entry.faces) faces.set(`${face.path}\0${face.faceIndex}`, face)
+      const merged: FontResolutionCacheEntry = { ...entry,
+        codePoints: [...new Set([...(prior?.codePoints ?? []), ...entry.codePoints])].sort((left, right) => left - right),
+        emptyRequest: prior?.emptyRequest === true || entry.emptyRequest,
+        faces: [...faces.values()],
+        ...((prior?.missingFamily ?? entry.missingFamily) === undefined ? {}
+          : { missingFamily: prior?.missingFamily ?? entry.missingFamily }) }
+      shared.fontCache.delete(entry.key)
+      shared.fontCache.set(entry.key, merged)
+    }
+    while (shared.fontCache.size > resolvedOptions.maxFontResolutionEntries)
+      shared.fontCache.delete(shared.fontCache.keys().next().value as string)
+  }
   async function acquire(signal: AbortSignal): Promise<void> {
     while (running) {
       signal.throwIfAborted()
@@ -277,7 +294,7 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       try { await input.writeFile(sourceBytes) } finally { await input.close() }
       const result = await runWorker({ inputPath, extension, operation: request, options: resolvedOptions, engine, scratch,
         fontFaces: shared.fontFaces, fontCache: [...shared.fontCache.values()] }, stopped,
-      (faces) => { shared.fontFaces ??= faces }, entries => mergeFontCache(shared, resolvedOptions.maxFontResolutionEntries, entries))
+      (faces) => { shared.fontFaces ??= faces }, mergeCache)
       if ('images' in result) throw new ConversionError('failed', 'Conversion worker returned an image batch for an export request.')
       let bytes: Uint8Array
       if ('output' in result) bytes = result.output
@@ -336,13 +353,20 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
       await writeFile(inputPath, source, { flag: 'wx', mode: 0o600 })
       const result = await runWorker({ inputPath, extension: request.extension, operation: request, options: resolvedOptions,
         engine, scratch, fontFaces: shared.fontFaces, fontCache: [...shared.fontCache.values()] }, stopped,
-      faces => { shared.fontFaces ??= faces }, entries => mergeFontCache(shared, resolvedOptions.maxFontResolutionEntries, entries))
-      if (!('images' in result)) throw new ConversionError('failed', 'Image worker did not return its manifest.')
+      faces => { shared.fontFaces ??= faces }, mergeCache)
+      let images: RenderImagesResult
+      if ('images' in result) images = result.images
+      else if ('fonts' in result) {
+        const profile = join(scratch, 'profile')
+        images = await renderImagesWithNative({ engine: engine as NativeEngine, options: resolvedOptions, inputPath,
+          source, scratch, profile, fonts: result.fonts, substitutions: result.substitutions,
+          missingFonts: result.missingFonts, operation: request, signal: stopped })
+      } else throw new ConversionError('failed', 'Image worker did not return its manifest.')
       stopped.throwIfAborted()
-      await writeFile(join(request.outputDir, 'manifest.json'), `${JSON.stringify(result.images, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
+      await writeFile(join(request.outputDir, 'manifest.json'), `${JSON.stringify(images, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
       stopped.throwIfAborted()
       succeeded = true
-      return result.images
+      return images
     } finally {
       clearTimeout(timer)
       try {
@@ -362,7 +386,7 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
     void task.finally(() => { active.delete(task) }).catch((_error: unknown) => { /* The caller owns task rejection. */ })
     return task
   }
-  return {
+  const converter: Converter = {
     backend: engine.backend,
     render: (request, signal) => submit(request, 'render', signal),
     async renderImages(request, signal) {
@@ -374,8 +398,49 @@ export async function createConverter(options?: ConverterOptions): Promise<Conve
     convert: (request, signal) => submit(request, 'convert', signal),
     recalculate: (request, signal) => submit(request, 'recalculate', signal),
     dispose() {
-      disposal ??= (async () => { lifetime.abort(new Error('LibreOffice converter is disposed.')); await Promise.allSettled(active) })()
+      disposal ??= (async () => {
+        lifetime.abort(new Error('LibreOffice converter is disposed.'))
+        await Promise.allSettled(active)
+        onDispose?.(converter)
+      })()
       return disposal
     },
   }
+  return converter
+}
+
+/** Resolve one engine and share its bounded font state across many converters. */
+export async function createConverterFactory(options?: ConverterOptions): Promise<ConverterFactory> {
+  const { options: resolvedOptions, engine } = await resolveConverter(options)
+  const shared: SharedConverterState = { fontFaces: undefined, fontCache: new Map() }
+  const converters = new Set<Converter>()
+  let disposal: Promise<void> | undefined
+  const factory: ConverterFactory = {
+    backend: engine.backend,
+    async create() {
+      if (disposal) throw new ConversionError('unavailable', 'LibreOffice converter factory is disposed.')
+      const converter = createConverterWith(resolvedOptions, engine, shared, value => converters.delete(value))
+      converters.add(converter)
+      return converter
+    },
+    dispose() {
+      disposal ??= (async () => {
+        const active = [...converters]
+        converters.clear()
+        const results = await Promise.allSettled(active.map(converter => converter.dispose()))
+        shared.fontCache.clear()
+        shared.fontFaces = undefined
+        const failures = results.filter(result => result.status === 'rejected')
+        if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'LibreOffice converter factory disposal failed.')
+      })()
+      return disposal
+    },
+  }
+  return factory
+}
+
+/** Create one converter with process-shared, configuration-isolated bounded font metadata. */
+export async function createConverter(options?: ConverterOptions): Promise<Converter> {
+  const { options: resolvedOptions, engine } = await resolveConverter(options)
+  return createConverterWith(resolvedOptions, engine, defaultSharedState(resolvedOptions, engine))
 }

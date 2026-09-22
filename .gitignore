@@ -26,13 +26,3 @@ packages/entry/lib/
 *.tsbuildinfo
 coverage/
 .DS_Store
-
-# Generated browser adapter and qualified engine resource manifest.
-packages/browser/lib/
-packages/browser/assets.json
-
-# Generated portable font package, staged from the shared entry implementation.
-packages/fonts/lib/
-packages/fonts/font-api.json
-packages/fonts/LICENSE
-packages/fonts/NOTICE

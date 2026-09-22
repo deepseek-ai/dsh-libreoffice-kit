@@ -22,5 +22,3 @@ The stored outputs were normalized with the source Web workspace's `fflate@0.8.3
 | `one-page.doc` | 9216 | `2483a8cafde92910a0ea857cce49c07e6fa6bf58ab4a4f0852dfd2f488dedba1` |
 | `one-sheet.xls` | 5632 | `311df8fcb797cfeffb552f254a054976ab61611d4a2cf68cd11f3ae7e2a73d37` |
 | `one-slide.ppt` | 606720 | `1f0eb633897433cbc7cf05e7ee99f43424205dddc180aff4c58c4b18964816ce` |
-
-`cross-sheet-formulas.xlsx` is a repository-authored two-sheet workbook. `Inputs!A1:A2` contains 7 and 9; `Summary 中文!A1` sums them and `A2` multiplies that sum by 3. Both formula caches intentionally contain -999. Runtime tests require formulas to survive recalculation with saved caches of 16 and 48, and check exact CSV worksheet selection.

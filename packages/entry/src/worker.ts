@@ -7,6 +7,7 @@ import { inspectDocument } from './document.ts'
 import { createFontLoader, preloadFonts } from './font-loader.ts'
 import type { FontResolutionCacheEntry } from './font-loader.ts'
 import { indexSystemFonts } from './fonts.ts'
+import { officeFontFace, officeFontFiles } from './office-fonts.ts'
 import { renderImagesWithWasm } from './image-renderer.ts'
 import type { ImageRenderSpec } from './image-operations.ts'
 import { convertWithWasm } from './wasm.ts'
@@ -43,6 +44,20 @@ function requireParentPort(port: MessagePort | null): MessagePort {
 // only spawner and always provides a WorkerRequest.
 const port = requireParentPort(parentPort)
 
+function indexFonts(options: ResolvedOptions): FontFace[] {
+  const primary = indexSystemFonts({ directories: options.fontDirectories, maxFiles: options.maxFontFiles,
+    maxFileBytes: options.maxFontFileBytes })
+  if (!options.includeOfficeFonts) return primary
+  const primaryFiles = new Set(primary.map(face => face.path))
+  const remaining = Math.max(0, options.maxFontFiles - primaryFiles.size)
+  if (remaining === 0) return primary
+  const supplemental = indexSystemFonts({ directories: officeFontFiles().slice(0, remaining), maxFiles: remaining,
+    maxFileBytes: options.maxFontFileBytes })
+  const aliases = new Set(primary.flatMap(face => face.aliases))
+  return [...primary, ...supplemental.filter(face => officeFontFace(face)
+    && !face.aliases.some(alias => aliases.has(alias)))]
+}
+
 try {
   const { inputPath, extension, operation, options, engine, scratch, fontFaces, fontCache } = workerData as WorkerRequest
   const bytes = readFileSync(inputPath)
@@ -50,10 +65,8 @@ try {
   if (images && extension === 'pdf' && new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-')
     throw new ConversionError('invalid-document', 'Input does not contain a PDF header.')
   const document = images && extension === 'pdf' ? { families: new Map<string, string>(), codePoints: [] } : inspectDocument(bytes, extension, options)
-  const faces = fontFaces ?? indexSystemFonts({ directories: options.fontDirectories, maxFiles: options.maxFontFiles,
-    maxFileBytes: options.maxFontFileBytes })
+  const faces = fontFaces ?? indexFonts(options)
   if (!fontFaces) port.postMessage({ kind: 'fonts', faces })
-  if (images && engine.backend !== 'wasm') throw new ConversionError('unavailable', 'Direct image rendering requires the installed WASM engine.')
   if (engine.backend === 'wasm') {
     if (faces.length === 0 && extension !== 'pdf') throw new ConversionError('unavailable', 'No usable fonts were found. Install fonts or configure fontDirectories before converting documents.')
     if (images) {

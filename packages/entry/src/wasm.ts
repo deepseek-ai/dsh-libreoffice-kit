@@ -105,7 +105,7 @@ export interface WasmConversionRequest {
   readonly engine: WasmEngine
   readonly bytes: Uint8Array
   readonly extension: string
-  readonly operation: Pick<ConversionSpec, 'format' | 'recalculate' | 'sheet'>
+  readonly operation?: Pick<ConversionSpec, 'format' | 'recalculate' | 'sheet'>
   readonly options: ResolvedOptions
   readonly document: DocumentFontMetadata
   readonly faces: readonly FontFace[]
@@ -265,7 +265,8 @@ export async function withWasmSession<T>(request: Omit<WasmConversionRequest, 'o
 export async function convertWithWasm(request: WasmConversionRequest): Promise<WasmConversionResult> {
   return withWasmSession(request, (session) => {
     const { module, office, document } = session
-    const { operation, options } = request
+    const { options } = request
+    const operation = request.operation ?? { format: 'pdf', recalculate: false }
     const output = `/dsh/output.${operation.format}`
     const filterOptions = operation.format === 'pdf' ? JSON.stringify({
       ExportBookmarks: { type: 'boolean', value: 'true' }, ReduceImageResolution: { type: 'boolean', value: 'true' },

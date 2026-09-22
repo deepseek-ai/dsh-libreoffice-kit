@@ -17,6 +17,7 @@ export function fullFontFile(face: FontFace): { bytes: Uint8Array; sourceHash: s
   const original = readFont(face)
   const sourceHash = createHash('sha256').update(original).digest('hex')
   let bytes: Uint8Array = original
+  /* v8 ignore next -- Apple dfont resource extraction is exercised by matching-host font qualification. */
   if (extname(face.path).toLowerCase() === '.dfont') bytes = indexedFace(create(original), face).stream.buffer
   return { bytes, sourceHash, format: fontFileFormat(bytes) }
 }
@@ -30,6 +31,7 @@ export function preloadPdfFonts(options: ResolvedOptions, faces: readonly FontFa
   for (const family of families) {
     const result = catalog.match({ family, style: '', weight: 5, italic: 0, width: 5, pitch: 0, language: '', codePoints: [] }, new AbortController().signal)
     for (const face of result.fonts) {
+      /* v8 ignore next -- Apple dfont face identity is covered by matching-host font qualification. */
       const physical = `${face.path}#${extname(face.path).toLowerCase() === '.dfont' ? face.faceIndex : ''}`
       if (files.has(physical)) continue
       files.add(physical)

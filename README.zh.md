@@ -1,5 +1,5 @@
 ---
-description: "使用预编译 LibreOffice 引擎，在 Node.js 中转换 Office 文档并重算表格。"
+description: "使用预编译 LibreOffice 引擎，在 Node.js 中实现字体友好的 Office → PDF 转换。"
 kind: "package-library"
 ---
 # @deepseek-ai/libreoffice-kit
@@ -8,20 +8,20 @@ kind: "package-library"
 
 ## 当前目标
 
-**使用同一个可移植 WASM 引擎绘制 Office、在浏览器阅读、转换文档并重算表格。** Node API、公共 CLI 和浏览器 API 共享预编译 LibreOffice 引擎。本仓库维护 API、字体加载、固定版本的 LibreOffice 源码、补丁、原生 helper、Node WebAssembly 引擎及发布包。
+**在 Node.js 中实现字体友好的 Office 转换与渲染。** `0.0.3` 在稳定的 `0.0.1` 系列上增加格式转换、工作簿重算、CLI、直接 PNG 渲染和共享 converter factory 字体缓存，同时保留原生引擎包。
 
 当前优先保证文档排版和文字可读，让调用方能明确控制可用字体与替换策略，并让应用可以打包引擎、离线运行。精简也服务于这个目标：保留文档导入、排版、绘图和 PDF 导出所需的能力，移除与转换无关的桌面功能和资源。
 
-API 支持二进制 Office、OOXML 和 OpenDocument 格式转换，以及保留公式的整本工作簿重算。支持的格式组合、CSV 工作表选择和离线 CLI 见 [Node API 参考](packages/entry/README.zh.md#转换重算与-cli)。它可用于 Node.js 服务、桌面应用和文档处理任务。应用自行管理授权、存储和预览界面。
+API 支持 Office 导出与重算，以及 Office/PDF 输入的直接 PNG 渲染，可用于 Node.js 服务、桌面应用和文档处理任务。应用自行管理授权、存储和预览界面。
 
 二进制 `.doc`、`.xls`、`.ppt` 支持 Office 97–2003 等 OLE 复合文档，不接受改成这些后缀的 RTF/HTML 文件或 `.wps`。`missingFonts` 仅报告 OOXML 中识别到的字体声明；二进制格式返回空列表，字体匹配由 LibreOffice 完成。
 
 ## 快速开始
 
-支持 macOS、Windows 和 Linux，需要 **Node.js 22.19.0 或更新版本**。主包普通依赖精确版本的 WASM 包：
+需要 **Node.js 22.19.0 或更新版本**。安装 `0.0.3` 及其可选引擎依赖：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.2-rc7
+npm install @deepseek-ai/libreoffice-kit@0.0.3
 ```
 
 ```js
@@ -33,42 +33,46 @@ const converter = await createConverter({
   // fontDirectories: ['/absolute/path/to/fonts'],
 });
 try {
-  const result = await converter.renderImages({
+  const result = await converter.render({
     inputPath: '/private/work/document.docx',
-    outputDir: '/private/work/document-images',
+    outputPath: '/private/work/document.pdf',
   });
-  console.log(result.backend, result.images);
+  console.log(result.backend, result.missingFonts);
 } finally {
   await converter.dispose();
 }
 ```
 
-路径必须为绝对路径，输出目录由调用方私有管理且必须尚不存在。`renderImages` 直接写入 PNG 并返回 manifest，不经过 PDF。DOCX 按页、PPTX 按幻灯片，XLSX 按可见工作表数据区域或明确指定的工作表/A1 范围绘制。默认 144 DPI，大表格区域拆成带坐标的图片。
+路径必须是绝对路径，目录由调用方私有管理，输出文件必须尚不存在。PDF 写入 `outputPath`，`render` 返回所选引擎和缺失字体名称。每次转换使用独立的原生进程或 Node Worker 及私有配置；同一转换器串行执行，取消和释放会等待引擎退出与清理完成。取消、错误和资源限制见 [Node API](packages/entry/README.zh.md)。
 
-```sh
-libreoffice-kit render --input /private/work/book.xlsx --output-dir /private/work/images --sheet Sheet1 --range A1:D20
-```
-
-显式 `convert` 转 PDF 与 `recalculate` 保留；兼容 API `render({inputPath, outputPath})` 仍导出 PDF。操作串行执行，取消和释放等待 Worker 退出。浏览器入口 `@deepseek-ai/libreoffice-kit/browser` 提供常驻 Office 阅读、Writer 连续重排和选择复制，详见[阅读 API](docs/browser-editing.md)和 [Node API](packages/entry/README.zh.md)。
-
-## 字体处理
+## 0.0.3 的“字体友好”具体指什么
 
 - **使用环境中可用的字体。** 默认发现常规系统和用户字体目录，也可通过 `fontDirectories` 指定扫描目录；自定义目录会替换默认列表。`fontkit` 读取字体元数据和字形覆盖，将选中的原始字体文件交给引擎。
 - **优先保留文档指定的字体。** 已安装的同名字体族优先，包括书法和装饰字体。WASM 字体请求还携带字重、斜体信息，以便选择已安装的对应字面；缺字时可以继续从字体目录中选择补充字体。
 - **允许配置替换顺序。** 默认 `fontFallbacks` 覆盖常见西文和简体中文字体，例如 Calibri 缺失时选择 Carlito、Cambria 缺失时选择 Caladea。调用方传入的分组会替换默认值。这些规则只选择可用字体，不会安装字体；具体见[默认分组](packages/entry/src/options.ts)。
 - **提供缺失字体诊断和资源预算。** `missingFonts` 报告可读文档 XML 中声明但不可用的字体族；`maxFontFiles`、`maxFontFileBytes` 和 `maxLoadedFontBytes` 限制索引及显式导入。转换器复用首次字体元数据快照，字体变化后需要重新创建。
 
-引擎不捆绑或下载字体集合。部署方根据文档需求和再分发权限提供字体；最小化容器需要安装字体或指定字体目录。WASM 仅使用导入的字体，没有可用字体时以 `unavailable` 拒绝转换。
+引擎不捆绑或下载字体集合。部署方根据文档需求和再分发权限提供字体；最小化容器需要安装字体或指定字体目录。WASM 仅使用导入的字体，没有可用字体时以 `unavailable` 拒绝转换。macOS 和 Windows 原生引擎还可使用操作系统管理的字体。
 
-这些能力让字体选择更可控，但不保证与 Microsoft Office 或另一引擎的输出完全一致。字体度量差异仍可能改变换行和分页；`missingFonts` 也不是完整的缺字报告。比较引擎效果时，需要使用相同的文档字节、字体和导出选项。
+这些能力让字体选择更可控，但不保证与 Microsoft Office 或另一引擎的输出完全一致。原生 LibreOffice 会先解析已安装的原始字体和度量兼容字体，再参考配置的替换项，并自行选择字面。字体度量差异仍可能改变换行和分页；`missingFonts` 也不是完整的缺字报告。比较引擎效果时，需要使用相同的文档字节、字体和导出选项。
 
 ## 引擎与分发
 
-仅发布既有的 `@deepseek-ai/libreoffice-kit` 和 `@deepseek-ai/libreoffice-kit-wasm` 两个 npm 包，均不限制 OS/CPU。主包提供 Node/CLI、`./browser`、`./fonts` 和 `./browser-assets`，大体积 WASM 载荷只存在于普通、精确版本的 WASM 依赖中。native 配方保留为开发工具，不进入发布运行时。
+[Node 包清单](packages/entry/package.json)为 `0.0.3` 声明了以下引擎：
 
-Office 导入 LibreOffice 后直接绘制。独立 PDF 使用同一个 WASM 内的 PDFium 页接口，不启用 PDF→Draw 导入。浏览器 Office 字体按子集提供；PDFium 预加载配置的完整字体，优先使用内嵌字体。本阶段不扫描任意 PDF 来动态匹配缺字。
+| 引擎 | 用途 |
+| --- | --- |
+| `@deepseek-ai/libreoffice-kit-darwin-arm64` | Apple Silicon macOS 的原生 helper。 |
+| `@deepseek-ai/libreoffice-kit-darwin-x64` | Intel macOS 的原生 helper。 |
+| `@deepseek-ai/libreoffice-kit-win32-arm64` | Windows ARM64 原生 helper；需要 ARM64 Node.js 和 Microsoft Visual C++ v14 ARM64 Redistributable。 |
+| `@deepseek-ai/libreoffice-kit-win32-x64` | Windows x64 原生 helper；需要 Microsoft Visual C++ v14 x64 Redistributable。 |
+| `@deepseek-ai/libreoffice-kit-wasm` | 供 Linux 使用的共享 Node WASM 引擎。 |
 
-安装和文档操作均不会编译或下载引擎，也不会发现用户的 LibreOffice。缺失或无效载荷直接拒绝初始化。Release 的 `.tgz` 可由 npm 安装，额外的离线依赖归档用于验收。详见[打包指南](docs/packaging.md)及[发布流程](docs/building.md)。
+其他原生目录保留为开发构建配方，不代表额外的已发布目标。共享 WASM 包的 npm OS 限制为 Linux，不限制 CPU 或 libc；这项声明本身不代表每个 Linux 宿主都已验证。原生与 WASM 引擎的排版和 PDF 序列化均由 CPU 完成。
+
+npm 在 macOS/Windows ARM64 或 x64 上仅安装匹配的原生包，在 Linux 上安装 WASM。macOS 和 Windows 必须具有对应原生包，绝不回退到 WASM。Linux 使用 WASM，除非显式安装的原生开发包支持其 glibc 版本。必需引擎缺失或已安装引擎损坏时，`createConverter` 以 `unavailable` 拒绝；转换失败不会切换引擎。
+
+Node API 与引擎共享 kit 版本。安装使用预先构建的包；安装钩子和转换过程均不会编译 LibreOffice、额外下载引擎，或查找用户的 LibreOffice 安装。npm 分发标准 `.tgz` 包；GitHub Release 引擎下载使用经校验的 XZ 传输包，供应用构建时准备并打包。两种分发路径及安装后转换验证见[打包指南](docs/packaging.md)和[发布流程](docs/building.md)。
 
 ## 做了哪些精简，为什么
 

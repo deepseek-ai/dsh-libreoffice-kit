@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWasmSession, type WasmSession } from '../src/wasm.ts'
 import { resolveOptions } from '../src/options.ts'
-import { indexSystemFonts } from '../src/fonts.ts'
+import { indexSystemFonts, systemFontDirectories } from '../src/fonts.ts'
 import type { WasmEngine } from '../src/engine.ts'
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
@@ -44,7 +44,7 @@ module.exports=async options=>{
  options.preRun.forEach(hook=>hook(module));return module;
 }`)
   const engine: WasmEngine = { backend: 'wasm', root, loader, data, wasm: join(root, 'dsh-office.wasm'), metadata: join(root, 'soffice.metadata'), programDirectory: '/instdir/program' }
-  const faces = behavior.preloadFonts ? indexSystemFonts({ directories: [join(import.meta.dirname, 'fixtures/fonts')], maxFiles: 20, maxFileBytes: 10000000 }) : []
+  const faces = behavior.preloadFonts ? indexSystemFonts({ directories: systemFontDirectories(), maxFiles: 20_000, maxFileBytes: 256 * 1024 * 1024 }).slice(0, 1) : []
   const options = resolveOptions({ fontDirectories: [], fontFallbacks: [], initialFontFamilies: faces.slice(0, 1).map(face => face.family), timeoutMs: behavior.timeoutMs ?? 100 })
   const request = { engine, bytes: new Uint8Array([1, 2, 3]), extension: behavior.extension ?? 'docx', options, faces,
     document: { families: new Map<string, string>(), codePoints: [] } }

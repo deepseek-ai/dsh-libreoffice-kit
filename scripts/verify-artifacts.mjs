@@ -88,8 +88,8 @@ export function verifyEngineMetadata(manifest, prebuild) {
   }
   const exact = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);
   if (prebuild.platform === 'wasm') {
-    assert(manifest.os === undefined && manifest.cpu === undefined && manifest.libc === undefined, 'WASM package must install across operating systems, CPUs and libc variants');
-    assert(engine?.kind === 'wasm' && engine.loader === 'assets/soffice.cjs' && engine.wasm === 'assets/dsh-office.wasm'
+    assert(JSON.stringify(manifest.os) === '["linux"]' && manifest.cpu === undefined && manifest.libc === undefined, 'WASM package must install only on Linux, for every CPU and libc');
+    assert(engine?.kind === 'wasm' && engine.loader === 'assets/soffice.cjs' && engine.wasm === 'assets/soffice.wasm'
       && engine.data === 'assets/soffice.data' && engine.metadata === 'assets/soffice.data.js.metadata'
       && engine.programDirectory === '/instdir/program', 'Unsupported WASM engine paths');
   } else {
@@ -230,7 +230,8 @@ export function verifyEnginePackage(dir) {
     for (const key of ['loader', 'wasm', 'data', 'metadata']) regularFile(dir, engine[key]);
     const module = new WebAssembly.Module(readFileSync(join(dir, engine.wasm)));
     const exports = new Set(WebAssembly.Module.exports(module).filter((entry) => entry.kind === 'function').map((entry) => entry.name.replace(/^_/, '')));
-    for (const name of ['dsh_lok_initialize', 'dsh_lok_document_load', 'dsh_lok_document_save_pdf', 'dsh_lok_document_export', 'dsh_lok_document_destroy', 'dsh_lok_destroy', 'dsh_lok_error', 'malloc', 'free']) {
+    for (const name of ['dsh_lok_initialize', 'dsh_lok_document_load', 'dsh_lok_document_save_pdf',
+      'dsh_lok_document_destroy', 'dsh_lok_destroy', 'dsh_lok_error', 'malloc', 'free']) {
       assert(exports.has(name), `WASM engine missing conversion export: ${name}`);
     }
     const dataSize = statSync(join(dir, engine.data)).size;

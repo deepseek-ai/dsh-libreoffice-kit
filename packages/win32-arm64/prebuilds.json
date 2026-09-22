@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.0.2-rc7",
+  "version": "0.0.3",
   "platform": "win32-arm64",
   "status": "unbuilt",
   "engine": {

@@ -1,6 +1,6 @@
 --- a/desktop/Executable_soffice_bin.mk
 +++ b/desktop/Executable_soffice_bin.mk
-@@ -29,6 +29,16 @@
+@@ -29,6 +29,17 @@
  ))
  
  ifeq ($(OS),EMSCRIPTEN)
@@ -11,6 +11,7 @@
 +    -sSTACK_SIZE=1048576 \
 +    -sSTACK_OVERFLOW_CHECK=2 \
 +    -sALLOW_MEMORY_GROWTH=1 \
++    -sINITIAL_MEMORY=402653184 \
 +    -sMAXIMUM_MEMORY=4294967296 \
 +))
 +
@@ -44,7 +45,7 @@
  
 --- a/desktop/util/Executable_soffice_bin-emscripten-exports
 +++ b/desktop/util/Executable_soffice_bin-emscripten-exports
-@@ -12,3 +12,41 @@
+@@ -12,3 +12,40 @@
  _lok_preinit_2
  _malloc
  _free
@@ -85,7 +86,6 @@
 +_dsh_pdf_page_size
 +_dsh_pdf_paint
 +_dsh_pdf_destroy
-+_dsh_lok_document_configure_view
 --- a/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 +++ b/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
 @@ -27,7 +27,7 @@

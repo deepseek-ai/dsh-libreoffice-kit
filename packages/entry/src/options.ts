@@ -2,10 +2,27 @@
 import type { ConverterOptions } from './index.ts'
 import { systemFontDirectories } from './fonts.ts'
 
-import { DEFAULT_FONT_FALLBACKS } from './default-fonts.ts'
+const SANS_CJK_FAMILIES = ['Microsoft YaHei', 'Microsoft YaHei UI', '微软雅黑', 'PingFang SC', 'Noto Sans CJK SC',
+  'Noto Sans SC', 'Source Han Sans SC', 'SimHei', '黑体', 'Heiti SC', 'STHeiti']
 
-/** Default named aliases and generic families. */
-export const FONT_FALLBACKS = DEFAULT_FONT_FALLBACKS
+/** Ordered family groups used when the caller supplies none. */
+export const FONT_FALLBACKS: readonly (readonly string[])[] = [
+  ['Calibri', 'Carlito'],
+  ['Calibri Light', 'Carlito', 'Calibri'],
+  ['Cambria', 'Caladea'],
+  ['宋体', 'SimSun', 'NSimSun', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'Source Han Serif SC'],
+  ['黑体', 'SimHei', 'Heiti SC', 'STHeiti', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC'],
+  ['微软雅黑', 'Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', 'Noto Sans SC'],
+  ['楷体', 'KaiTi', 'Kaiti SC', 'STKaiti', 'LXGW WenKai'],
+  ['仿宋', 'FangSong', 'STFangsong', 'Songti SC', 'Noto Serif CJK SC'],
+  ['sans-serif', 'Arial', 'Liberation Sans', 'Helvetica', 'DejaVu Sans', 'Calibri', 'Calibri Light', 'Carlito',
+    ...SANS_CJK_FAMILIES],
+  ['serif', 'Times New Roman', 'Liberation Serif', 'Times', 'DejaVu Serif', 'Cambria', 'Caladea',
+    'SimSun', 'NSimSun', '宋体', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'Source Han Serif SC'],
+  ['monospace', 'Courier New', 'Liberation Mono', 'DejaVu Sans Mono', 'Menlo', 'Monaco', 'Courier',
+    'NSimSun', 'Noto Sans Mono CJK SC', ...SANS_CJK_FAMILIES],
+  ['Symbol', 'Standard Symbols PS', 'Symbola', 'Segoe UI Symbol', 'Apple Symbols', 'FreeSerif', 'DejaVu Sans'],
+]
 
 /** Resolved limits and font settings used by every conversion of one converter. */
 export interface ResolvedOptions {
@@ -20,6 +37,7 @@ export interface ResolvedOptions {
   readonly maxLoadedFontBytes: number
   readonly maxFontResolutionEntries: number
   readonly fontDirectories: string[]
+  readonly includeOfficeFonts: boolean
   readonly fontFallbacks: string[][]
   readonly initialFontFamilies: string[]
 }
@@ -81,6 +99,7 @@ export function resolveOptions(input: ConverterOptions = {}): ResolvedOptions {
     maxLoadedFontBytes: positiveSafeInteger(merged.maxLoadedFontBytes, 'maxLoadedFontBytes'),
     maxFontResolutionEntries: positiveSafeInteger(merged.maxFontResolutionEntries, 'maxFontResolutionEntries'),
     fontDirectories: fontNames(merged.fontDirectories, 'fontDirectories'),
+    includeOfficeFonts: input.fontDirectories === undefined,
     initialFontFamilies: fontNames(merged.initialFontFamilies, 'initialFontFamilies'),
     fontFallbacks: fontGroups(merged.fontFallbacks),
   }

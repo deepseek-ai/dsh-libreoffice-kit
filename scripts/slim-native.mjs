@@ -4,8 +4,6 @@ import { basename, dirname, join } from 'node:path';
 import { readJson } from './platform-matrix.mjs';
 import { run } from './pack-utils.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
-import { nativeDesktopResources, darwinDesktopResources } from './native-resource-policy.mjs';
-import { assertRequiredUiResources, unusedUiResource } from '../engine/ui-resource-policy.mjs';
 
 function files(directory, prefix = '') {
   return readdirSync(join(directory, prefix)).sort().flatMap(name => {
@@ -21,10 +19,9 @@ function files(directory, prefix = '') {
  * @param directory - Staged native package directory.
  * @param platform - Native engine target.
  * @param programDirectory - Package-relative directory holding Core's shared libraries.
- * @param inspectMachO - Read Mach-O load commands; injectable for metadata tests.
  * @returns Removed paths and their uncompressed byte count.
  */
-export function pruneNativePayload(directory, platform, programDirectory, inspectMachO = file => run('otool', ['-l', file])) {
+export function pruneNativePayload(directory, platform, programDirectory) {
   const removed = [];
   let removedBytes = 0;
   const remove = path => {
@@ -62,10 +59,7 @@ export function pruneNativePayload(directory, platform, programDirectory, inspec
   const launchers = darwin ? `${dirname(programDirectory).replaceAll('\\', '/')}/MacOS` : programDirectory;
   for (const name of ['soffice', 'soffice.bin', 'soffice.exe', 'unopkg', 'unopkg.bin', 'unopkg.exe', 'gengal', 'gengal.bin', 'gengal.exe', 'senddoc', 'unoinfo', 'unoinfo.exe', 'xpdfimport', 'xpdfimport.exe'])
     remove(`${launchers}/${name}`);
-  if (darwin)
-    for (const name of ['regview', 'uri-encode']) remove(`${launchers}/${name}`);
   for (const name of ['gallery', 'template', 'wizards', 'tipoftheday', 'xpdfimport', 'xslt']) remove(`${resources}/${name}`);
-  for (const name of [...nativeDesktopResources, ...(darwin ? darwinDesktopResources : [])]) remove(`${resources}/${name}`);
   remove(`${resources}/registry/xsltfilter.xcd`);
   remove(`${dirname(programDirectory).replaceAll('\\', '/')}/wizards`);
   for (const location of new Set(['program', resources])) {
@@ -99,38 +93,14 @@ export function pruneNativePayload(directory, platform, programDirectory, inspec
       `Removed component remains registered: ${name}; reconfigure Core with the current component selection`);
     remove(`${programDirectory}/${name}`);
   }
-  // This library's only upstream consumer is the already removed unopkg CLI.
-  // Reject a future recipe that gives it a retained consumer or UNO registration.
-  const unopkg = `${programDirectory}/libunopkgapp.dylib`;
-  if (darwin && existsSync(join(directory, unopkg))) {
-    for (const file of (existsSync(join(directory, resources)) ? files(join(directory, resources)) : []).filter(file => basename(file) === 'services.rdb'))
-      assert(!readFileSync(join(directory, resources, file), 'utf8').includes('libunopkgapp.dylib'),
-        `Removed component remains registered: libunopkgapp.dylib in ${file}`);
-    for (const prefix of ['bin', 'program']) {
-      for (const name of files(join(directory, prefix))) {
-        const path = `${prefix}/${name}`;
-        if (path === unopkg || header(join(directory, path)) !== 0xfeedfacf) continue;
-        const commands = inspectMachO(join(directory, path)).split(/Load command \d+\n/);
-        assert(commands.length > 1, `Cannot inspect Mach-O load commands in ${path}`);
-        for (const command of commands.filter(command => /cmd LC_(?:LOAD_DYLIB|LOAD_WEAK_DYLIB|REEXPORT_DYLIB|LAZY_LOAD_DYLIB|LOAD_UPWARD_DYLIB)\b/.test(command))) {
-          const dependency = command.match(/\n\s+name (.+) \(offset \d+\)/)?.[1];
-          assert(dependency, `Cannot inspect Mach-O dependency in ${path}`);
-          assert(basename(dependency) !== 'libunopkgapp.dylib', `Removed library libunopkgapp.dylib is required by ${path}`);
-        }
-      }
-    }
-    remove(unopkg);
-  }
   const config = `${resources}/config`;
   if (existsSync(join(directory, config))) {
     for (const name of readdirSync(join(directory, config)).sort())
       if (/^images(?:_[a-z0-9_]+)?\.zip$/.test(name)) remove(`${config}/${name}`);
     const ui = `${config}/soffice.cfg`;
     if (existsSync(join(directory, ui))) {
-      const inventory = files(join(directory, ui));
-      assertRequiredUiResources(inventory);
-      for (const file of inventory)
-        if (unusedUiResource(file) || basename(file).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(file)) remove(`${ui}/${file}`);
+      for (const file of files(join(directory, ui)))
+        if (basename(file).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(file)) remove(`${ui}/${file}`);
     }
   }
   return { removed, removedBytes };

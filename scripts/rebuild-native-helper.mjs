@@ -5,7 +5,6 @@ import { spawnSync } from 'node:child_process';
 import { source, verifyConfigureInput } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { buildHelper } from '../engine/native/build-helper.mjs';
-import { verifyBuildPlatform } from '../engine/native/build-platform.mjs';
 import { glibcMinimum } from '../engine/native/glibc-minimum.mjs';
 import { assert, sha256, verifyEnginePackage, verifyNativeImage } from './verify-artifacts.mjs';
 import { hostTarget, isMain, readJson, root } from './platform-matrix.mjs';
@@ -21,7 +20,7 @@ export function verifyCoreReuse(directory, core, repo = root) {
   assert(JSON.stringify(receipts) === JSON.stringify(patches.map(file => `sources/${file}`)), 'Reusable Core patch receipt set differs from the current recipe');
   assert(sha256(join(directory, 'sources/core.json')) === prebuild.files['sources/core.json'], 'Reusable Core configure receipt hash changed');
   verifyConfigureInput(prebuild.platform, readJson(join(directory, 'sources/core.json')).configure);
-  for (const file of ['engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...patches]) {
+  for (const file of ['engine/build-identity.mjs', 'engine/core-source.mjs', 'engine/native/configure.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...patches]) {
     const hash = sha256(join(directory, 'sources', file));
     assert(hash === prebuild.files[`sources/${file}`] && hash === sha256(join(repo, file)), `Reusable Core source receipt changed: ${file}`);
   }
@@ -31,8 +30,8 @@ export function verifyCoreReuse(directory, core, repo = root) {
   return { prebuild, patches };
 }
 
-export function rebuildNativeHelper({ platform = hostTarget(), core = join(root, '.build/core'), repo = root, crossCompile = false } = {}) {
-  verifyBuildPlatform(platform, { crossCompile });
+export function rebuildNativeHelper({ platform = hostTarget(), core = join(root, '.build/core'), repo = root } = {}) {
+  assert(platform && platform === hostTarget(), 'Reusable Core requires its matching host');
   const directory = join(repo, 'packages', platform);
   verifyEnginePackage(directory);
   const priorManifestSha256 = sha256(join(directory, 'prebuilds.json'));
@@ -47,13 +46,13 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   const build = join(repo, '.build', `helper-${platform}`);
   mkdirSync(build, { recursive: true });
   const executable = join(build, platform.startsWith('win32-') ? 'libreoffice-kit.exe' : 'libreoffice-kit');
-  const compilation = buildHelper({ platform, core, executable, cwd: build, repo, crossCompile });
+  const compilation = buildHelper({ platform, core, executable, cwd: build, repo });
   verifyNativeImage(executable, platform);
   copyFileSync(executable, join(directory, prebuild.engine.executable));
   if (!platform.startsWith('win32-')) chmodSync(join(directory, prebuild.engine.executable), 0o755);
   const symbols = stripNativePayload(directory, platform);
   for (const file of symbols.stripped) prebuild.files[file] = sha256(join(directory, file));
-  const updated = ['engine/native/worker.cxx', 'engine/document-operations.hxx', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
+  const updated = ['engine/native/worker.cxx', 'engine/native/build-helper.mjs', 'engine/native/build-platform.mjs', 'engine/native/core-environment.mjs', 'engine/native/core-patches.mjs', 'engine/native/glibc-minimum.mjs', 'scripts/build-native.mjs', 'scripts/rebuild-native-helper.mjs', 'scripts/stage-linux-runtime.mjs', 'scripts/pack-utils.mjs', ...patches];
   for (const file of updated) {
     const destination = `sources/${file}`;
     mkdirSync(join(directory, destination, '..'), { recursive: true });
@@ -72,11 +71,4 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   return verifyEnginePackage(directory);
 }
 
-if (isMain(import.meta.url)) {
-  const args = process.argv.slice(2);
-  const platform = args.shift();
-  const crossCompile = args.includes('--cross');
-  const coreArgument = args.find(argument => argument !== '--cross');
-  console.log(JSON.stringify(rebuildNativeHelper({ platform, crossCompile,
-    core: coreArgument === undefined ? undefined : resolve(coreArgument) })));
-}
+if (isMain(import.meta.url)) console.log(JSON.stringify(rebuildNativeHelper({ platform: process.argv[2], core: process.argv[3] ? resolve(process.argv[3]) : undefined })));

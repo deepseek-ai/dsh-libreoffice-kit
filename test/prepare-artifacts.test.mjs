@@ -12,12 +12,14 @@ import { sha256 } from '../scripts/verify-artifacts.mjs';
 import { source, configureFlags } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { run } from '../scripts/pack-utils.mjs';
+import { reversionEngine } from '../scripts/reversion-engine.mjs';
 
-test('release preparation selects the same WASM package on all supported hosts', () => {
-  assert.deepEqual(artifactPlan(), ['wasm']);
-  for (const target of ['node24-linux-x64', 'node24-linux-arm64', 'node24-win-x64', 'node24-win-arm64', 'node24-macos-arm64', 'node24-macos-x64'])
-    assert.deepEqual(artifactPlan(target), ['wasm']);
-  assert.deepEqual(artifactPlan('node24-linux-x64,node24-win-x64'), ['wasm']);
+test('runtime targets select native engines for macOS/Windows and WASM only for Linux', () => {
+  assert.deepEqual(artifactPlan('node24-linux-x64,node24-win-x64'), ['win32-x64', 'wasm']);
+  assert.deepEqual(artifactPlan('node24-macos-arm64,node24-linux-arm64'), ['darwin-arm64', 'wasm']);
+  assert.deepEqual(artifactPlan('node24-macos-x64,node24-win-arm64'), ['darwin-x64', 'win32-arm64']);
+  assert.deepEqual(artifactPlan('node24-linux-arm64'), ['wasm']);
+  assert.deepEqual(artifactPlan(), ['darwin-arm64', 'darwin-x64', 'win32-arm64', 'win32-x64', 'wasm']);
   assert.throws(() => artifactPlan('node24-linux-x64,'), /Unknown or empty/);
   assert.throws(() => artifactPlan('node24-freebsd-x64'), /Unknown or empty/);
 });
@@ -58,7 +60,7 @@ function fixture(t, platform = 'darwin-arm64') {
     filter: file => file !== join(root, 'engine/core') && !file.includes('/reference/') });
   writeFileSync(join(repo, 'core-source.json'), JSON.stringify(source));
   mkdirSync(join(repo, 'scripts'));
-  for (const file of ['stage-native.mjs', 'slim-native.mjs', 'native-resource-policy.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
+  for (const file of ['stage-native.mjs', 'slim-native.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
   writeFileSync(join(repo, 'package.json'), JSON.stringify(readJson(join(root, 'package.json'))));
   const manifest = readJson(join(root, 'packages', platform, 'package.json'));
   const target = join(repo, 'packages', platform);
@@ -74,7 +76,7 @@ function fixture(t, platform = 'darwin-arm64') {
   };
   if (platform === 'wasm') {
     // Stub exports validate packaging without executing an Office conversion.
-    put(prebuild.engine.wasm, Buffer.from('AGFzbQEAAAABBAFgAAADCQgAAAAAAAAAAAexAQkSZHNoX2xva19pbml0aWFsaXplAAAVZHNoX2xva19kb2N1bWVudF9sb2FkAAEZZHNoX2xva19kb2N1bWVudF9zYXZlX3BkZgACGGRzaF9sb2tfZG9jdW1lbnRfZGVzdHJveQADD2RzaF9sb2tfZGVzdHJveQAEDWRzaF9sb2tfZXJyb3IABQZtYWxsb2MABgRmcmVlAAcXZHNoX2xva19kb2N1bWVudF9leHBvcnQAAAoZCAIACwIACwIACwIACwIACwIACwIACwIACw==', 'base64'));
+    put(prebuild.engine.wasm, Buffer.from('AGFzbQEAAAABBAFgAAADCQgAAAAAAAAAAAeXAQgSZHNoX2xva19pbml0aWFsaXplAAAVZHNoX2xva19kb2N1bWVudF9sb2FkAAEZZHNoX2xva19kb2N1bWVudF9zYXZlX3BkZgACGGRzaF9sb2tfZG9jdW1lbnRfZGVzdHJveQADD2RzaF9sb2tfZGVzdHJveQAEDWRzaF9sb2tfZXJyb3IABQZtYWxsb2MABgRmcmVlAAcKGQgCAAsCAAsCAAsCAAsCAAsCAAsCAAsCAAs=', 'base64'));
     put(prebuild.engine.loader, 'module.exports = () => {};');
     put(prebuild.engine.data, 'fixture');
     put(prebuild.engine.metadata, JSON.stringify({ remote_package_size: 7, files: [{ filename: '/instdir/program/resource', start: 0, end: 7 }] }));
@@ -91,9 +93,9 @@ function fixture(t, platform = 'darwin-arm64') {
   put('licenses/MPL.txt', 'MPL-2.0 fixture');
   prebuild.licenses = [{ component: 'LibreOffice', spdx: 'MPL-2.0', path: 'licenses/MPL.txt' }];
   const wasm = platform === 'wasm';
-  const files = ['engine/document-operations.hxx', 'engine/build-identity.mjs', 'engine/ui-resource-policy.mjs', ...(wasm
+  const files = ['engine/build-identity.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
-    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', 'scripts/native-resource-policy.mjs', ...corePatchFiles()])];
+    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()])];
   for (const file of files) put(`sources/${file}`, readFileSync(join(root, file)));
   put('sources/core-source.json', JSON.stringify(source));
   if (!wasm) {
@@ -159,16 +161,6 @@ test('a changed patch or wrong package version rejects an otherwise valid engine
   assert.throws(() => verifyPreparedEngine('darwin-arm64', f.directory, f.repo), /package\/version mismatch/);
 });
 
-test('native prepared engines reject a resource-policy change without changes to the staging scripts', async t => {
-  const f = fixture(t);
-  assert.equal(verifyPreparedEngine('darwin-arm64', f.directory, f.repo).platform, 'darwin-arm64');
-  const policy = join(f.repo, 'scripts/native-resource-policy.mjs');
-  writeFileSync(policy, readFileSync(policy, 'utf8').replace('libreoffice-catalog.xml', 'another-catalog.xml'));
-  const mismatch = /Prepared engine source differs: scripts\/native-resource-policy\.mjs/;
-  assert.throws(() => verifyPreparedEngine('darwin-arm64', f.directory, f.repo), mismatch);
-  await assert.rejects(fetchPrebuilt('darwin-arm64', f), mismatch);
-});
-
 for (const platform of ['wasm', 'darwin-arm64']) test(`${platform} prepared engines reject removed source patches`, t => {
   const f = fixture(t, platform);
   assert.equal(verifyPreparedEngine(platform, f.directory, f.repo).platform, platform);
@@ -189,10 +181,23 @@ test('native prepared engines reject obsolete recorded component selection even 
   assert.throws(() => verifyPreparedEngine('darwin-arm64', directory, repo), /rebuild Core/);
 });
 
-for (const platform of ['wasm', 'darwin-arm64']) test(`${platform} rejects a changed shared UI allowlist`, t => {
+for (const platform of ['wasm', 'darwin-arm64']) test(`${platform} version-only reuse keeps every payload hash and rejects changed recipes`, t => {
   const f = fixture(t, platform);
-  assert.equal(verifyPreparedEngine(platform, f.directory, f.repo).platform, platform);
-  const policy = join(f.repo, 'engine/ui-resource-policy.mjs');
-  writeFileSync(policy, readFileSync(policy, 'utf8').replace('inputbar.ui', 'different.ui'));
-  assert.throws(() => verifyPreparedEngine(platform, f.directory, f.repo), /source differs: engine\/ui-resource-policy/);
+  mkdirSync(join(f.repo, 'packages/entry'), { recursive: true });
+  cpSync(join(root, 'packages/entry/package.json'), join(f.repo, 'packages/entry/package.json'));
+  const before = readJson(join(f.directory, 'prebuilds.json'));
+  const manifest = readJson(join(f.directory, 'package.json'));
+  const downgrade = () => {
+    writeFileSync(join(f.directory, 'package.json'), JSON.stringify({ ...manifest, version: '0.0.1-2' }));
+    writeFileSync(join(f.directory, 'prebuilds.json'), JSON.stringify({ ...before, version: '0.0.1-2' }));
+  };
+  downgrade();
+  assert.equal(reversionEngine(platform, f.directory, '0.0.1-2', f.repo).platform, platform);
+  assert.deepEqual(readJson(join(f.directory, 'prebuilds.json')).files, before.files);
+  assert.equal(readJson(join(f.directory, 'package.json')).version, manifest.version);
+  downgrade();
+  assert.throws(() => reversionEngine(platform, f.directory, '0.0.0', f.repo), /engine version differs/);
+  writeFileSync(join(f.repo, platform === 'wasm' ? 'engine/wasm-source/lok.cxx' : 'engine/native/worker.cxx'), 'changed source');
+  assert.throws(() => reversionEngine(platform, f.directory, '0.0.1-2', f.repo), /source differs/);
+  assert.equal(readJson(join(f.directory, 'package.json')).version, '0.0.1-2');
 });

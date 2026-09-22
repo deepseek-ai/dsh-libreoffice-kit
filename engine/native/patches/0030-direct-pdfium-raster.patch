@@ -1,0 +1,185 @@
+diff --git a/desktop/source/lib/init.cxx b/desktop/source/lib/init.cxx
+index 4cdaf2f96..8a684a858 100644
+--- a/desktop/source/lib/init.cxx
++++ b/desktop/source/lib/init.cxx
+@@ -53,9 +53,13 @@
+ #endif
+ 
+ #include <algorithm>
++#include <cmath>
++#include <cstring>
++#include <limits>
+ #include <memory>
+ #include <iostream>
+ #include <string_view>
++#include <vector>
+ 
+ #include <boost/property_tree/json_parser.hpp>
+ #include <boost/algorithm/string.hpp>
+@@ -69,6 +73,9 @@
+ #include <vcl/errinf.hxx>
+ #include <vcl/idletask.hxx>
+ #include <vcl/lok.hxx>
++#include <basegfx/vector/b2dsize.hxx>
++#include <vcl/filter/PDFiumLibrary.hxx>
++#include <vcl/pdf/PDFBitmapType.hxx>
+ #include <o3tl/any.hxx>
+ #include <o3tl/unit_conversion.hxx>
+ #include <o3tl/string_view.hxx>
+@@ -8444,6 +8451,156 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char
+     return bInitialized;
+ }
+ 
++namespace
++{
++struct DshNativePdfDocument
++{
++    std::vector<unsigned char> bytes;
++    std::shared_ptr<vcl::pdf::PDFium> library;
++    std::unique_ptr<vcl::pdf::PDFiumDocument> document;
++};
++
++int dshCheckedTwips(double points)
++{
++    const double twips = std::round(points * 20.0);
++    if (!std::isfinite(twips) || twips < 1 || twips > std::numeric_limits<int>::max())
++        throw std::runtime_error("PDF page dimensions exceed the supported coordinate range");
++    return static_cast<int>(twips);
++}
++}
++
++extern "C" SAL_DLLPUBLIC_EXPORT void* dsh_native_pdf_open(const unsigned char* bytes, int length,
++                                                           const char* password) noexcept
++{
++    try
++    {
++        if (!bytes || length < 5 || std::memcmp(bytes, "%PDF-", 5) != 0)
++            return nullptr;
++        auto pdf = std::make_unique<DshNativePdfDocument>();
++        pdf->bytes.assign(bytes, bytes + length);
++        pdf->library = vcl::pdf::PDFiumLibrary::get();
++        if (!pdf->library)
++            return nullptr;
++        pdf->document = pdf->library->openDocument(pdf->bytes.data(), length,
++                                                   OString(password ? password : ""));
++        return pdf->document ? pdf.release() : nullptr;
++    }
++    catch (...)
++    {
++        return nullptr;
++    }
++}
++
++extern "C" SAL_DLLPUBLIC_EXPORT int dsh_native_pdf_page_count(void* handle) noexcept
++{
++    try
++    {
++        auto* pdf = static_cast<DshNativePdfDocument*>(handle);
++        return pdf && pdf->document ? pdf->document->getPageCount() : -1;
++    }
++    catch (...)
++    {
++        return -1;
++    }
++}
++
++extern "C" SAL_DLLPUBLIC_EXPORT int dsh_native_pdf_page_size(void* handle, int page, int* width,
++                                                              int* height) noexcept
++{
++    try
++    {
++        auto* pdf = static_cast<DshNativePdfDocument*>(handle);
++        if (!pdf || !pdf->document || !width || !height || page < 0
++            || page >= pdf->document->getPageCount())
++            return 0;
++        const auto size = pdf->document->getPageSize(page);
++        *width = dshCheckedTwips(size.getWidth());
++        *height = dshCheckedTwips(size.getHeight());
++        return 1;
++    }
++    catch (...)
++    {
++        return 0;
++    }
++}
++
++extern "C" SAL_DLLPUBLIC_EXPORT int dsh_native_pdf_paint(void* handle, unsigned char* buffer,
++                                                         int page, int canvasWidth,
++                                                         int canvasHeight, int x, int y,
++                                                         int width, int height) noexcept
++{
++    try
++    {
++        auto* pdf = static_cast<DshNativePdfDocument*>(handle);
++        if (!pdf || !pdf->document || !buffer || page < 0
++            || page >= pdf->document->getPageCount() || canvasWidth < 1 || canvasHeight < 1
++            || static_cast<long long>(canvasWidth) * canvasHeight > 16 * 1024 * 1024
++            || x < 0 || y < 0 || width < 1 || height < 1)
++            return 0;
++        const auto pageSize = pdf->document->getPageSize(page);
++        const int pageWidth = dshCheckedTwips(pageSize.getWidth());
++        const int pageHeight = dshCheckedTwips(pageSize.getHeight());
++        if (static_cast<long long>(x) + width > pageWidth
++            || static_cast<long long>(y) + height > pageHeight)
++            return 0;
++        const double scaleX = static_cast<double>(canvasWidth) / width;
++        const double scaleY = static_cast<double>(canvasHeight) / height;
++        const double fullWidth = std::round(pageWidth * scaleX);
++        const double fullHeight = std::round(pageHeight * scaleY);
++        if (fullWidth > std::numeric_limits<int>::max()
++            || fullHeight > std::numeric_limits<int>::max())
++            return 0;
++        auto loadedPage = pdf->document->openPage(page);
++        if (!loadedPage)
++            return 0;
++        int actualWidth = canvasWidth;
++        int actualHeight = canvasHeight;
++        auto bitmap = pdf->library->createBitmap(actualWidth, actualHeight, 1);
++        if (!bitmap || actualWidth != canvasWidth || actualHeight != canvasHeight
++            || bitmap->getFormat() != vcl::pdf::PDFBitmapType::BGRA)
++            return 0;
++        bitmap->fillRect(0, 0, canvasWidth, canvasHeight, 0xffffffff);
++        bitmap->renderPageBitmap(pdf->document.get(), loadedPage.get(),
++            -static_cast<int>(std::round(x * scaleX)),
++            -static_cast<int>(std::round(y * scaleY)),
++            static_cast<int>(fullWidth), static_cast<int>(fullHeight));
++        const auto* pixels = bitmap->getBuffer();
++        const int stride = bitmap->getStride();
++        if (!pixels || stride < canvasWidth * 4)
++            return 0;
++        for (int row = 0; row < canvasHeight; ++row)
++        {
++            for (int column = 0; column < canvasWidth; ++column)
++            {
++                const auto* source = pixels + row * stride + column * 4;
++                auto* target = buffer + (row * canvasWidth + column) * 4;
++                target[0] = source[2];
++                target[1] = source[1];
++                target[2] = source[0];
++                target[3] = 255;
++            }
++        }
++        return 1;
++    }
++    catch (...)
++    {
++        return 0;
++    }
++}
++
++extern "C" SAL_DLLPUBLIC_EXPORT int dsh_native_pdf_destroy(void* handle) noexcept
++{
++    try
++    {
++        delete static_cast<DshNativePdfDocument*>(handle);
++        return 1;
++    }
++    catch (...)
++    {
++        return 0;
++    }
++}
++
+ SAL_JNI_EXPORT
+ LibreOfficeKit *libreofficekit_hook_2(const char* install_path, const char* user_profile_url)
+ {

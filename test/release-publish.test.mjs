@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { browserReceiptFixture } from './release-browser-fixture.mjs';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
@@ -55,7 +54,6 @@ function fixture(t, platforms = releaseTargets([])) {
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
   })) };
-  evidence.browser = browserReceiptFixture(adapter.sha256, release.packages.find(record => record.platform === 'wasm')?.sha256 ?? 'f'.repeat(64), env.GITHUB_SHA);
   save('verification.json', evidence);
   return { directory, release, evidence, env, save };
 }
@@ -84,14 +82,14 @@ test('publication rejects adapter bytes changed after the conversion receipts', 
 
 test('publication requires embedded graphics evidence from every installed engine', t => {
   const { directory, env, evidence, save } = fixture(t);
-  delete evidence.platforms[0].wasm.embeddedGraphics;
+  delete evidence.platforms[0].native.embeddedGraphics;
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /Missing embedded PDF graphic/);
 });
 
 test('publication rejects partial, duplicate and undeclared development targets', t => {
   const complete = releaseTargets([]);
-  for (const platforms of [complete.slice(0, -1), [...complete, ...complete], ['darwin-arm64'],
+  for (const platforms of [complete.slice(0, -1), [...complete, ...complete], ['wasm'],
     [...complete, 'linux-x64-glibc'], [...complete, 'darwin-arm64']]) {
     const { directory, env } = fixture(t, platforms);
     assert.throws(() => validatePublication(directory, env), /every declared release platform/);
@@ -124,12 +122,12 @@ test('publication rejects a transfer size that differs from the pinned archive',
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
 
-test('publication requires the canonical engine inventory and matching package versions', t => {
+test('publication requires the canonical engine order and matching package versions', t => {
   const { directory, env, release, save } = fixture(t);
-  release.packages.push(release.packages[0]);
+  release.packages.reverse();
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /package order/);
-  release.packages.pop();
+  release.packages.reverse();
   release.packages[0].version = '99.0.0';
   release.packages[0].file = engineArchiveName(release.packages[0]);
   release.packages[0].install.file = release.packages[0].file.replace(/\.xz$/, '');
@@ -140,7 +138,7 @@ test('publication requires the canonical engine inventory and matching package v
 test('publication rejects noncanonical filenames, platform identities and family versions', t => {
   const { directory, env, release, save } = fixture(t);
   const first = { ...release.packages[0] };
-  for (const change of [{ file: '../different.tgz' }, { platform: 'darwin-arm64' }]) {
+  for (const change of [{ file: '../different.tgz' }, { platform: 'wasm' }]) {
     release.packages[0] = { ...first, ...change };
     save('release.json', release);
     assert.throws(() => validatePublication(directory, env), /canonical engine asset|transfer filename/);
@@ -292,7 +290,6 @@ test('publication rechecks archive contents even when all candidate hashes agree
     if (platform.wasm) platform.wasm.adapter.sha256 = sha256(file);
     if (platform.native) platform.native.adapter.sha256 = sha256(file);
   }
-  evidence.browser.archiveSha256 = sha256(file);
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /personal home path/);
 });
@@ -329,7 +326,6 @@ function legacyCandidate(candidate, files = {}) {
   }
   save('release.json', release);
   evidence.releaseManifestSha256 = sha256(join(directory, 'release.json'));
-  evidence.browser.wasmSha256 = release.packages.find(record => record.platform === 'wasm').sha256;
   save('verification.json', evidence);
 }
 
@@ -360,7 +356,6 @@ test('npm legacy transfer handling still rejects private inner contents and repo
     if (platform.wasm) platform.wasm.adapter.sha256 = sha256(adapter);
     if (platform.native) platform.native.adapter.sha256 = sha256(adapter);
   }
-  evidence.browser.archiveSha256 = sha256(adapter);
   save('verification.json', evidence);
   const destination = join(directory, 'npm');
   assert.throws(() => prepareNpmRelease(directory, destination, env), error => {
@@ -371,63 +366,4 @@ test('npm legacy transfer handling still rejects private inner contents and repo
     return true;
   });
   assert.equal(existsSync(destination), false);
-});
-
-test('publication rejects a third standalone browser or font package', t => {
-  const { directory, release, env, save } = fixture(t);
-  for (const field of ['browser', 'fonts']) {
-    const extra = { ...release, [field]: { name: `@deepseek-ai/libreoffice-kit-${field}` } };
-    save('release.json', extra);
-    assert.throws(() => validatePublication(directory, env), /Standalone browser\/font packages/);
-  }
-});
-
-test('browser qualification requires matching archives and all rendering, isolation, subset and disposal results', t => {
-  const { directory, env, evidence, save } = fixture(t);
-  const receipt = structuredClone(evidence.browser);
-  for (const [field, value] of [['archiveSha256', '0'.repeat(64)], ['wasmSha256', '0'.repeat(64)],
-    ['sourceCommit', '0'.repeat(40)], ['sourceDirty', true], ['passed', false], ['isolated', false], ['fontSubsets', false], ['disposed', false]]) {
-    evidence.browser = { ...structuredClone(receipt), [field]: value };
-    save('verification.json', evidence);
-    assert.throws(() => validatePublication(directory, env), /Browser verification|Missing browser/);
-  }
-  for (const format of ['doc', 'docx', 'ppt', 'pptx']) for (const field of ['pages', 'paintedPixels']) {
-    evidence.browser = structuredClone(receipt);
-    evidence.browser.formats[format][field] = 0;
-    save('verification.json', evidence);
-    assert.throws(() => validatePublication(directory, env), /Missing browser rendering/);
-  }
-  for (const mutate of [r => delete r.nativeReadonlyModel, r => r.nativeReadonlyModel.cases.pop(),
-    r => r.nativeReadonlyModel.cases[0].modelUnchanged = false]) {
-    evidence.browser = structuredClone(receipt);
-    mutate(evidence.browser);
-    save('verification.json', evidence);
-    assert.throws(() => validatePublication(directory, env));
-  }
-  delete evidence.browser;
-  save('verification.json', evidence);
-  assert.throws(() => validatePublication(directory, env), /Browser verification/);
-});
-
-test('browser files within the main archive receive the normal payload privacy audit', t => {
-  const { directory, env, evidence, save } = fixture(t);
-  const main = kitManifest();
-  const file = join(directory, tarballName(main));
-  writeFileSync(file, npmFixture(main, { 'package/lib/browser/index.js': '/Users/private-builder/source' }));
-  const hash = sha256(file);
-  for (const record of evidence.platforms) record[record.platform === 'wasm' ? 'wasm' : 'native'].adapter.sha256 = hash;
-  evidence.browser.archiveSha256 = hash;
-  save('verification.json', evidence);
-  assert.throws(() => validatePublication(directory, env), /personal home path/);
-});
-
-test('collection binds browser qualification to the same main and WASM candidate archives', t => {
-  const { directory, evidence, env, save } = fixture(t);
-  mkdirSync(join(directory, 'evidence'));
-  for (const receipt of evidence.platforms) save(`evidence/${receipt.platform}.json`, receipt);
-  save('evidence/browser.json', evidence.browser);
-  run(process.execPath, [join(root, 'scripts/collect-release-evidence.mjs'), directory], { env: { ...process.env, ...env } });
-  assert.deepEqual(readJson(join(directory, 'verification.json')).browser, evidence.browser);
-  save('evidence/browser.json', { ...evidence.browser, wasmSha256: '0'.repeat(64) });
-  assert.throws(() => run(process.execPath, [join(root, 'scripts/collect-release-evidence.mjs'), directory], { env: { ...process.env, ...env } }), /Browser verification|exited/);
 });

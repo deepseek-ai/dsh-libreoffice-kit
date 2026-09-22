@@ -1,7 +1,7 @@
 /** Bounded OOXML inspection and declared font diagnostics, using maintained ZIP/XML parsers. */
 import { unzipSync, strFromU8 } from 'fflate'
 import { SaxesParser } from 'saxes'
-import { normalize } from './font-config.ts'
+import { normalize } from './fonts.ts'
 import { ConversionError } from './errors.ts'
 import type { ResolvedOptions } from './options.ts'
 

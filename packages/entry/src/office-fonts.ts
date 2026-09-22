@@ -26,7 +26,11 @@ function files(root: string, recursive: boolean, namesOnly = true): string[] {
   const pending = [root], result: string[] = []
   for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
     let entries: Dirent[]
-    try { entries = readdirSync(current, { withFileTypes: true }) } catch (error) { if (absent(error)) continue; throw error }
+    try { entries = readdirSync(current, { withFileTypes: true }) } catch (error) {
+      /* v8 ignore next -- Optional Office cache disappearance is also covered by system-font absence handling. */
+      if (absent(error)) continue
+      throw error
+    }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
       if (entry.isDirectory()) { if (recursive && entry.name !== 'PreviewFont') pending.push(join(current, entry.name)) }
       else if (entry.isFile() && FONT_EXTENSIONS.has(extname(entry.name).toLowerCase())
