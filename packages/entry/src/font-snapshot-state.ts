@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { ConversionError, failureCode } from './errors.ts'
 import type { FontSnapshot } from './font-snapshot.ts'
 import type { FontFileMetadata } from './fonts.ts'
 import type { FontSnapshotRequest } from './font-snapshot-worker.ts'
@@ -23,10 +24,10 @@ export async function runFontSnapshot(options: ResolvedOptions, previous: readon
   const abort = (): void => result.reject(signal.reason)
   signal.addEventListener('abort', abort, { once: true })
   worker.once('error', result.reject)
-  worker.once('exit', code => result.reject(new Error(`Font metadata worker exited before returning a snapshot (${code}).`)))
+  worker.once('exit', code => result.reject(new ConversionError('failed', `Font metadata worker exited before returning a snapshot (${code}).`)))
   worker.once('message', (message: { ok: true; snapshot: FontSnapshot } | { ok: false; error: string }) => {
     if (message.ok) result.resolve(message.snapshot)
-    else result.reject(new Error(message.error))
+    else result.reject(new ConversionError(failureCode(message), message.error))
   })
   try { return await result.promise } finally {
     signal.removeEventListener('abort', abort)

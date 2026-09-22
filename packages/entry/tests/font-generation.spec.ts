@@ -93,3 +93,17 @@ it('removes conversion output when a snapshot source changes during engine work'
   const conversion = await next(); await writeFile(path, 'replaced-font'); conversion.finish('old'); await rejected
   await expect(stat(outputPath)).rejects.toMatchObject({ code: 'ENOENT' })
 })
+
+it('removes a direct-image batch when its snapshot source changes', async () => {
+  const { root, inputPath, factory } = await setup(), converter = await factory.create()
+  const path = join(root, 'font.ttf'); await writeFile(path, 'font')
+  const { dev, ino, size, mtimeMs, ctimeMs } = await stat(path)
+  const outputDir = join(root, 'changed-images')
+  const pending = converter.renderImages({ inputPath, outputDir }), rejected = expect(pending).rejects.toThrow('changed during conversion')
+  ;(await next()).emit('message', { ok: true, snapshot: { generation: 'one', faces: [], records: [{ path, dev, ino, size, mtimeMs, ctimeMs, faces: [] }] } })
+  const conversion = await next(); await writeFile(path, 'replaced-font')
+  conversion.emit('message', { ok: true, images: { schemaVersion: 1, backend: 'wasm', rasterEngine: 'libreoffice',
+    source: 'saved', inputPath, sourceSha256: '0'.repeat(64), dpi: 144, pageCount: 1, images: [], missingFonts: [] } })
+  await rejected
+  await expect(stat(outputDir)).rejects.toMatchObject({ code: 'ENOENT' })
+})

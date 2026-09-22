@@ -2,6 +2,7 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { scanFontSnapshot } from './font-snapshot.ts'
 import { writeFontMetadataCache } from './font-metadata-cache.ts'
+import { failureCode } from './errors.ts'
 import type { FontFileMetadata } from './fonts.ts'
 import type { ResolvedOptions } from './options.ts'
 
@@ -18,5 +19,5 @@ try {
   if (temporaryPath !== undefined) writeFontMetadataCache(options, snapshot.records, temporaryPath)
   parentPort!.postMessage({ ok: true, snapshot })
 } catch (error) {
-  parentPort!.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) })
+  parentPort!.postMessage({ ok: false, code: failureCode(error), error: error instanceof Error ? error.message : String(error) })
 }

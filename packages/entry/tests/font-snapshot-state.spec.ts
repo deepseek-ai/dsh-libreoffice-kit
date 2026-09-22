@@ -83,6 +83,7 @@ it.each(['error', 'exit', 'message'] as const)('clears a failed %s scan and retr
   else if (kind === 'exit') last().emit('exit', 17)
   else last().emit('message', { ok: false, error: 'scan failed' })
   last().exited.resolve(0); await rejected
+  if (kind !== 'error') await expect(pending).rejects.toMatchObject({ name: 'ConversionError', code: 'failed' })
   const retry = state.acquire(options, signal()); last().succeed(); await retry
   expect(control.workers).toHaveLength(2)
 })
