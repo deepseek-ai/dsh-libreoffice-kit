@@ -30,6 +30,7 @@
     "lib/index.js",
     "lib/cli.js",
     "lib/worker.js",
+    "lib/font-snapshot-worker.js",
     "NOTICE",
     "lib/types/**/*.d.ts"
   ],

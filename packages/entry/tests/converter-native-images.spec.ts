@@ -15,10 +15,13 @@ vi.mock('../src/engine.ts', () => ({
 vi.mock('../src/native-image-renderer.ts', () => ({ renderImagesWithNative: native.render }))
 vi.mock('node:worker_threads', () => ({ Worker: class extends EventEmitter {
   stdout = { resume() {} }; stderr = { resume() {} }
-  constructor(_url: URL, options: { workerData: WorkerRequest }) {
+  constructor(entry: URL, options: { workerData: WorkerRequest }) {
     super()
     queueMicrotask(() => {
-      this.emit('message', { kind: 'fonts', faces: [] })
+      if (entry.pathname.endsWith('/font-snapshot-worker.js')) {
+        this.emit('message', { ok: true, snapshot: { faces: [], records: [], generation: 'empty' } })
+        return
+      }
       this.emit('message', { kind: 'font-cache', entries: [] })
       this.emit('message', { ok: true, fonts: ['/font.ttf'], substitutions: [], missingFonts: ['Missing'] })
     })

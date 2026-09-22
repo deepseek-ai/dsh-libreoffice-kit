@@ -36,6 +36,11 @@ export interface FontFace {
   coverage?: GlyphRange[]
 }
 
+/** All faces decoded from one unchanged physical file, including an empty parse result. */
+export interface FontFileMetadata extends Pick<FontFace, 'path' | 'dev' | 'ino' | 'size' | 'mtimeMs' | 'ctimeMs'> {
+  readonly faces: FontFace[]
+}
+
 /** VCL attributes LibreOffice requests one family for. */
 export interface FontMatchRequest {
   readonly family: string
@@ -260,7 +265,7 @@ export function faceMetrics(font: Pick<Font, 'OS/2' | 'post'>): { weight: number
   }
 }
 
-function inspect(path: string, maxBytes: number): FontFace[] {
+function inspect(path: string, maxBytes: number, observed?: Map<string, FontFileMetadata>): FontFace[] {
   let status: Stats
   let bytes: Buffer
   try {
@@ -314,8 +319,10 @@ function inspect(path: string, maxBytes: number): FontFace[] {
   }
   catch {
     // fontkit rejects unsupported or damaged font tables; other installed files can still satisfy the request.
-    return []
+    faces = []
   }
+  observed?.set(path, { path, dev: status.dev, ino: status.ino, size: status.size,
+    mtimeMs: status.mtimeMs, ctimeMs: status.ctimeMs, faces })
   return faces
 }
 
@@ -332,12 +339,36 @@ function regionalPriority(face: FontFace, language: string): number {
 /**
  * Snapshot eligible local font metadata without retaining font bytes or decoding glyph coverage.
  * @param options - Host font roots and physical file limits.
- * @returns metadata reused for the converter lifetime; recreate it after changing installed fonts.
+ * @param previous - Prior per-file records, reused only after opening and checking the current file.
+ * @param observed - Receives successfully read records for this scan, including damaged-font parse results.
+ * @returns metadata in discovery order for the current font inventory.
  */
-export function indexSystemFonts(options: FontIndexOptions): FontFace[] {
-  return fontPaths(options.directories, options.maxFiles).flatMap(path => inspect(path, options.maxFileBytes))
+export function indexSystemFonts(options: FontIndexOptions, previous: ReadonlyMap<string, FontFileMetadata> = new Map(),
+  observed?: Map<string, FontFileMetadata>): FontFace[] {
+  return fontPaths(options.directories, options.maxFiles).flatMap(path => {
+    const prior = observed?.get(path) ?? previous.get(path)
+    if (prior !== undefined) {
+      try {
+        const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
+        try {
+          const current = fstatSync(fd)
+          if (current.isFile() && current.size <= options.maxFileBytes && STAT_KEYS.every(key => current[key] === prior[key])) {
+            observed?.set(path, prior)
+            return prior.faces
+          }
+          if (observed?.has(path)) throw new Error('A system font changed while indexing; reload the font service.')
+        } finally { closeSync(fd) }
+      }
+      catch (error) {
+        // An inaccessible source is not a durable negative cache record.
+        if (absent(error)) return []
+        throw error
+      }
+    }
+    return inspect(path, options.maxFileBytes, observed)
+  })
 }
-/** Conversion-local glyph coverage over the converter's first metadata snapshot. */
+/** Conversion-local glyph coverage over one operation's metadata snapshot. */
 export class SystemFontCatalog {
   private readonly options: SystemFontCatalogOptions
   private readonly faces: FontFace[]

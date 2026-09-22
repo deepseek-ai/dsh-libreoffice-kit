@@ -21,13 +21,15 @@ vi.mock('node:worker_threads', () => ({
   Worker: class extends EventEmitter {
     stdout = { resume() {} }
     stderr = { resume() {} }
-    constructor() {
+    snapshot: boolean
+    constructor(entry: URL) {
       super()
-      queueMicrotask(() => this.emit('message', {
-        ok: true, output: Buffer.from('%PDF-1.7 fixture'), missingFonts: [],
-      }))
+      this.snapshot = entry.pathname.endsWith('/font-snapshot-worker.js')
+      queueMicrotask(() => this.emit('message', this.snapshot
+        ? { ok: true, snapshot: { faces: [], records: [], generation: 'empty' } }
+        : { ok: true, output: Buffer.from('%PDF-1.7 fixture'), missingFonts: [] }))
     }
-    async terminate(): Promise<number> { worker.terminations++; return 0 }
+    async terminate(): Promise<number> { if (!this.snapshot) worker.terminations++; return 0 }
   },
 }))
 
@@ -48,7 +50,7 @@ async function fixture() {
   const inputPath = join(root, 'input.docx')
   const outputPath = join(root, 'output.pdf')
   await writeFile(inputPath, 'source bytes inspected by the worker')
-  const converter = await createConverter({ fontDirectories: [] })
+  const converter = await createConverter({ fontDirectories: [], fontMetadataCacheDirectory: false })
   converters.push(converter)
   return { converter, inputPath, outputPath }
 }

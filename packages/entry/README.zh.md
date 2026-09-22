@@ -35,7 +35,7 @@ try {
 
 每个转换器串行执行渲染。一次渲染会创建独立的原生进程或 Node worker 以及私有配置目录，因此字体、文档状态和失败不会泄漏到后续渲染。截止时间在获得转换槽位之后开始计算。`AbortSignal` 可以取消排队中或进行中的工作；取消和 `dispose()` 都会等待进程或 worker 退出并完成临时文件清理。已释放的转换器会拒绝后续工作。
 
-通过兼容 API `createConverter(options)` 创建的转换器，会自动与进程内使用相同引擎及字体配置的其他转换器共享有界字体元数据和匹配结果。释放 converter 仍只等待它自己的工作；元数据缓存会留给后续兼容 converter，并同时受配置数量和默认值为 4096 的 `maxFontResolutionEntries` 限制。字体文件发生变化后需要重启进程。
+通过兼容 API `createConverter(options)` 创建的转换器，会自动与进程内使用相同引擎及字体配置的其他转换器共享有界字体元数据和匹配结果。释放 converter 仍只等待它自己的工作；元数据会留给后续兼容 converter，最多保留 16 种配置。`maxFontMetadataCacheBytes` 限制保留的逐文件元数据，`maxFontResolutionEntries` 限制匹配条目，默认值为 4096。
 
 长驻服务如果需要为多个并发转换槽提供一个显式生命周期所有者，可创建 `createConverterFactory(options)`，再通过 `factory.create()` 建立转换器。这些转换器使用 factory 私有缓存，同时仍分别拥有 Worker、原生 helper、配置目录和输出。释放 factory 会停止并等待它创建的全部转换器。
 
@@ -53,7 +53,24 @@ try {
 
 Node API 与引擎包使用相同的 kit 发布版本。`ENGINE_VERSION` 将 WASM 和原生可选依赖固定到精确的引擎版本。npm 安装预编译引擎；安装和转换阶段均不会编译 LibreOffice 或额外下载引擎资源。每个引擎包的 `sources/` 和 `licenses/` 保留匹配的源码配方、补丁、构建信息和第三方许可声明。
 
-默认值和所有选项记录在随包发布的 `lib/types/index.d.ts` 类型声明中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。转换器复用其第一次字体元数据快照；更改已安装字体后需重新创建转换器。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
+默认值和所有选项记录在随包发布的 `lib/types/index.d.ts` 类型声明中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。每次操作都会重新发现字体候选并验证缓存中的文件身份。一次操作使用一份有序元数据快照；快照变化后字体匹配条目失效。检测到转换期间字体变化时，操作会失败并删除其输出。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
+
+### 字体元数据缓存
+
+`createConverter()` 和 `createConverterFactory()` 均接受：
+
+| 选项 | 默认值 | 行为 |
+| --- | --- | --- |
+| `fontMetadataCacheDirectory` | 用户系统缓存目录 | 目录的绝对路径，或用 `false` 关闭磁盘缓存。 |
+| `maxFontMetadataCacheBytes` | 32 MiB | 正安全整数，限制单个缓存文件的读取、写入及每份共享配置保留的逐文件元数据。 |
+
+macOS 默认使用 `~/Library/Caches/libreoffice-kit`，Windows 使用 `%LOCALAPPDATA%/libreoffice-kit/Cache`（缺省时回退到用户的 `AppData/Local`），Linux 使用 `$XDG_CACHE_HOME/libreoffice-kit`（缺省时回退到 `~/.cache`）。单个 `font-metadata.json` 文件保存规范文件路径、设备/inode、大小、修改/变更时间及全部 face 元数据，包括解析结果为空的记录。它不保存字体字节、字形覆盖、解析对象、文档文本或文档匹配条目。请将此用户级文件保持私有。
+
+没有可复用元数据的首次运行仍执行原来的完整字体 inspect。后续进程只跳过已发现且文件身份完全匹配的字体。每次操作重新枚举来源，包括 Office 补充字体，因此新增、删除、替换和目录变化无需重启。候选顺序、文件预算、Office 过滤、fallback 匹配、字形查询和原字体导入保持原有行为。缓存损坏、版本不兼容、超限或不可访问时回退到字体源计算；不可读的源字体不会复用旧记录。缓存格式、提取逻辑和固定的 fontkit 版本均须匹配。
+
+新建缓存目录和文件使用私有权限（平台支持时为 `0700`/`0600`）。写入先在同目录独占创建临时文件，关闭后原子替换。未变化的快照不重写；超过字节上限的快照不保留、不写入。独立进程可以竞争发布完整快照，只影响命中率。元数据 Worker 退出后，所属操作清理自己创建的临时文件。
+
+同一共享配置内同时开始的操作共享短生命周期元数据 Worker。每个等待者保留自己的取消和截止时间；取消一个不会取消其他等待者。最后一个等待者退出时终止并等待 Worker。扫描完成后只保留有界元数据，不保留扫描 Worker 或原始字体 Buffer。`fontMetadataCacheDirectory: false` 仍保留进程内共享与源字体版本检查。factory 缓存有独立生命周期，由 `factory.dispose()` 清理。
 
 macOS 或 Windows 上省略 `fontDirectories` 时，默认发现还会检查 Microsoft Office 的捆绑/私有字体目录和用户 Office 字体缓存。只补充常规系统目录中不存在的精选 Office 兼容字体族，包括宋体和微软雅黑。显式 `fontDirectories` 会关闭这项补充发现。
 
