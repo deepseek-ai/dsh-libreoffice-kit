@@ -33,7 +33,7 @@ if (values.child) {
   const { createConverter } = await import(pathToFileURL(job.entry));
   const converter = await createConverter({ ...job.options, ...(job.mode.startsWith('baseline') ? {} : { fontMetadataCacheDirectory: job.mode === 'disabled' ? false : job.cache }) });
   try {
-    for (let iteration = 0; iteration < (job.mode === 'memory' ? 2 : 1); iteration++) {
+    for (let iteration = 0; iteration < (job.mode === 'memory' || job.mode.startsWith('baseline') ? 2 : 1); iteration++) {
       selected = [];
       const directory = join(job.output, String(iteration)); await fs.mkdir(directory, { mode: 0o700 });
       const result = await converter.render({ inputPath: job.input, outputPath: join(directory, 'output.pdf') });

@@ -44,7 +44,6 @@ def compare(a, b):
                                      "pixels": pixels(np.array(im1.convert("RGBA")), np.array(im2.convert("RGBA")))})
     direct["same"] = direct["pageCountsMatch"] and direct["imageCountsMatch"] and all(i["geometryMatch"] and i["pixels"]["same"] for i in direct["images"])
     fields = {key + "Match": observed_a[key] == observed_b[key] for key in observed_a}
-    # Matching-cache exports may accumulate codepoints on repeated operations; original imported bytes remain compared.
     return {"same": pdf["same"] and direct["same"] and all(fields.values()), "metadataAndDiagnostics": fields, "pdf": pdf, "direct": direct}
 
 
@@ -56,8 +55,11 @@ for case in json.loads((root / "runs.json").read_text()):
         directory = root / case["id"]
         baseline = directory / "baseline-0/0"
         row["baselineRepeat"] = compare(baseline, directory / "baseline-1/0")
-        row["comparisons"] = {mode: compare(baseline, directory / mode) for mode in ["empty/0", "disk/0", "memory/0", "memory/1", "disabled/0"]}
-        row["same"] = row["baselineRepeat"]["same"] and all(r["same"] for r in row["comparisons"].values())
+        row["baselineWarmRepeat"] = compare(directory / "baseline-0/1", directory / "baseline-1/1")
+        # PDF and direct-image operations add different requests to the matching cache. Compare identical histories.
+        row["comparisons"] = {mode: compare(directory / "baseline-0/1" if mode == "memory/1" else baseline, directory / mode)
+                              for mode in ["empty/0", "disk/0", "memory/0", "memory/1", "disabled/0"]}
+        row["same"] = row["baselineRepeat"]["same"] and row["baselineWarmRepeat"]["same"] and all(r["same"] for r in row["comparisons"].values())
     else:
         row["same"] = False
     results.append(row)
