@@ -18,6 +18,7 @@ export interface ResolvedOptions {
   readonly maxFontFiles: number
   readonly maxFontFileBytes: number
   readonly maxLoadedFontBytes: number
+  readonly maxFontResolutionEntries: number
   readonly fontDirectories: string[]
   readonly fontFallbacks: string[][]
   readonly initialFontFamilies: string[]
@@ -27,6 +28,7 @@ const DEFAULT_LIMITS = {
   timeoutMs: 120_000, maxInputBytes: 64 * 1024 * 1024, maxOutputBytes: 128 * 1024 * 1024,
   maxImageResolution: 144, maxArchiveEntries: 20_000, maxUncompressedBytes: 512 * 1024 * 1024,
   maxFontFiles: 20_000, maxFontFileBytes: 256 * 1024 * 1024, maxLoadedFontBytes: 512 * 1024 * 1024,
+  maxFontResolutionEntries: 4096,
 }
 
 const FONT_COLLECTION_NAMES = ['fontDirectories', 'initialFontFamilies'] as const
@@ -77,6 +79,7 @@ export function resolveOptions(input: ConverterOptions = {}): ResolvedOptions {
     maxFontFiles: positiveSafeInteger(merged.maxFontFiles, 'maxFontFiles'),
     maxFontFileBytes: positiveSafeInteger(merged.maxFontFileBytes, 'maxFontFileBytes'),
     maxLoadedFontBytes: positiveSafeInteger(merged.maxLoadedFontBytes, 'maxLoadedFontBytes'),
+    maxFontResolutionEntries: positiveSafeInteger(merged.maxFontResolutionEntries, 'maxFontResolutionEntries'),
     fontDirectories: fontNames(merged.fontDirectories, 'fontDirectories'),
     initialFontFamilies: fontNames(merged.initialFontFamilies, 'initialFontFamilies'),
     fontFallbacks: fontGroups(merged.fontFallbacks),

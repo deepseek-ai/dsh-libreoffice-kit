@@ -41,7 +41,7 @@ CLI 相对路径按工作目录解析，成功在 stdout 输出一个 JSON，失
 
 ## 字体与 PDF 范围
 
-Node 和 Host 字体服务共用有界系统字体发现与匹配：原字体和显式配置的替代字体优先，其次是对应 Unicode 文字系统、地区及正文类别的候选，最后选择其他覆盖所需字符的字体。Windows 顺序来自固定版本 Chromium，macOS/Linux 使用 Fontconfig 类别顺序，并补充另一来源的候选。Unicode 17 Script/Script_Extensions 数据识别混合文字，不让错误文档语言影响韩文等文字的选择。仅对未明确指定的 Latin/CJK 装饰字体降权，乌尔都文 Nastaliq 等正文传统不受影响。规则不下载或打包字体，仍导入原始字体以保留塑形和编码；安装字体改变后需重新创建转换器。`missingFonts` 报告缺失的声明字体，字体服务的 `unresolvedCodePoints` 单独报告没有任何已安装字体覆盖的字符。使用 `node scripts/generate-font-preferences.mjs` 更新固定来源数据，许可证保留在 `NOTICE`。
+Node 和 Host 字体服务共用有界系统字体发现与匹配：原字体和显式配置的替代字体优先，其次是对应 Unicode 文字系统、地区及正文类别的候选，最后选择其他覆盖所需字符的字体。Windows 顺序来自固定版本 Chromium，macOS/Linux 使用 Fontconfig 类别顺序，并补充另一来源的候选。Unicode 17 Script/Script_Extensions 数据识别混合文字，不让错误文档语言影响韩文等文字的选择。仅对未明确指定的 Latin/CJK 装饰字体降权，乌尔都文 Nastaliq 等正文传统不受影响。规则不下载或打包字体，仍导入原始字体以保留塑形和编码。兼容的 `createConverter()` 调用会自动共享进程内字体元数据和有界匹配结果；`maxFontResolutionEntries` 默认为 4096，最多保留 16 组不同字体配置。安装字体改变后需重启进程。`missingFonts` 报告缺失的声明字体，字体服务的 `unresolvedCodePoints` 单独报告没有任何已安装字体覆盖的字符。使用 `node scripts/generate-font-preferences.mjs` 更新固定来源数据，许可证保留在 `NOTICE`。
 
 `@deepseek-ai/libreoffice-kit/fonts` 的 `createFontSource` 是独立懒加载字体 Worker。默认 `resolve(attributes)` 保留 Office 的 Unicode-script 子集；新增 `resolve({...attributes,mode:'full'})` 返回不暴露主机路径的 `full_…` ID、原 family 和 ttf/otf/ttc 格式。`read(id)` 返回完整原字节，dfont 提取完整单字体 sfnt。来源变化或未知 ID 会拒绝读取。
 

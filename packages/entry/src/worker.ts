@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { inspectDocument } from './document.ts'
 import { createFontLoader, preloadFonts } from './font-loader.ts'
+import type { FontResolutionCacheEntry } from './font-loader.ts'
 import { indexSystemFonts } from './fonts.ts'
 import { renderImagesWithWasm } from './image-renderer.ts'
 import type { ImageRenderSpec } from './image-operations.ts'
@@ -25,6 +26,7 @@ export interface WorkerRequest {
   readonly scratch: string
   /** Faces the previous conversion indexed; absent until the worker reports them. */
   readonly fontFaces?: FontFace[] | undefined
+  readonly fontCache?: FontResolutionCacheEntry[] | undefined
 }
 
 /**
@@ -42,7 +44,7 @@ function requireParentPort(port: MessagePort | null): MessagePort {
 const port = requireParentPort(parentPort)
 
 try {
-  const { inputPath, extension, operation, options, engine, scratch, fontFaces } = workerData as WorkerRequest
+  const { inputPath, extension, operation, options, engine, scratch, fontFaces, fontCache } = workerData as WorkerRequest
   const bytes = readFileSync(inputPath)
   const images = 'kind' in operation && operation.kind === 'images'
   if (images && extension === 'pdf' && new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-')
@@ -55,10 +57,16 @@ try {
   if (engine.backend === 'wasm') {
     if (faces.length === 0 && extension !== 'pdf') throw new ConversionError('unavailable', 'No usable fonts were found. Install fonts or configure fontDirectories before converting documents.')
     if (images) {
-      const result = await renderImagesWithWasm({ engine, bytes, extension, operation: operation as ImageRenderSpec, options, document, faces })
+      let cacheEntries: FontResolutionCacheEntry[] = []
+      const result = await renderImagesWithWasm({ engine, bytes, extension, operation: operation as ImageRenderSpec,
+        options, document, faces, ...(fontCache === undefined ? {} : { fontCache }),
+        onFontCache: entries => { cacheEntries = entries } })
+      port.postMessage({ kind: 'font-cache', entries: cacheEntries })
       port.postMessage({ ok: true, images: result })
     } else {
-      const result = await convertWithWasm({ engine, bytes, extension, operation: operation as ConversionSpec, options, document, faces })
+      const result = await convertWithWasm({ engine, bytes, extension, operation: operation as ConversionSpec,
+        options, document, faces, ...(fontCache === undefined ? {} : { fontCache }),
+        onFontCache: entries => port.postMessage({ kind: 'font-cache', entries }) })
       port.postMessage({ ok: true, ...result }, [result.output.buffer as ArrayBuffer])
     }
   } else {
@@ -68,8 +76,9 @@ try {
       const path = join(directory, name)
       writeFileSync(path, data, { flag: 'wx', mode: 0o600 })
       return path
-    }, faces)
+    }, faces, fontCache)
     preloadFonts(fonts, options, document, true)
+    port.postMessage({ kind: 'font-cache', entries: fonts.cacheEntries })
     port.postMessage({ ok: true, fonts: fonts.files, substitutions: fonts.substitutions, missingFonts: fonts.missingFonts })
   }
 } catch (error) {

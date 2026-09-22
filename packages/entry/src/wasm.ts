@@ -8,6 +8,7 @@ import { profileXml } from './profile.ts'
 import { ConversionError } from './errors.ts'
 import type { FontFace, FontMatchRequest } from './fonts.ts'
 import type { FontLoader } from './font-loader.ts'
+import type { FontResolutionCacheEntry } from './font-loader.ts'
 import type { DocumentFontMetadata } from './ooxml.ts'
 import type { ResolvedOptions } from './options.ts'
 import { validateOutput } from './operations.ts'
@@ -108,6 +109,8 @@ export interface WasmConversionRequest {
   readonly options: ResolvedOptions
   readonly document: DocumentFontMetadata
   readonly faces: readonly FontFace[]
+  readonly fontCache?: readonly FontResolutionCacheEntry[]
+  readonly onFontCache?: (entries: FontResolutionCacheEntry[]) => void
 }
 
 /** Owned PDF bytes and declared families the installed catalog could not provide. */
@@ -196,7 +199,7 @@ export async function withWasmSession<T>(request: Omit<WasmConversionRequest, 'o
           const path = `/dsh-fonts/${name}`
           loadedModule.FS.writeFile(path, bytes)
           return path
-        }, faces)
+        }, faces, request.fontCache)
         if (pdf) {
           loadedModule.FS.mkdirTree('/usr/share/fonts/dsh-pdfium')
           preloadPdfFonts(options, faces, (name, bytes) => loadedModule.FS.writeFile(`/usr/share/fonts/dsh-pdfium/${name}`, bytes))
@@ -222,7 +225,7 @@ export async function withWasmSession<T>(request: Omit<WasmConversionRequest, 'o
       document = instance.ccall('dsh_lok_document_load', 'number', ['number', 'string', 'string'], [office, `file://${input}`, 'Batch=true,EnableMacrosExecution=false'])
       if (!document) throw engineError(instance, office)
     }
-    return await use({ module: instance, office, document, pdf,
+    const result = await use({ module: instance, office, document, pdf,
       get missingFonts() { return requiredFontLoader(fontLoader).missingFonts },
       async idle() {
         if (pdf) return
@@ -241,6 +244,8 @@ export async function withWasmSession<T>(request: Omit<WasmConversionRequest, 'o
         }
       },
     })
+    request.onFontCache?.(requiredFontLoader(fontLoader).cacheEntries)
+    return result
   } catch (error) {
     fatal ||= error instanceof WebAssembly.RuntimeError
     failure = error
