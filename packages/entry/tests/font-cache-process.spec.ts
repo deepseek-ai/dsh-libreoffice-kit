@@ -1,7 +1,8 @@
 /** Independent publishers may overwrite complete snapshots without admitting foreign font sources. */
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -35,7 +36,7 @@ it('publishes complete snapshots from four synchronized processes and removes ow
       const snapshot = scanFontSnapshot(options)
       expect(snapshot.records).toHaveLength(1)
       expect(snapshot.records[0]?.path).toContain('fonts-')
-      expect(snapshot.records[0]?.path).toBe(await realpath(join(options.fontDirectories[0]!, 'font.ttf')))
+      expect(snapshot.records[0]?.path).toBe(realpathSync(join(options.fontDirectories[0]!, 'font.ttf')))
     }
   } finally {
     for (const child of children) if (child.exitCode === null) child.kill()
