@@ -14,8 +14,11 @@ const entry = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 const fontsModule = new URL('../packages/entry/lib/types/fonts.js', import.meta.url);
 
 test('real native PDF uses configured missing-family substitutions and preserves installed originals', { skip: !entry, timeout: 180_000 }, async t => {
-  const { indexSystemFonts, normalize, systemFontDirectories } = await import(fontsModule.href);
-  const faces = indexSystemFonts({ directories: systemFontDirectories(), maxFiles: 20_000, maxFileBytes: 256 * 1024 * 1024 });
+  const { normalize } = await import(fontsModule.href);
+  const { scanFontSnapshot } = await import(new URL('../packages/entry/lib/types/font-snapshot.js', import.meta.url).href);
+  const { resolveOptions } = await import(new URL('../packages/entry/lib/types/options.js', import.meta.url).href);
+  // Installed originals include Office supplemental fonts as well as normal system roots.
+  const { faces } = scanFontSnapshot(resolveOptions());
   const select = families => families.map(family => faces.find(face => face.family === family && face.weight === 400 && !face.italic)).find(Boolean);
   const substitute = select(['Courier New', 'Liberation Mono', 'DejaVu Sans Mono', 'Menlo', 'Monaco']);
   const original = select(['Arial', 'Helvetica', 'Liberation Sans', 'DejaVu Sans', 'Times New Roman']);

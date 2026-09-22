@@ -51,3 +51,7 @@ node benchmarks/font-cache.mjs --baseline /tmp/kit-benchmark/staged/baseline/lib
 进程树 RSS 在 POSIX 上每 100 ms 采样，Windows 缺少该采样支持时明确记录。保存父进程操作前、完成时、GC 后和 dispose/GC 后的 `heapUsed`、`external`、`arrayBuffers` 与 RSS。RSS 不等于可达 JavaScript 内存或字体 Buffer 所有权；对象不可达后，分配器和操作系统缓存仍可能保留页面。仅凭 RSS 持平或偏高不能判定泄漏。
 
 所有工作目录均为私有。回归输出包含私有 PDF、图片、路径、含文本的清单和诊断指纹；性能任务也保留私有路径、PDF 和缓存。只发布审核过的 `samples.json`、`environment.json`、回归 `summary.json` 和匿名统计。CI 在 Windows native 和 Linux WASM 上只上传公开样例的匿名摘要，不上传字体或缓存文件。这些样例的像素一致仅是有限证据，不保证所有文档都无误。
+
+真实字体容器验证使用 `font-cache-formats.mjs <字体目录>`，调用已构建的源码扫描器，核对冷态、磁盘命中和内存命中的元数据与匹配结果，并检查命中时字体读取字节为零。除上面的 Carlito 外，使用 [fontkit 修订版 fbf3b9ef](https://github.com/foliojs/fontkit/tree/fbf3b9ef21eebd219eb73e666faed573af0fba09/test/data) 中的 `test/data/NotoSans/NotoSans.dfont`、`test/data/NotoSans/NotoSans.ttc` 和 `test/data/SourceSansPro/SourceSansPro-Regular.otf`，许可证位于相邻源码目录。将 TTC 样例复制为 `.otc` 文件名，以覆盖同一种 OpenType collection 的两种扩展名；这不代表已覆盖所有 collection 编码。SHA-256 分别应为 `6140d7b03a3b1e9b0f3ec6289f1fdf82c30fbb2f27ac97ff53734ce77c162ed6`（dfont）、`ce7c37270d8ab52e445a86ca532bf1864043a4d43f138d83183cdb415ffc994a`（collection）及 `e9eefd0655161b5558b4caf1a0667b3931c55ef8e06b58b034e8955190261d99`（OTF）。
+
+测量完成后执行 `node benchmarks/font-cache-report.mjs <性能输出目录>`，验证样本完整性、缓存命中的 inspect 次数和并发扫描次数，生成 `summary.json`。`font-cache-phases.mjs --candidate <entry.js> --manifest <inputs.json> --cache <已预热缓存目录> --output <新目录>` 单独测量元数据 Worker 从创建到退出的耗时，每个输入先执行一次操作，再重复七次。在前后对照测量结束后运行这项诊断，不同时运行其他本地测试或基准。它用于分析重新发现和验证的成本，不替代成对端到端测量。
