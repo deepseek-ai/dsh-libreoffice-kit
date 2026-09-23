@@ -2,7 +2,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { configureFlags, source, verifyConfigureInput } from '../engine/native/configure.mjs';
+import { configureFlags, nativeBuildOptions, source, verifyConfigureInput } from '../engine/native/configure.mjs';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { buildHelper } from '../engine/native/build-helper.mjs';
 import { verifyBuildPlatform } from '../engine/native/build-platform.mjs';
@@ -20,6 +20,11 @@ const core = resolve(value('--source', join(root, '.build/core')));
 const build = resolve(value('--build', join(root, '.build', `native-${platform}`)));
 const tarballs = resolve(value('--tarballs', join(root, '.build/tarballs')));
 const parallelism = value('--jobs', '8');
+if (args.includes('--lto') && args.includes('--no-lto')) throw new Error('--lto and --no-lto cannot be combined');
+const { optimization, lto } = nativeBuildOptions(platform, {
+  optimization: value('--optimization'),
+  lto: args.includes('--no-lto') ? false : args.includes('--lto') ? true : undefined,
+});
 if (!/^[1-9]\d*$/.test(parallelism)) throw new Error('--jobs must be a positive integer');
 function run(command, argv, cwd, env = process.env) {
   const result = spawnSync(command, argv, { cwd, env, stdio: 'inherit' });
@@ -44,12 +49,23 @@ function shellPath(file) {
   if (result.status !== 0) throw new Error('Cygwin cygpath is required for the Windows Core build');
   return result.stdout.trim();
 }
-const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO, crossCompile);
-if (args.includes('--resume')) verifyConfigureInput(platform, readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n'));
+const flags = configureFlags(platform, shellPath(tarballs), parallelism, process.env.LIBREOFFICE_KIT_VISUAL_STUDIO, crossCompile, { lto });
+if (args.includes('--resume')) {
+  const configured = readFileSync(join(build, 'autogen.input'), 'utf8').trim().split('\n');
+  verifyConfigureInput(platform, configured);
+  if (configured.includes('--enable-lto') !== lto) throw new Error('Resume must use the original LTO setting (--lto or --no-lto)');
+}
 const make = process.platform === 'darwin' ? 'gmake' : process.platform === 'win32' ? process.env.LIBREOFFICE_KIT_MAKE : 'make';
 if (!make) throw new Error('LIBREOFFICE_KIT_MAKE must name the native Windows GNU Make executable');
 const identityPaths = { workspace: root, source: core, build, tarballs };
 const buildEnvironment = identityEnvironment({ ...process.env, MAKE: shellPath(make) }, platform, identityPaths);
+if (optimization !== 'default') {
+  // Explicit CFLAGS replace gbuild's default -O2 and also reach external projects.
+  for (const key of ['CFLAGS', 'CXXFLAGS', 'OBJCFLAGS', 'OBJCXXFLAGS'])
+    buildEnvironment[key] += ` -${optimization}`;
+  // External projects also append gbuild's optimization policy after CFLAGS.
+  buildEnvironment.gb_COMPILEROPTFLAGS = `-${optimization}`;
+}
 if (process.platform === 'win32') {
   // UCRT's builtin offsetof supports the constant expressions required by Skia and PDFium.
   buildEnvironment.ENVCFLAGSCXX = `${buildEnvironment.ENVCFLAGSCXX ?? ''} -D_CRT_USE_BUILTIN_OFFSETOF=1`.trim();

@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import { readJson } from './platform-matrix.mjs';
 import { run } from './pack-utils.mjs';
 import { assert, sha256 } from './verify-artifacts.mjs';
+import { assertRequiredUiResources, unusedUiResource } from '../engine/ui-resource-policy.mjs';
 
 function files(directory, prefix = '') {
   return readdirSync(join(directory, prefix)).sort().flatMap(name => {
@@ -105,6 +106,15 @@ export function pruneNativePayload(directory, platform, programDirectory, { stat
   }
   if (staticLibraries) {
     assert(darwin, 'Static archive pruning is qualified only for macOS');
+    // This private conversion helper has no interactive editing or texture picker.
+    for (const name of ['autocorr', 'autotext', 'wordbook', 'shell']) remove(`${resources}/${name}`);
+    remove(`${resources}/palette/standard.sob`);
+    const layouts = `${resources}/config/soffice.cfg`;
+    if (existsSync(join(directory, layouts))) {
+      const paths = files(directory, layouts).map(file => file.slice(layouts.length + 1));
+      assertRequiredUiResources(paths);
+      for (const path of paths.filter(unusedUiResource)) remove(`${layouts}/${path}`);
+    }
     // These desktop/developer commands are not invoked by the private helper;
     // the static UNO launcher would otherwise duplicate the linked engine.
     for (const name of ['uno', 'regview', 'uri-encode']) remove(`${launchers}/${name}`);

@@ -180,6 +180,26 @@ test('static macOS staging removes linked archives and preserves runtime resourc
   assert.equal(readFileSync(join(directory, archive), 'utf8'), 'not an archive');
 });
 
+test('static conversion payload keeps required layouts and drawing definitions while dropping editing assets', async t => {
+  const { requiredUiResources } = await import('../engine/ui-resource-policy.mjs');
+  const { directory, put } = fixture(t);
+  const program = 'program/Office.app/Contents/Frameworks';
+  const resources = 'program/Office.app/Contents/Resources';
+  const ui = `${resources}/config/soffice.cfg`;
+  put(`${program}/fundamentalrc`, 'runtime');
+  for (const file of requiredUiResources) put(`${ui}/${file}`, 'required layout');
+  const removed = ['autocorr/example.dat', 'autotext/example.bau', 'wordbook/example.dic',
+    'shell/donate.png', 'palette/standard.sob', 'config/soffice.cfg/cui/ui/password.ui'];
+  for (const file of removed) put(`${resources}/${file}`, 'unused');
+  put(`${ui}/simpress/effects.xml`, 'drawing effects');
+  put(`${resources}/palette/standard.soc`, 'colors');
+  pruneNativePayload(directory, 'darwin-arm64', program, { staticLibraries: true });
+  for (const file of removed) assert.ok(!existsSync(join(directory, resources, file)));
+  for (const file of requiredUiResources) assert.equal(readFileSync(join(directory, ui, file), 'utf8'), 'required layout');
+  assert.equal(readFileSync(join(directory, ui, 'simpress/effects.xml'), 'utf8'), 'drawing effects');
+  assert.equal(readFileSync(join(directory, resources, 'palette/standard.soc'), 'utf8'), 'colors');
+});
+
 test('symbol cleanup retains dynamic exports, signs macOS files, and checks the resulting signature', t => {
   const { directory, put } = fixture(t);
   const binary = Buffer.alloc(64); binary.writeUInt32LE(0xfeedfacf);

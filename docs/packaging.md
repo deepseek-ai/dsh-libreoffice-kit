@@ -48,14 +48,25 @@ Native manifest fields:
 Windows uses `bin/libreoffice-kit.exe`. The worker loads this package's compiled LibreOfficeKit through the upstream C API. `program/` preserves the Core installation's relative resource and library paths. The manifest's `programDirectory` identifies the library directory inside it: typically `program/program` on Linux/Windows and `program/LibreOfficeDev.app/Contents/Frameworks` on macOS. Staging omits macOS's `MacOS/urelibs` build-tool alias to avoid duplicating the entire `Frameworks` directory; the source receipt records the omission. No system `soffice` executable is invoked.
 
 macOS ARM64 links the bundled Core libraries into the private helper as static archives,
-exports only `_main`, and enables Mach-O dead stripping. Apple system libraries
+exports only `_main`, and enables Mach-O dead stripping. Builds default to `-Oz`
+and ThinLTO, including the final Core executable link. Apple system libraries
 remain dynamically linked. Its `programDirectory` is
 `program/LibreOfficeDev.app/Contents/Resources`; the helper resolves the installation
 bootstrap from that directory. Skia, PDFium and OpenSSL remain enabled; NSS and
 GPGME certificate/signature and OpenPGP services are disabled. Linked archives and
-unused standalone UNO, registry and URI tools are omitted. Helper changes require
+unused standalone UNO, registry and URI tools are omitted. Staging also removes
+autocorr, autotext, wordbook, shell assets and the default texture library
+`palette/standard.sob`. UI layouts use the six-file allowlist in
+`engine/ui-resource-policy.mjs`; adjacent drawing XML and other palettes remain.
+Static macOS builds omit zxcvbn and password-strength bars while preserving password
+hashing, verification and policy checks. The UI policy and patches enter source receipts.
+Helper changes require
 relinking the Core executable with `build-native.mjs --resume`; standalone helper
 replacement is rejected. Other native targets retain their existing linkage.
+`--optimization default|O2|Os|Oz` and `--lto` / `--no-lto` select comparison builds;
+use a separate build directory per configuration. `--resume` must retain the
+original optimization and LTO settings. To resume the previous default recipe,
+pass `--optimization default --no-lto`. Other platforms retain their optimization defaults.
 
 The repository owns the complete payload recipe. `engine/native/configure.mjs` disables desktop galleries, templates, icon themes, Base connectivity, scripting, extensions, and Impress remote control, PDF import, help indexing, curl, WebDAV, CMIS, and LDAP. `scripts/slim-native.mjs` removes named desktop resources, developer SDK tools, PDF-import data, Quick Look extensions, Spotlight importers, disabled help/network libraries, residual LDAP libraries, Basic and Python scripting resources, notebookbars, toolbars, menubars, and launchers, strips nonessential symbols while retaining dynamic exports, and restores and verifies macOS ad-hoc signatures. Linux runtime modules covered by distribution receipts or NSS checksum files retain their authenticated bytes. `sources/payload-shaping.json` records removed paths and byte counts; source and reuse checks reject different recorded component selections, staging scripts, or slimming scripts. Writer, Calc, Impress, their filters, fonts, locale resources, and redistribution notices remain available for conversion. Native and WASM builds retain PDFium for PDF graphics embedded in OOXML, including EMF multi-format comments; the owned configure patch permits that renderer without standalone PDF import filters. The WASM patch includes PDFium's existing portable Linux platform implementation, whose source already supports Emscripten, in the link.
 

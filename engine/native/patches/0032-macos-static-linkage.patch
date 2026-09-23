@@ -10,7 +10,8 @@
  		$(if $(filter Bundle,$(TARGETTYPE)),$(gb_Bundle_TARGETTYPEFLAGS)) \
  		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
  		$(subst \d,$$,$(RPATH)) \
- 		$(T_USE_LD) $(T_LDFLAGS) \
+-		$(T_USE_LD) $(T_LDFLAGS) \
++		$(T_USE_LD) $(T_LDFLAGS) $(T_LTOFLAGS) \
 -		$(patsubst lib%.dylib,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib))))) \
 +		$(if $(DISABLE_DYNLOADING),$(foreach lib,$(call gb_LinkTarget__filter_lo_libraries,$(LINKED_LIBS)),$(call gb_Library_get_target,$(lib))),$(patsubst lib%.dylib,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
  		-Wl$(COMMA)-filelist$(COMMA)$${FILELIST} \

@@ -9,8 +9,35 @@ import { engineFamilyVersion, verifyKitMetadata, verifyKitPackage } from '../scr
 import { packRelease, stagePackage, workflowRepositoryUrl } from '../scripts/pack-release.mjs';
 import { npm, run } from '../scripts/pack-utils.mjs';
 import { verifyRelease } from '../scripts/verify-release.mjs';
-import { configureFlags, verifyConfigureInput } from '../engine/native/configure.mjs';
+import { configureFlags, nativeBuildOptions, verifyConfigureInput } from '../engine/native/configure.mjs';
 import { packKitManifest } from '../scripts/pack-kit-manifest.mjs';
+
+test('macOS ARM64 defaults to Oz and LTO and accepts explicit comparison builds', () => {
+  assert.deepEqual(nativeBuildOptions('darwin-arm64'), { optimization: 'Oz', lto: true });
+  for (const optimization of ['default', 'O2', 'Os', 'Oz']) {
+    for (const lto of [false, true]) {
+      assert.deepEqual(nativeBuildOptions('darwin-arm64', { optimization, lto }), { optimization, lto });
+    }
+  }
+  assert.throws(() => nativeBuildOptions('darwin-arm64', { optimization: 'O3' }), /--optimization/);
+  for (const { prebuild } of packageMatrix().filter(row => !['wasm', 'darwin-arm64'].includes(row.prebuild.platform))) {
+    assert.deepEqual(nativeBuildOptions(prebuild.platform), { optimization: 'default', lto: false });
+    assert.throws(() => nativeBuildOptions(prebuild.platform, { optimization: 'Oz' }), /only for darwin-arm64/);
+    assert.throws(() => nativeBuildOptions(prebuild.platform, { lto: true }), /only for darwin-arm64/);
+  }
+});
+
+test('macOS static LTO recipes retain exact configuration validation', () => {
+  const flags = configureFlags('darwin-arm64', '/cache', 10);
+  assert.ok(flags.includes('--enable-lto'));
+  assert.deepEqual(flags, configureFlags('darwin-arm64', '/cache', 10, undefined, false, { lto: true }));
+  assert.doesNotThrow(() => verifyConfigureInput('darwin-arm64', flags));
+  const noLto = configureFlags('darwin-arm64', '/cache', 10, undefined, false, { lto: false });
+  assert.ok(!noLto.includes('--enable-lto'));
+  assert.doesNotThrow(() => verifyConfigureInput('darwin-arm64', noLto));
+  assert.throws(() => verifyConfigureInput('darwin-arm64', [...flags, '--disable-lto']), /rebuild Core/);
+  assert.throws(() => configureFlags('darwin-x64', '/cache', 10, undefined, false, { lto: true }), /only for darwin-arm64/);
+});
 
 const row = packageMatrix().find((row) => row.prebuild.platform === 'darwin-arm64');
 const unbuilt = () => ({ ...structuredClone(row.prebuild), status: 'unbuilt', files: {}, source: null, licenses: [] });

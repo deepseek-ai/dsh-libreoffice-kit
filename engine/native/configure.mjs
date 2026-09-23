@@ -3,7 +3,15 @@ import { readCoreSource } from '../core-source.mjs';
 import { buildVendor } from '../build-identity.mjs';
 export const source = readCoreSource();
 
-export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022', crossCompile = false) {
+export function nativeBuildOptions(platform, { optimization = platform === 'darwin-arm64' ? 'Oz' : 'default', lto = platform === 'darwin-arm64' } = {}) {
+  if (!['default', 'O2', 'Os', 'Oz'].includes(optimization)) throw new Error('--optimization must be default, O2, Os, or Oz');
+  if ((lto || optimization !== 'default') && platform !== 'darwin-arm64')
+    throw new Error('Optimization overrides are qualified only for darwin-arm64');
+  return { optimization, lto };
+}
+
+export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022', crossCompile = false, { lto = nativeBuildOptions(platform).lto } = {}) {
+  if (lto && platform !== 'darwin-arm64') throw new Error('LTO is qualified only for darwin-arm64');
   const flags = [
     `--with-vendor=${buildVendor}`,
     '--disable-debug', '--disable-dbgutil', '--disable-symbols', '--disable-werror',
@@ -26,7 +34,7 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
     '--without-gssapi', '--without-system-cairo', '--without-system-fontconfig', '--without-system-freetype', '--without-system-harfbuzz', '--without-system-graphite');
   // Core's configure rejects --disable-gui on macOS and Windows; LOK initializes headless itself.
   if (platform.startsWith('darwin-')) flags.push('--enable-bogus-pkg-config');
-  // Experimental Core archive linkage, retaining Skia and using OpenSSL for crypto.
+  // Core archive linkage, retaining Skia and using OpenSSL for crypto.
   if (platform === 'darwin-arm64') flags.push('--disable-dynamic-loading', '--enable-customtarget-components',
     '--disable-nss', '--disable-gpgmepp', '--with-tls=openssl',
     '--with-build-platform-configure-options=--enable-bogus-pkg-config --enable-python=no --without-lxml --without-doxygen --disable-odk --disable-werror --disable-debug --disable-symbols --enable-skia');
@@ -41,6 +49,7 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
       `--with-visual-studio=${visualStudio}`, '--without-lxml', '--enable-skia');
     if (platform === 'win32-arm64') flags.push(`--with-build-platform-configure-options=--with-visual-studio=${visualStudio} --enable-python=no --without-lxml --without-doxygen --disable-odk --disable-werror --disable-debug --disable-symbols`);
   }
+  if (lto) flags.push('--enable-lto');
   return flags;
 }
 
@@ -54,7 +63,7 @@ export function verifyConfigureInput(platform, flags) {
   if (!Array.isArray(flags) || !flags.every(flag => typeof flag === 'string')) throw new Error('Core configure receipt must contain argument strings');
   const visualStudio = flags.find(flag => flag.startsWith('--with-visual-studio='))?.split('=')[1];
   const crossCompile = platform === 'darwin-x64' && flags.includes('--build=aarch64-apple-darwin');
-  const expected = configureFlags(platform, '', '', visualStudio, crossCompile);
+  const expected = configureFlags(platform, '', '', visualStudio, crossCompile, { lto: flags.includes('--enable-lto') });
   const components = values => values.filter(flag => !/^--with-(external-tar|parallelism)=/.test(flag));
   if (JSON.stringify(components(flags)) !== JSON.stringify(components(expected)))
     throw new Error('Core configure input differs from the current recipe; rebuild Core without --resume');
