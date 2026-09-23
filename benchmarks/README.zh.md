@@ -33,7 +33,7 @@ node benchmarks/report.mjs \
 
 ## 字体元数据缓存对照
 
-`font-cache.mjs` 让两个已构建 adapter 使用相同的已安装引擎，测量性能。`font-cache-regression.mjs` 单独比较全部 PDF 页面和直接 PNG，并执行第二次基线运行以检测样例自身的不稳定性。源码基线为 `96cc7d8`（文件树与 `2ba08c5` 一致）；两边均使用 `0.0.3` 引擎。每份 checkout 执行 `pnpm build:adapter` 后，用 `font-cache-stage.mjs --baseline <基线包目录> --candidate <候选包目录> --dependencies <已安装的node_modules> --output <新目录>` 暂存其 `packages/entry`。依赖目录必须包含 fontkit、fflate、saxes 和宿主平台的匹配版本引擎。
+`font-cache.mjs` 让两个已构建 adapter 使用相同的已安装引擎，测量性能。`font-cache-regression.mjs` 单独比较全部 PDF 页面和直接 PNG，并执行第二次基线运行以检测样例自身的不稳定性。源码基线为 `96cc7d8`（文件树与 `2ba08c5` 一致），使用 `0.0.3` 引擎。每份 checkout 执行 `pnpm build:adapter` 后，用 `font-cache-stage.mjs --baseline <基线包目录> --candidate <候选包目录> --dependencies <已安装的node_modules> --output <新目录>` 暂存其 `packages/entry`。依赖目录必须包含 fontkit、fflate、saxes 和宿主平台引擎。两个 adapter 版本不同时添加 `--reuse-engines`：暂存过程为各 adapter 私下复制引擎，对照对应 checkout 验证完整配方，仅修改 package/prebuild 版本。引擎配方变化会拒绝复用；已安装包和引擎 payload 字节保持不变。
 
 公开输入使用[固定修订版的 Carlito Regular](https://raw.githubusercontent.com/google/fonts/07ace6abab87a122865e5cb82c7540b39551edb2/ofl/carlito/Carlito-Regular.ttf)，下载到私有临时目录。字体按 [SIL Open Font License](https://github.com/google/fonts/blob/07ace6abab87a122865e5cb82c7540b39551edb2/ofl/carlito/OFL.txt) 分发；不要提交下载的字体。`font-cache-fixtures.mjs` 校验 SHA-256 `f6418f708baede9789daef5d458c0f53d2a888af9820e8062934e504fedc6595`，生成使用该字体的 DOCX/PPTX/XLSX 输入：
 

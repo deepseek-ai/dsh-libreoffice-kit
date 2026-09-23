@@ -11,7 +11,7 @@
 使用 Node.js 22.19.0 或更新版本安装：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.3
+npm install @deepseek-ai/libreoffice-kit@0.0.4
 ```
 
 npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
@@ -95,4 +95,4 @@ Node WASM 的图像降采样使用 LibreOffice 的 CPU 图像过滤器。文本�
 - 字体导入和输出限制不能约束全部原生内存或临时磁盘使用。原生平台引擎的字体解析可能与 WASM 不同。
 - npm 安装使用按平台选择的可选包。自行打包引擎的应用需要保留所选包的完整内容，包括资源和许可声明。
 - Windows 需要系统安装与 Node.js 架构一致的 Microsoft Visual C++ v14 Redistributable（x64 或 ARM64）；包中不捆绑该运行库。Windows ARM64 引擎需要使用 ARM64 Node.js。
-- `0.0.3` 提供 macOS 和 Windows 的 ARM64、x64 原生引擎，以及供 Linux 使用的共享 Node WASM 引擎；其他原生平台仅保留开发构建配方。
+- `0.0.4` 提供 macOS 和 Windows 的 ARM64、x64 原生引擎，以及供 Linux 使用的共享 Node WASM 引擎；其他原生平台仅保留开发构建配方。

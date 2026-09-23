@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
  * Engine-family version every installed engine package must carry. The engine
  * family shares its release version with this Node API.
  */
-export const ENGINE_VERSION = '0.0.3'
+export const ENGINE_VERSION = '0.0.4'
 
 /** npm scope and name prefix shared by the engine packages this adapter installs. */
 const ENGINE_PREFIX = '@deepseek-ai/libreoffice-kit'
