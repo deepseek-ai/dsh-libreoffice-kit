@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Current goal
 
-**Font-friendly Office conversion and rendering in Node.js.** Version `0.0.4` extends the stable `0.0.1` line with format conversion, spreadsheet recalculation, a CLI, direct PNG rendering, and shared converter-factory font caches while retaining the native engine packages.
+**Font-friendly Office conversion and rendering in Node.js.** Version `0.1.0` extends the stable `0.0.1` line with format conversion, spreadsheet recalculation, a CLI, direct PNG rendering, and shared converter-factory font caches while retaining the native engine packages.
 
 The priorities are document layout and readable text, explicit control over available fonts and substitutions, and an engine that applications can bundle and run offline. Size reduction serves that goal: retain the import, layout, drawing, and PDF-export machinery these documents need while removing unrelated desktop features and resources.
 
@@ -18,10 +18,10 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 
 ## Quick start
 
-Requires Node.js **22.19.0 or newer**. Install the `0.0.4` package with its optional engines:
+Requires Node.js **22.19.0 or newer**. Install the `0.1.0` package with its optional engines:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.0.4
+npm install @deepseek-ai/libreoffice-kit@0.1.0
 ```
 
 ```js
@@ -45,7 +45,7 @@ try {
 
 Supply absolute paths in caller-owned private directories; the output must not already exist. The PDF is written to `outputPath`, and `render` returns the selected backend and missing-font names. Each render owns a fresh native process or Node worker and private profile. Renders on one converter are serialized; cancellation and disposal wait for engine exit and cleanup. See the [Node API](packages/entry/README.md) for cancellation, errors, and resource limits.
 
-## What “font-friendly” means in 0.0.4
+## What “font-friendly” means in 0.1.0
 
 - **Use available fonts.** The API discovers conventional system/user font directories, or indexes the roots supplied through `fontDirectories`. Custom roots replace the default list. `fontkit` reads font metadata and glyph coverage; selected files are passed to the engine as original font bytes.
 - **Preserve requested families when available.** Exact installed families take priority, including handwriting and decorative fonts. WASM font requests also carry weight and italic information so matching installed faces can be selected; the catalog can supply additional fonts for missing glyphs.
@@ -58,7 +58,7 @@ This improves control over font choice, but does not guarantee identical output 
 
 ## Engines and distribution
 
-The [Node package manifest](packages/entry/package.json) declares the engines for `0.0.4`:
+The [Node package manifest](packages/entry/package.json) declares the engines for `0.1.0`:
 
 | Engine | Role |
 | --- | --- |

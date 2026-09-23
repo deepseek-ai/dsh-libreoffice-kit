@@ -320,9 +320,9 @@ describe('glibc floors', () => {
   it('an older engine package rejects even when its manifest agrees with that version', async () => {
     const fixture = await engineFixture()
     try {
-      await fixture.writeNative({ schemaVersion: 1, version: '0.1.0', platform: 'linux-arm64-glibc', status: 'built',
+      await fixture.writeNative({ schemaVersion: 1, version: '0.0.4', platform: 'linux-arm64-glibc', status: 'built',
         engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: '2.38' } })
-      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: '0.1.0' }))
+      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: '0.0.4' }))
       await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toThrow(/incompatible or incomplete/)
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })
