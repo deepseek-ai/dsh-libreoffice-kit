@@ -74,7 +74,7 @@
  
 --- a/desktop/Executable_soffice_bin.mk
 +++ b/desktop/Executable_soffice_bin.mk
-@@ -24,9 +24,31 @@
+@@ -24,9 +24,37 @@
      sofficeapp \
  ))
  
@@ -91,6 +91,12 @@
 +    -Wl$(COMMA)-ObjC -Wl$(COMMA)-dead_strip -Wl$(COMMA)-exported_symbol$(COMMA)_main \
 +    -Wl$(COMMA)-map$(COMMA)$(WORKDIR)/dsh-native-static.map \
 +))
++ifeq ($(CPUNAME),X86_64)
++# The Intel UNO bridge needs canonical exception RTTI from dlsym for catch matching.
++$(eval $(call gb_Executable_add_ldflags,soffice_bin,\
++    -Wl$(COMMA)-exported_symbol$(COMMA)'__ZTIN3com3sun4star*' \
++))
++endif
 +else ifeq ($(OS),WNT)
 +$(eval $(call gb_Executable_use_system_win32_libs,soffice_bin,gdi32))
 +$(eval $(call gb_Executable_add_nativeres,soffice_bin,vcl/salsrc))

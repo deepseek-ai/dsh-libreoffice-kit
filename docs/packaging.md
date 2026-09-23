@@ -47,7 +47,10 @@ Native manifest fields:
 
 Windows uses `bin/libreoffice-kit.exe`. All native recipes link the bundled Core
 libraries into the private helper as static archives, with generated UNO component
-registration. macOS exports only `_main` and uses Mach-O dead stripping; Windows
+registration. macOS uses Mach-O dead stripping and exports `_main`; Intel also
+exports UNO RTTI data required by its exception bridge's `dlsym` lookups. Hiding
+that data causes ordinary caught UNO exceptions to escape document conversion.
+ARM64 keeps only `_main`. Windows
 removes Core and bundled-library DLL exports and uses `/Gy`, `/Gw`, `/OPT:REF` and
 `/OPT:ICF`; Linux uses function/data sections, `--gc-sections` and `--exclude-libs=ALL`.
 System libraries and frameworks remain dynamic, including the Windows CRT.
