@@ -1,5 +1,5 @@
 /** Build pinned Core and the owned LOK worker; installation never invokes this script. */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { configureFlags, source, verifyConfigureInput } from '../engine/native/configure.mjs';
@@ -74,7 +74,17 @@ if (!args.includes('--resume')) {
   writeFileSync(identityFile, `${JSON.stringify(identity, null, 2)}\n`);
 }
 if (args.includes('--configure-only')) process.exit(0);
+if (platform === 'darwin-arm64') {
+  const worker = readFileSync(join(root, 'engine/native/worker.cxx'), 'utf8')
+    .replace('"../document-operations.hxx"', '"dsh-document-operations.hxx"');
+  writeFileSync(join(core, 'desktop/source/app/dsh_native_worker.cxx'), worker);
+  copyFileSync(join(root, 'engine/document-operations.hxx'), join(core, 'desktop/source/app/dsh-document-operations.hxx'));
+  run('git', ['add', '--intent-to-add', '--', 'desktop/source/app/dsh_native_worker.cxx',
+    'desktop/source/app/dsh-document-operations.hxx'], core);
+}
 run(make, ['build', `PARALLELISM=${parallelism}`], build, coreEnvironment);
 const executable = join(build, `libreoffice-kit${process.platform === 'win32' ? '.exe' : ''}`);
-buildHelper({ platform, core, executable, cwd: build, env: buildEnvironment, crossCompile });
+if (platform === 'darwin-arm64')
+  copyFileSync(join(build, 'instdir/LibreOfficeDev.app/Contents/MacOS/soffice'), executable);
+else buildHelper({ platform, core, executable, cwd: build, env: buildEnvironment, crossCompile });
 run(process.execPath, [join(root, 'scripts/stage-native.mjs'), '--platform', platform, '--source', core, '--build', build], root);

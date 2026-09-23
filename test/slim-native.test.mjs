@@ -163,6 +163,23 @@ test('macOS removes a byte-identical build alias and rejects an alias with diffe
   assert.equal(readFileSync(join(directory, program, 'lib.dylib'), 'utf8'), 'runtime');
 });
 
+test('static macOS staging removes linked archives and preserves runtime resources', t => {
+  const { directory, put } = fixture(t);
+  const program = 'program/Office.app/Contents/Frameworks';
+  const archive = `${program}/libcore.a`;
+  put(archive, '!<arch>\n');
+  put(`${program}/fundamentalrc`, 'runtime');
+  put('bin/worker', 'executable');
+  assert.deepEqual(pruneNativePayload(directory, 'darwin-arm64', program), { removed: [], removedBytes: 0 });
+  assert.deepEqual(pruneNativePayload(directory, 'darwin-arm64', program, { staticLibraries: true }),
+    { removed: [archive], removedBytes: 8 });
+  assert.equal(readFileSync(join(directory, program, 'fundamentalrc'), 'utf8'), 'runtime');
+  assert.equal(readFileSync(join(directory, 'bin/worker'), 'utf8'), 'executable');
+  put(archive, 'not an archive');
+  assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', program, { staticLibraries: true }), /Expected linked static archive/);
+  assert.equal(readFileSync(join(directory, archive), 'utf8'), 'not an archive');
+});
+
 test('symbol cleanup retains dynamic exports, signs macOS files, and checks the resulting signature', t => {
   const { directory, put } = fixture(t);
   const binary = Buffer.alloc(64); binary.writeUInt32LE(0xfeedfacf);

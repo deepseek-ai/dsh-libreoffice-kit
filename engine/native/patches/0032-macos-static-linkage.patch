@@ -1,0 +1,485 @@
+--- a/solenv/gbuild/platform/macosx.mk
++++ b/solenv/gbuild/platform/macosx.mk
+@@ -114,15 +114,15 @@
+ 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),$(shell cat $(extraobjectlist)))) && \
+ 	cat $${FILELIST} | tr "[:space:]" "\n" | grep -v '^$$' > $${FILELIST}.1 && \
+ 	mv $${FILELIST}.1 $${FILELIST} && \
+-	$(if $(CXXOBJECTS)$(OBJCXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS),$(gb_CXX),$(gb_CC)) \
++	$(if $(CXXOBJECTS)$(OBJCXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(DISABLE_DYNLOADING),$(gb_CXX),$(gb_CC)) \
+ 		$(if $(filter Executable,$(TARGETTYPE)),$(gb_Executable_TARGETTYPEFLAGS)) \
+ 		$(if $(filter Bundle,$(TARGETTYPE)),$(gb_Bundle_TARGETTYPEFLAGS)) \
+ 		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
+ 		$(subst \d,$$,$(RPATH)) \
+ 		$(T_USE_LD) $(T_LDFLAGS) \
+-		$(patsubst lib%.dylib,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib))))) \
++		$(if $(DISABLE_DYNLOADING),$(foreach lib,$(call gb_LinkTarget__filter_lo_libraries,$(LINKED_LIBS)),$(call gb_Library_get_target,$(lib))),$(patsubst lib%.dylib,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
+ 		-Wl$(COMMA)-filelist$(COMMA)$${FILELIST} \
+-		$(T_LIBS) \
++		$(patsubst $(gb_LinkTarget__syslib),%,$(T_LIBS)) \
+ 		$(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
+ 		-o $(1) && \
+ 	rm -f $${FILELIST} && \
+@@ -164,15 +164,15 @@
+ define gb_LinkTarget__command
+ $(call gb_Output_announce,$(2),$(true),LNK,4)
+ 	$(call gb_Trace_StartRange,$(2),LNK)
+-$(if $(filter Library Bundle CppunitTest Executable,$(TARGETTYPE)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2)))
+-$(if $(filter StaticLibrary,$(TARGETTYPE)),$(call gb_LinkTarget__command_staticlink,$(1)))
++$(if $(filter Bundle CppunitTest Executable $(if $(DISABLE_DYNLOADING),,Library),$(TARGETTYPE)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2)))
++$(if $(filter StaticLibrary $(if $(DISABLE_DYNLOADING),Library),$(TARGETTYPE)),$(call gb_LinkTarget__command_staticlink,$(1)))
+ 	$(call gb_Trace_EndRange,$(2),LNK)
+ endef
+ 
+ define gb_LinkTarget_use_system_darwin_frameworks
+-$(call gb_LinkTarget_add_libs,$(1),$(foreach fw,$(2),-framework $(fw)))
++$(call gb_LinkTarget_add_libs,$(1),$(foreach fw,$(2),$(if $(DISABLE_DYNLOADING),-Wl$(COMMA)-framework$(COMMA)$(fw),-framework $(fw))))
+ $(if $(call gb_LinkTarget__is_merged,$(1)),\
+-  $(call gb_LinkTarget_add_libs,$(call gb_Library_get_linktarget,merged),$(foreach fw,$(2),-framework $(fw))))
++  $(call gb_LinkTarget_add_libs,$(call gb_Library_get_linktarget,merged),$(foreach fw,$(2),$(if $(DISABLE_DYNLOADING),-Wl$(COMMA)-framework$(COMMA)$(fw),-framework $(fw)))))
+ endef
+ 
+ 
+@@ -184,9 +184,9 @@
+ gb_Library_UDK_MAJORVER := 3
+ gb_Library_SYSPRE := lib
+ gb_Library_UNOVERPRE := $(gb_Library_SYSPRE)uno_
+-gb_Library_PLAINEXT := .dylib
++gb_Library_PLAINEXT := $(if $(DISABLE_DYNLOADING),.a,.dylib)
+ gb_Library_PLAINEXT_FOR_BUILD := .dylib
+-gb_Library_DLLEXT := .dylib
++gb_Library_DLLEXT := $(gb_Library_PLAINEXT)
+ gb_Library_RTEXT := gcc3$(gb_Library_PLAINEXT)
+ 
+ gb_Library_OOOEXT := $(gb_Library_DLLPOSTFIX)$(gb_Library_PLAINEXT)
+@@ -199,8 +199,8 @@
+ 	$(foreach lib,$(gb_Library_PLAINLIBS_OOO),$(lib):$(gb_Library_SYSPRE)$(lib)$(gb_Library_PLAINEXT)) \
+ 	$(foreach lib,$(gb_Library_PLAINLIBS_OXT),$(lib):$(gb_Library_SYSPRE)$(lib)$(gb_Library_PLAINEXT)) \
+ 	$(foreach lib,$(gb_Library_PRIVATELIBS_URE),$(lib):$(gb_Library_SYSPRE)$(lib)$(gb_Library_OOOEXT)) \
+-	$(foreach lib,$(gb_Library_RTVERLIBS),$(lib):$(gb_Library_SYSPRE)$(lib)$(gb_Library_RTEXT).$(gb_Library_UDK_MAJORVER)) \
+-	$(foreach lib,$(gb_Library_UNOVERLIBS),$(lib):$(gb_Library_UNOVERPRE)$(lib)$(gb_Library_PLAINEXT).$(gb_Library_UDK_MAJORVER)) \
++	$(foreach lib,$(gb_Library_RTVERLIBS),$(lib):$(gb_Library_SYSPRE)$(lib)$(gb_Library_RTEXT)$(if $(DISABLE_DYNLOADING),,.$(gb_Library_UDK_MAJORVER))) \
++	$(foreach lib,$(gb_Library_UNOVERLIBS),$(lib):$(gb_Library_UNOVERPRE)$(lib)$(gb_Library_PLAINEXT)$(if $(DISABLE_DYNLOADING),,.$(gb_Library_UDK_MAJORVER))) \
+ 	$(foreach lib,$(gb_Library_EXTENSIONLIBS),$(lib):$(lib)$(gb_Library_UNOEXT)) \
+ 
+ 
+@@ -225,7 +225,7 @@
+ 
+ endef
+ 
+-gb_Library__set_soversion_script_platform = $(gb_Library__set_soversion_script)
++gb_Library__set_soversion_script_platform = $(if $(DISABLE_DYNLOADING),,$(gb_Library__set_soversion_script))
+ 
+ gb_Library_get_sdk_link_dir := $(gb_Library_DLLDIR)
+ 
+--- a/desktop/Executable_soffice_bin.mk
++++ b/desktop/Executable_soffice_bin.mk
+@@ -24,9 +24,23 @@
+     sofficeapp \
+ ))
+ 
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-TRUE)
++$(eval $(call gb_Executable_add_defs,soffice_bin,-DDSH_STATIC_LOK))
++# Keep the owned helper on the same C++17 filesystem API as the dynamic build.
++$(eval $(call gb_Executable_add_cxxflags,soffice_bin,-std=c++17))
++$(eval $(call gb_Executable_add_exception_objects,soffice_bin,\
++    desktop/source/app/dsh_native_worker \
++))
++$(eval $(call gb_Executable_use_system_darwin_frameworks,soffice_bin,CoreFoundation CoreText))
++$(eval $(call gb_Executable_add_ldflags,soffice_bin,\
++    -Wl$(COMMA)-ObjC -Wl$(COMMA)-dead_strip -Wl$(COMMA)-exported_symbol$(COMMA)_main \
++    -Wl$(COMMA)-map$(COMMA)$(WORKDIR)/dsh-native-static.map \
++))
++else
+ $(eval $(call gb_Executable_add_cobjects,soffice_bin,\
+     desktop/source/app/main \
+ ))
++endif
+ 
+ ifeq ($(OS),EMSCRIPTEN)
+ $(call gb_LinkTarget_get_target,$(call gb_Executable_get_linktarget,soffice_bin)) : $(gb_CustomTarget_workdir)/static/emscripten_fs_image/soffice.data.js.link
+--- a/solenv/gbuild/platform/com_GCC_defs.mk
++++ b/solenv/gbuild/platform/com_GCC_defs.mk
+@@ -128,7 +128,7 @@
+ ifeq ($(DISABLE_DYNLOADING),TRUE)
+ gb_CFLAGS_COMMON += -ffunction-sections -fdata-sections
+ gb_CXXFLAGS_COMMON += -ffunction-sections -fdata-sections
+-ifneq ($(OS),EMSCRIPTEN)
++ifeq (,$(filter EMSCRIPTEN MACOSX iOS,$(OS)))
+ gb_LinkTarget_LDFLAGS += -Wl,--gc-sections
+ endif
+ endif
+--- a/external/liblangtag/ExternalProject_liblangtag.mk
++++ b/external/liblangtag/ExternalProject_liblangtag.mk
+@@ -39,7 +39,7 @@
+ 		&& $(if $(verbose),V=1) \
+ 		   $(MAKE) \
+                 LIBO_TUNNEL_LIBRARY_PATH='$(subst ','\'',$(subst $$,$$$$,$(call gb_Helper_extend_ld_path,$(gb_UnpackedTarball_workdir)/liblangtag/liblangtag/.libs)))' \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl URELIB \
+ 				$(EXTERNAL_WORKDIR)/liblangtag/.libs/liblangtag.1.dylib \
+ 		) \
+--- a/external/icu/ExternalProject_icu.mk
++++ b/external/icu/ExternalProject_icu.mk
+@@ -87,7 +87,7 @@
+ 				--disable-tools --disable-extras) \
+ 			AR="$(AR)" RANLIB="$(RANLIB)" \
+ 		&& $(MAKE) $(if $(CROSS_COMPILING),DATASUBDIR=data) $(if $(verbose),VERBOSE=1) \
+-		$(if $(filter MACOSX,$(OS)), \
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)), \
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl \
+ 				URELIB \
+ 				$(EXTERNAL_WORKDIR)/source/lib/libicuuc$(gb_Library_DLLEXT).$(icu_VERSION) \
+--- a/external/libxslt/ExternalProject_libxslt.mk
++++ b/external/libxslt/ExternalProject_libxslt.mk
+@@ -44,7 +44,7 @@
+ 			$(if $(SYSTEM_LIBXML),,--with-libxml-src=$(gb_UnpackedTarball_workdir)/libxml2) \
+ 		&& chmod 777 xslt-config \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/libxslt/.libs/libxslt.1.dylib \
+ 		) \
+--- a/external/redland/ExternalProject_redland.mk
++++ b/external/redland/ExternalProject_redland.mk
+@@ -49,7 +49,7 @@
+ 				--enable-shared --disable-static \
+ 			) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),&& $(PERL) \
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),&& $(PERL) \
+ 			$(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 			$(EXTERNAL_WORKDIR)/src/.libs/librdf-lo.$(REDLAND_MAJOR).dylib) \
+ 	)
+--- a/external/redland/ExternalProject_rasqal.mk
++++ b/external/redland/ExternalProject_rasqal.mk
+@@ -46,7 +46,7 @@
+ 			) \
+ 			$(if $(SYSTEM_LIBXML),,--with-xml2-config=$(gb_UnpackedTarball_workdir)/libxml2/xml2-config) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),&& $(PERL) \
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),&& $(PERL) \
+ 			$(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 			$(EXTERNAL_WORKDIR)/src/.libs/librasqal-lo.$(RASQAL_MAJOR).dylib) \
+ 	)
+--- a/external/libstaroffice/ExternalProject_libstaroffice.mk
++++ b/external/libstaroffice/ExternalProject_libstaroffice.mk
+@@ -43,7 +43,7 @@
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libstaroffice-0.0.0.dylib \
+ 		) \
+--- a/external/libodfgen/ExternalProject_libodfgen.mk
++++ b/external/libodfgen/ExternalProject_libodfgen.mk
+@@ -46,7 +46,7 @@
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/.libs/libodfgen-0.1.1.dylib \
+ 		) \
+--- a/external/libwpd/ExternalProject_libwpd.mk
++++ b/external/libwpd/ExternalProject_libwpd.mk
+@@ -43,7 +43,7 @@
+ 					-Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN')) \
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libwpd-0.10.10.dylib \
+ 		) \
+--- a/external/libmwaw/ExternalProject_libmwaw.mk
++++ b/external/libmwaw/ExternalProject_libmwaw.mk
+@@ -44,7 +44,7 @@
+ 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+ 		&& (cd $(EXTERNAL_WORKDIR)/src/lib && \
+ 			$(MAKE)) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libmwaw-0.3.3.dylib \
+ 		) \
+--- a/external/librevenge/ExternalProject_librevenge.mk
++++ b/external/librevenge/ExternalProject_librevenge.mk
+@@ -39,7 +39,7 @@
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/librevenge-0.0.0.dylib \
+ 		) \
+--- a/external/libwpg/ExternalProject_libwpg.mk
++++ b/external/libwpg/ExternalProject_libwpg.mk
+@@ -42,7 +42,7 @@
+ 				'LDFLAGS=-Wl$(COMMA)-z$(COMMA)origin \
+ 					-Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN') \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libwpg-0.3.3.dylib \
+ 		) \
+--- a/external/libetonyek/ExternalProject_libetonyek.mk
++++ b/external/libetonyek/ExternalProject_libetonyek.mk
+@@ -57,7 +57,7 @@
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libetonyek-0.1.1.dylib \
+ 		) \
+--- a/external/libwps/ExternalProject_libwps.mk
++++ b/external/libwps/ExternalProject_libwps.mk
+@@ -53,7 +53,7 @@
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+ 		&& $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libwps-0.4.4.dylib \
+ 		) \
+--- a/external/liborcus/ExternalProject_liborcus.mk
++++ b/external/liborcus/ExternalProject_liborcus.mk
+@@ -112,7 +112,7 @@
+ 			$(gb_CONFIGURE_PLATFORMS) \
+ 		&& $(if $(verbose),V=1) \
+ 		   $(MAKE) \
+-		$(if $(filter MACOSX,$(OS)),\
++		$(if $(and $(filter MACOSX,$(OS)),$(if $(DISABLE_DYNLOADING),,TRUE)),\
+ 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+ 				$(EXTERNAL_WORKDIR)/src/liborcus/.libs/liborcus-0.21.0.dylib \
+ 				$(EXTERNAL_WORKDIR)/src/parser/.libs/liborcus-parser-0.21.0.dylib \
+--- a/external/librevenge/ExternalPackage_librevenge.mk
++++ b/external/librevenge/ExternalPackage_librevenge.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,librevenge,librevenge))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,librevenge,$(LIBO_LIB_FOLDER)/librevenge-0.0.0.dylib,src/lib/.libs/librevenge-0.0.0.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,librevenge,$(LIBO_LIB_FOLDER)/librevenge-0.0.dll,src/lib/.libs/librevenge-0.0.dll))
+--- a/external/libwpg/ExternalPackage_libwpg.mk
++++ b/external/libwpg/ExternalPackage_libwpg.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libwpg,libwpg))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libwpg,$(LIBO_LIB_FOLDER)/libwpg-0.3.3.dylib,src/lib/.libs/libwpg-0.3.3.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libwpg,$(LIBO_LIB_FOLDER)/libwpg-0.3.dll,src/lib/.libs/libwpg-0.3.dll))
+--- a/external/liblangtag/ExternalPackage_liblangtag.mk
++++ b/external/liblangtag/ExternalPackage_liblangtag.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,liblangtag,liblangtag))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,liblangtag,$(LIBO_LIB_FOLDER)/liblangtag.1.dylib,liblangtag/.libs/liblangtag.1.dylib))
+ else ifeq ($(DISABLE_DYNLOADING),)
+ $(eval $(call gb_ExternalPackage_add_file,liblangtag,$(LIBO_LIB_FOLDER)/liblangtag-lo.so.1,liblangtag/.libs/liblangtag-lo.so.1.4.2))
+--- a/external/libstaroffice/ExternalPackage_libstaroffice.mk
++++ b/external/libstaroffice/ExternalPackage_libstaroffice.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libstaroffice,libstaroffice))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libstaroffice,$(LIBO_LIB_FOLDER)/libstaroffice-0.0.0.dylib,src/lib/.libs/libstaroffice-0.0.0.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libstaroffice,$(LIBO_LIB_FOLDER)/libstaroffice-0.0.dll,src/lib/.libs/libstaroffice-0.0.dll))
+--- a/external/libwps/ExternalPackage_libwps.mk
++++ b/external/libwps/ExternalPackage_libwps.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libwps,libwps))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libwps,$(LIBO_LIB_FOLDER)/libwps-0.4.4.dylib,src/lib/.libs/libwps-0.4.4.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libwps,$(LIBO_LIB_FOLDER)/libwps-0.4.dll,src/lib/.libs/libwps-0.4.dll))
+--- a/external/libmwaw/ExternalPackage_libmwaw.mk
++++ b/external/libmwaw/ExternalPackage_libmwaw.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libmwaw,libmwaw))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libmwaw,$(LIBO_LIB_FOLDER)/libmwaw-0.3.3.dylib,src/lib/.libs/libmwaw-0.3.3.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libmwaw,$(LIBO_LIB_FOLDER)/libmwaw-0.3.dll,src/lib/.libs/libmwaw-0.3.dll))
+--- a/external/libetonyek/ExternalPackage_libetonyek.mk
++++ b/external/libetonyek/ExternalPackage_libetonyek.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libetonyek,libetonyek))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libetonyek,$(LIBO_LIB_FOLDER)/libetonyek-0.1.1.dylib,src/lib/.libs/libetonyek-0.1.1.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libetonyek,$(LIBO_LIB_FOLDER)/libetonyek-0.1.dll,src/lib/.libs/libetonyek-0.1.dll))
+--- a/external/libodfgen/ExternalPackage_libodfgen.mk
++++ b/external/libodfgen/ExternalPackage_libodfgen.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libodfgen,libodfgen))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libodfgen,$(LIBO_LIB_FOLDER)/libodfgen-0.1.1.dylib,src/.libs/libodfgen-0.1.1.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libodfgen,$(LIBO_LIB_FOLDER)/libodfgen-0.1.dll,src/.libs/libodfgen-0.1.dll))
+--- a/external/libwpd/ExternalPackage_libwpd.mk
++++ b/external/libwpd/ExternalPackage_libwpd.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,libwpd,libwpd))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,libwpd,$(LIBO_LIB_FOLDER)/libwpd-0.10.10.dylib,src/lib/.libs/libwpd-0.10.10.dylib))
+ else ifeq ($(OS),WNT)
+ $(eval $(call gb_ExternalPackage_add_file,libwpd,$(LIBO_LIB_FOLDER)/libwpd-0.10.dll,src/lib/.libs/libwpd-0.10.dll))
+--- a/external/liborcus/ExternalPackage_liborcus.mk
++++ b/external/liborcus/ExternalPackage_liborcus.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,liborcus,liborcus))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,liborcus,$(LIBO_LIB_FOLDER)/liborcus-0.21.0.dylib,src/liborcus/.libs/liborcus-0.21.0.dylib))
+ $(eval $(call gb_ExternalPackage_add_file,liborcus,$(LIBO_LIB_FOLDER)/liborcus-parser-0.21.0.dylib,src/parser/.libs/liborcus-parser-0.21.0.dylib))
+ else ifeq ($(DISABLE_DYNLOADING),)
+--- a/external/redland/ExternalPackage_redland.mk
++++ b/external/redland/ExternalPackage_redland.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,redland,redland))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,redland,$(LIBO_LIB_FOLDER)/librdf-lo.$(REDLAND_MAJOR).dylib,src/.libs/librdf-lo.$(REDLAND_MAJOR).dylib))
+ else ifeq ($(COM),MSC)
+ $(eval $(call gb_ExternalPackage_add_file,redland,$(LIBO_LIB_FOLDER)/librdf.dll,src/.libs/librdf.dll))
+--- a/external/redland/ExternalPackage_rasqal.mk
++++ b/external/redland/ExternalPackage_rasqal.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,rasqal,rasqal))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,rasqal,$(LIBO_LIB_FOLDER)/librasqal-lo.$(RASQAL_MAJOR).dylib,src/.libs/librasqal-lo.$(RASQAL_MAJOR).dylib))
+ else ifeq ($(COM),MSC)
+ $(eval $(call gb_ExternalPackage_add_file,rasqal,$(LIBO_LIB_FOLDER)/librasqal.dll,src/.libs/librasqal.dll))
+--- a/external/redland/ExternalPackage_raptor.mk
++++ b/external/redland/ExternalPackage_raptor.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,raptor,raptor))
+ 
+-ifeq ($(OS),MACOSX)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),MACOSX-)
+ $(eval $(call gb_ExternalPackage_add_file,raptor,$(LIBO_LIB_FOLDER)/libraptor2-lo.$(RAPTOR_MAJOR).dylib,src/.libs/libraptor2-lo.$(RAPTOR_MAJOR).dylib))
+ else ifeq ($(COM),MSC)
+ $(eval $(call gb_ExternalPackage_add_file,raptor,$(LIBO_LIB_FOLDER)/libraptor2.dll,src/.libs/libraptor2.dll))
+--- a/vcl/Library_vclplug_osx.mk
++++ b/vcl/Library_vclplug_osx.mk
+@@ -32,13 +32,15 @@
+     officecfg/registry \
+ ))
+ 
++$(eval $(call gb_Library_use_system_darwin_frameworks,vclplug_osx,\
++    IOKit $(if $(ENABLE_MACOSX_SANDBOX),,CoreUI) \
++))
++
+ # TODO: arguably the private CoreUI framework should never be used, no matter whether building
+ # a sandboxed version or a "regular" desktop version
+ $(eval $(call gb_Library_add_libs,vclplug_osx,\
+-    -framework IOKit \
+     $(if $(ENABLE_MACOSX_SANDBOX),,\
+         -F/System/Library/PrivateFrameworks \
+-        -framework CoreUI \
+     ) \
+     -lobjc \
+ ))
+--- a/solenv/gbuild/ComponentTarget.mk
++++ b/solenv/gbuild/ComponentTarget.mk
+@@ -65,7 +65,8 @@
+ 
+ # %.filtered : list of all optional implementations we don't build
+ .PRECIOUS: $(call gb_ComponentTarget_get_target,%).filtered
+-$(call gb_ComponentTarget_get_target,%).filtered : $(call gb_ComponentTarget_get_target,%).optionals
++$(call gb_ComponentTarget_get_target,%).filtered : $(call gb_ComponentTarget_get_target,%).optionals \
++	    $(BUILDDIR)/config_host.mk $(SRCDIR)/solenv/gbuild/ComponentTarget.mk
+ 	cat $< $(COMPONENTIMPL) | sed -e '/^#\|^\s*$$/d' | sort | uniq -u > $@
+ 
+ # when a library is renamed, the component file needs to be rebuilt to match.
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -2556,7 +2556,8 @@
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	-L$(gb_UnpackedTarball_workdir)/lpsolve/lpsolve55 -llpsolve55 \
++	$(if $(DISABLE_DYNLOADING),$(gb_UnpackedTarball_workdir)/lpsolve/lpsolve55/liblpsolve55.a,\
++	    -L$(gb_UnpackedTarball_workdir)/lpsolve/lpsolve55 -llpsolve55) \
+ )
+ endif
+ $(call gb_LinkTarget_set_include,$(1),\
+--- a/idl/source/objects/types.cxx
++++ b/idl/source/objects/types.cxx
+@@ -249,7 +249,7 @@
+ 
+     // write the implementation part
+     rOutStm.WriteOString( "#ifdef SFX_TYPEMAP" ) << endl;
+-    rOutStm.WriteOString( "#if !defined(_WIN32) && (defined(DISABLE_DYNLOADING) && (defined(ANDROID) || defined(IOS) || defined(__EMSCRIPTEN__) || defined(LINUX)))" ) << endl;
++    rOutStm.WriteOString( "#if !defined(_WIN32) && (defined(DISABLE_DYNLOADING) && (defined(ANDROID) || defined(IOS) || defined(__EMSCRIPTEN__) || defined(LINUX) || defined(MACOSX)))" ) << endl;
+     rOutStm.WriteOString( "__attribute__((__weak__))" ) << endl;
+     rOutStm.WriteOString( "#endif" ) << endl;
+     rOutStm.WriteOString( "constinit const " ).WriteOString( aTypeName ).WriteOString( aVarName )
+--- a/cppuhelper/source/paths.cxx
++++ b/cppuhelper/source/paths.cxx
+@@ -27,6 +27,7 @@
+ #include <osl/file.hxx>
+ #include <osl/module.hxx>
+ #include <rtl/ustring.hxx>
++#include <rtl/bootstrap.hxx>
+ #include <sal/types.h>
+ #include <o3tl/string_view.hxx>
+ 
+@@ -52,6 +53,12 @@
+ }
+ 
+ OUString cppu::getUnoIniUri() {
++#if defined(MACOSX) && defined(DISABLE_DYNLOADING)
++    // LOK supplies the installation root; the static helper can live outside it.
++    OUString baseUri;
++    if (rtl::Bootstrap::get(u"BRAND_BASE_DIR"_ustr, baseUri))
++        return baseUri + "/" LIBO_URE_ETC_FOLDER "/" SAL_CONFIGFILE("uno");
++#endif
+ #if defined ANDROID
+     // Wouldn't it be lovely to avoid this ugly hard-coding.
+     // The problem is that the 'create_bootstrap_macro_expander_factory()'

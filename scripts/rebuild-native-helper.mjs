@@ -34,6 +34,8 @@ export function rebuildNativeHelper({ platform = hostTarget(), core = join(root,
   assert(platform && platform === hostTarget(), 'Reusable Core requires its matching host');
   const directory = join(repo, 'packages', platform);
   verifyEnginePackage(directory);
+  assert(!readJson(join(directory, 'sources/core.json')).configure.includes('--disable-dynamic-loading'),
+    'The static helper must be relinked with Core; use scripts/build-native.mjs with the existing --build directory and --resume');
   const priorManifestSha256 = sha256(join(directory, 'prebuilds.json'));
   const patches = corePatchFiles(repo);
   assert(run('git', ['rev-parse', 'HEAD'], { cwd: core }).trim() === source.revision, 'Core headers do not match the pinned revision');

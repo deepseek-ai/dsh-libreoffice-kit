@@ -26,6 +26,10 @@ export function configureFlags(platform, tarballs, parallelism, visualStudio = '
     '--without-gssapi', '--without-system-cairo', '--without-system-fontconfig', '--without-system-freetype', '--without-system-harfbuzz', '--without-system-graphite');
   // Core's configure rejects --disable-gui on macOS and Windows; LOK initializes headless itself.
   if (platform.startsWith('darwin-')) flags.push('--enable-bogus-pkg-config');
+  // Experimental Core archive linkage, retaining Skia and using OpenSSL for crypto.
+  if (platform === 'darwin-arm64') flags.push('--disable-dynamic-loading', '--enable-customtarget-components',
+    '--disable-nss', '--disable-gpgmepp', '--with-tls=openssl',
+    '--with-build-platform-configure-options=--enable-bogus-pkg-config --enable-python=no --without-lxml --without-doxygen --disable-odk --disable-werror --disable-debug --disable-symbols --enable-skia');
   if (crossCompile && platform.startsWith('darwin-')) {
     if (platform !== 'darwin-x64') throw new Error('macOS cross-compilation supports only ARM64 to x64');
     flags.push('--build=aarch64-apple-darwin', '--host=x86_64-apple-darwin',

@@ -7,7 +7,16 @@
 #endif
 #include <cassert>
 #define LOK_USE_UNSTABLE_API
+#ifdef DSH_STATIC_LOK
+#include <LibreOfficeKit/LibreOfficeKit.h>
+extern "C" LibreOfficeKit* libreofficekit_hook_2(const char*, const char*);
+static LibreOfficeKit* lok_init_2(const char* program, const char* profile)
+{
+    return libreofficekit_hook_2(program, profile);
+}
+#else
 #include <LibreOfficeKit/LibreOfficeKitInit.h>
+#endif
 #include "../document-operations.hxx"
 #include <algorithm>
 #include <cmath>
@@ -253,8 +262,21 @@ struct PdfApi {
     Destroy destroy = nullptr;
 };
 
+#ifdef DSH_STATIC_LOK
+extern "C" void* dsh_native_pdf_open(const unsigned char*, int, const char*) noexcept;
+extern "C" int dsh_native_pdf_page_count(void*) noexcept;
+extern "C" int dsh_native_pdf_page_size(void*, int, int*, int*) noexcept;
+extern "C" int dsh_native_pdf_paint(void*, unsigned char*, int, int, int, int, int, int, int) noexcept;
+extern "C" int dsh_native_pdf_destroy(void*) noexcept;
+#endif
+
 PdfApi pdfApi(const Request& request)
 {
+#ifdef DSH_STATIC_LOK
+    (void)request;
+    return { nullptr, dsh_native_pdf_open, dsh_native_pdf_page_count, dsh_native_pdf_page_size,
+        dsh_native_pdf_paint, dsh_native_pdf_destroy };
+#else
     char* loadedPath = nullptr;
     void* handle = lok_dlopen(request.program.c_str(), &loadedPath);
     std::free(loadedPath);
@@ -269,6 +291,7 @@ PdfApi pdfApi(const Request& request)
     if (!result.open || !result.count || !result.size || !result.paint || !result.destroy)
         throw ConversionError("unavailable", "LibreOffice native PDFium raster API is unavailable");
     return result;
+#endif
 }
 
 std::string takeString(LibreOfficeKit* office, char* value, const char* message)
@@ -450,6 +473,10 @@ int wmain(int argc, wchar_t** argv)
     return execute(args);
 }
 #else
+#ifdef DSH_STATIC_LOK
+// SAL locates the executable with dlsym("main") on macOS.
+__attribute__((visibility("default")))
+#endif
 int main(int argc, char** argv)
 {
     return execute({argv, argv + argc});

@@ -21,7 +21,7 @@ function files(directory, prefix = '') {
  * @param programDirectory - Package-relative directory holding Core's shared libraries.
  * @returns Removed paths and their uncompressed byte count.
  */
-export function pruneNativePayload(directory, platform, programDirectory) {
+export function pruneNativePayload(directory, platform, programDirectory, { staticLibraries = false } = {}) {
   const removed = [];
   let removedBytes = 0;
   const remove = path => {
@@ -101,6 +101,16 @@ export function pruneNativePayload(directory, platform, programDirectory) {
     if (existsSync(join(directory, ui))) {
       for (const file of files(join(directory, ui)))
         if (basename(file).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(file)) remove(`${ui}/${file}`);
+    }
+  }
+  if (staticLibraries) {
+    assert(darwin, 'Static archive pruning is qualified only for macOS');
+    // These desktop/developer commands are not invoked by the private helper;
+    // the static UNO launcher would otherwise duplicate the linked engine.
+    for (const name of ['uno', 'regview', 'uri-encode']) remove(`${launchers}/${name}`);
+    for (const file of files(directory, 'program').filter(file => file.endsWith('.a'))) {
+      assert(header(join(directory, file)) === 0x72613c21, `Expected linked static archive: ${file}`);
+      remove(file);
     }
   }
   return { removed, removedBytes };

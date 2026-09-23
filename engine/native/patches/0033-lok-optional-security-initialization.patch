@@ -1,0 +1,19 @@
+--- a/desktop/source/lib/init.cxx
++++ b/desktop/source/lib/init.cxx
+@@ -14,6 +14,7 @@
+ #include <svx/svdpagv.hxx>
+ #include <config_buildconfig.h>
+ #include <config_cairo_rgba.h>
++#include <config_crypto.h>
+ #include <config_features.h>
+ #include <config_vclplug.h>
+ #include <editeng/unolingu.hxx>
+@@ -3931,7 +3932,7 @@
+         return;
+     }
+ 
+-#if !defined IOS && !defined ANDROID && !defined __EMSCRIPTEN__
++#if USE_CRYPTO_ANY && !defined IOS && !defined ANDROID && !defined __EMSCRIPTEN__
+     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer = xml::crypto::SEInitializer::create(xContext);
+     if (!xSEInitializer.is())
+     {
