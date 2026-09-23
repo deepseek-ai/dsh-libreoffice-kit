@@ -1,0 +1,158 @@
+--- a/include/sal/types.h
++++ b/include/sal/types.h
+@@ -205,9 +205,15 @@ typedef void *                   sal_Handle;
+ #define SAL_MAX_ENUM 0x7fffffff
+ 
+ #if defined(_MSC_VER)
+-#   define SAL_DLLPUBLIC_EXPORT    __declspec(dllexport)
+-#   define SAL_JNI_EXPORT          __declspec(dllexport)
+-#   define SAL_DLLPUBLIC_IMPORT    __declspec(dllimport)
++#   if defined(DISABLE_DYNLOADING)
++#       define SAL_DLLPUBLIC_EXPORT
++#       define SAL_JNI_EXPORT
++#       define SAL_DLLPUBLIC_IMPORT
++#   else
++#       define SAL_DLLPUBLIC_EXPORT    __declspec(dllexport)
++#       define SAL_JNI_EXPORT          __declspec(dllexport)
++#       define SAL_DLLPUBLIC_IMPORT    __declspec(dllimport)
++#   endif
+ #   define SAL_DLLPRIVATE
+ #   define SAL_DLLPUBLIC_TEMPLATE
+ #   define SAL_DLLPUBLIC_RTTI
+--- a/solenv/gbuild/platform/com_MSC_class.mk
++++ b/solenv/gbuild/platform/com_MSC_class.mk
+@@ -249,13 +249,17 @@
+ 
+ # the sort on the libraries is used to filter out duplicates to keep commandline
+ # length in check - otherwise the dupes easily hit the limit when linking mergedlib
+-define gb_LinkTarget__command
++define gb_LinkTarget__command_dynamiclink
+ $(call gb_Output_announce,$(2),$(true),LNK,4)
+ 	$(call gb_Trace_StartRange,$(2),LNK)
+ $(call gb_Helper_abbreviate_dirs,\
+ 	rm -f $(1) && \
+ 	RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)), \
+ 		$(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
++		$(if $(DISABLE_DYNLOADING), \
++			$(foreach lib,$(sort $(call gb_LinkTarget__filter_lo_libraries,$(LINKED_LIBS))),$(call gb_Library_get_target,$(lib))) \
++			$(foreach lib,$(sort $(LINKED_STATIC_LIBS)),$(call gb_StaticLibrary_get_filename,$(lib))) \
++			$(if $(filter-out StaticLibrary,$(TARGETTYPE)),$(sort $(patsubst $(gb_LinkTarget__syslib),%,$(T_LIBS))))) \
+ 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+ 		$(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
+ 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
+@@ -290,10 +294,10 @@
+ 		$(T_USE_LD) $(T_LDFLAGS) \
+ 		$(if $(filter Library CppunitTest Executable,$(TARGETTYPE)),/NATVIS:$(SRCDIR)/solenv/vs/LibreOffice.natvis) \
+ 		@$${RESPONSEFILE} \
+-		$(foreach lib,$(sort $(LINKED_LIBS)),$(call gb_Library_get_ilibfilename,$(lib))) \
+-		$(foreach lib,$(sort $(LINKED_STATIC_LIBS)),$(call gb_StaticLibrary_get_filename,$(lib))) \
++		$(if $(DISABLE_DYNLOADING),,$(foreach lib,$(sort $(LINKED_LIBS)),$(call gb_Library_get_ilibfilename,$(lib)))) \
++		$(if $(DISABLE_DYNLOADING),,$(foreach lib,$(sort $(LINKED_STATIC_LIBS)),$(call gb_StaticLibrary_get_filename,$(lib)))) \
+ 		$(if $(filter-out StaticLibrary,$(TARGETTYPE)),\
+-			$(sort $(T_LIBS)) user32.lib \
++			$(if $(DISABLE_DYNLOADING),,$(sort $(T_LIBS))) user32.lib \
+ 			-manifestfile:$(WORKDIR)/LinkTarget/$(2).manifest \
+ 			-pdb:$(call gb_LinkTarget__get_pdb_filename,$(WORKDIR)/LinkTarget/$(2))) \
+ 		$(if $(ILIBTARGET),-out:$(1) -implib:$(ILIBTARGET),-out:$(1)) \
+@@ -313,6 +317,29 @@
+ 	exit $$RC)
+ endef
+ 
++# A static Core library contains only its own objects. Transitive libraries are
++# collected by CustomTarget_components and resolved at the final executable link.
++define gb_LinkTarget__command_staticcore
++$(call gb_Output_announce,$(2),$(true),LNK,4)
++$(call gb_Helper_abbreviate_dirs,\
++    rm -f $(1) && \
++    RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)), \
++        $(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
++        $(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
++        $(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
++        $(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
++        $(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
++        $(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
++        $(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
++        $(foreach extraobjectlist,$(EXTRAOBJECTLISTS),$(shell cat $(extraobjectlist)))) && \
++    $(gb_LINK) -lib -nologo -out:$(1) @$${RESPONSEFILE}; RC=$$?; rm -f $${RESPONSEFILE}; \
++    if test $$RC -eq 0; then touch $(WORKDIR)/LinkTarget/$(2).exports; fi; exit $$RC)
++endef
++
++define gb_LinkTarget__command
++$(if $(and $(DISABLE_DYNLOADING),$(filter Library,$(TARGETTYPE))),$(call gb_LinkTarget__command_staticcore,$(1),$(2)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2)))
++endef
++
+ define gb_MSVCRT_subst
+ $(if $(MSVC_USE_DEBUG_RUNTIME),$(subst msvcrt,msvcrtd,$(subst msvcprt,msvcprtd,$(subst libcmt,libcmtd,$(subst libvcruntime,libvcruntimed,$(subst libucrt,libucrtd,$(subst libcpmt,libcpmtd,$(subst msvcmrt,msvcmrtd,$(1)))))))),$(1))
+ endef
+@@ -327,7 +354,7 @@
+ # Enable incremental only when debugging to speed up relinking.
+ gb_Windows_PE_TARGETTYPEFLAGS := \
+ 	-release \
+-	-opt:noref \
++	$(if $(DISABLE_DYNLOADING),-opt:ref -opt:icf,-opt:noref) \
+ 	$(if $(ENABLE_DEBUG),, -incremental:no) \
+ 	$(if $(filter NO,$(LIBRARY_X64)), -safeseh) \
+ 	-nxcompat \
+@@ -406,6 +433,7 @@
+ endef
+ 
+ define gb_Library_Library_platform
++ifeq ($(DISABLE_DYNLOADING),)
+ $(call gb_LinkTarget_set_ilibtarget,$(2),$(3))
+ 
+ $(call gb_LinkTarget_add_auxtargets,$(2),\
+@@ -417,6 +445,7 @@
+ )
+ 
+ $(call gb_Library_add_default_nativeres,$(1),$(1)/default)
++endif
+ 
+ $(call gb_LinkTarget_get_target,$(2)) \
+ $(call gb_LinkTarget_get_headers_target,$(2)) : PDBFILE = $(call gb_LinkTarget_get_pdbfile_in,$(2))
+--- a/solenv/gbuild/platform/com_MSC_defs.mk
++++ b/solenv/gbuild/platform/com_MSC_defs.mk
+@@ -165,6 +165,12 @@
+ gb_CXXFLAGS += -Zc:dllexportInlines-
+ endif
+ 
++ifeq ($(DISABLE_DYNLOADING),TRUE)
++gb_COMPILERDEFS += -DU_STATIC_IMPLEMENTATION -DLIBXML_STATIC -DLIBXSLT_STATIC -DLIBEXSLT_STATIC
++gb_CFLAGS += -Gy -Gw
++gb_CXXFLAGS += -Gw
++endif
++
+ gb_CXXFLAGS_include := -FI
+ ifeq ($(COM_IS_CLANG),TRUE)
+ gb_CXXFLAGS_no_pch_warnings := -Wno-clang-cl-pch
+--- a/solenv/gbuild/platform/unxgcc.mk
++++ b/solenv/gbuild/platform/unxgcc.mk
+@@ -155,7 +155,7 @@ $(call gb_Helper_abbreviate_dirs,\
+ 		$(if $(filter TRUE,$(DISABLE_DYNLOADING)), \
+ 		    -Wl$(COMMA)--start-group \
+ 			$(shell echo -n \
+-				$(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
++				$(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(call gb_LinkTarget__filter_lo_libraries,$(LINKED_LIBS)),$(call gb_Library_get_filename,$(lib)))))) \
+ 				$(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
+ 				$(patsubst $(gb_LinkTarget__syslib),%,$(T_LIBS)) \
+ 				$(if $(call gb_LinkTarget__NeedsCxxLinker),$(T_STDLIBS_CXX)) \
+@@ -168,7 +168,7 @@ $(call gb_Helper_abbreviate_dirs,\
+ 		    $(if $(call gb_LinkTarget__NeedsCxxLinker),$(T_STDLIBS_CXX)) \
+ 		    -Wl$(COMMA)--end-group \
+ 		    -Wl$(COMMA)--no-as-needed \
+-		    $(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
++		    $(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(call gb_LinkTarget__filter_lo_libraries,$(LINKED_LIBS)),$(call gb_Library_get_filename,$(lib)))))) \
+                 ) \
+ 		-o $(1) \
+ 	$(if $(SOVERSIONSCRIPT),&& ln -sf ../../program/$(notdir $(1)) $(ILIBTARGET)) \
+--- a/RepositoryFixes.mk
++++ b/RepositoryFixes.mk
+@@ -105,4 +105,9 @@
+ gb_Executable_FILENAMES_FOR_BUILD := $(subst $(gb_Executable_EXT),$(gb_Executable_EXT_for_build),$(gb_Executable_FILENAMES))
+ gb_Library_FILENAMES_FOR_BUILD := $(subst $(gb_Library_PLAINEXT),$(gb_Library_PLAINEXT_FOR_BUILD),$(gb_Library_FILENAMES))
+ 
++# Host tools retain DLL names; only the target Core libraries become archives.
++ifeq ($(OS)-$(COM)-$(DISABLE_DYNLOADING),WNT-MSC-TRUE)
++gb_Library_FILENAMES := $(gb_Library_ILIBFILENAMES)
++endif
++
+ # vim: set noet sw=4 ts=4:

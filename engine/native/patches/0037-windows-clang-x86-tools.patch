@@ -1,0 +1,11 @@
+--- a/solenv/gbuild/platform/com_MSC_class.mk
++++ b/solenv/gbuild/platform/com_MSC_class.mk
+@@ -28,7 +28,7 @@
+ define gb_CObject__compiler
+ 	VSLANG=1033 \
+ 	$(if $(filter YES,$(LIBRARY_X64)), $(CXX_X64_BINARY), \
+-		$(if $(filter YES,$(PE_X86)), $(CXX_X86_BINARY), \
++		$(if $(filter YES,$(PE_X86)), $(if $(filter TRUE,$(COM_IS_CLANG)),$(gb_CXX) --target=i686-pc-windows-msvc,$(CXX_X86_BINARY)), \
+ 			$(if $(filter %.c,$(2)), \
+ 				$(if $(3), $(3), $(gb_CC)), \
+ 				$(if $(filter -clr,$(1)), \

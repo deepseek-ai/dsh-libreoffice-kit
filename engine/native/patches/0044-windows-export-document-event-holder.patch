@@ -1,0 +1,28 @@
+--- a/include/comphelper/asyncnotification.hxx
++++ b/include/comphelper/asyncnotification.hxx
+@@ -216,7 +216,11 @@
+         const EventObjectType& getEventObject() const { return m_aEvent; }
+     };
+ 
++#if defined(_MSC_VER)
++    extern template class COMPHELPER_DLLPUBLIC EventHolder<css::document::DocumentEvent>;
++#else
+     extern template class EventHolder<css::document::DocumentEvent>;
++#endif
+     using DocumentEventHolder = EventHolder<css::document::DocumentEvent>;
+ 
+     COMPHELPER_DLLPUBLIC void JoinAsyncEventNotifiers();
+--- a/comphelper/source/misc/asyncnotification.cxx
++++ b/comphelper/source/misc/asyncnotification.cxx
+@@ -172,7 +172,11 @@
+ 
+     static std::vector<std::weak_ptr<AsyncEventNotifierAutoJoin>> g_Notifiers;
+ 
++#if defined(_MSC_VER)
++    template class COMPHELPER_DLLPUBLIC EventHolder<css::document::DocumentEvent>;
++#else
+     template class EventHolder<css::document::DocumentEvent>;
++#endif
+ 
+     void JoinAsyncEventNotifiers()
+     {

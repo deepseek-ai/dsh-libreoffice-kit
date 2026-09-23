@@ -1,0 +1,32 @@
+--- a/vcl/source/window/builder.cxx
++++ b/vcl/source/window/builder.cxx
+@@ -84,7 +84,7 @@
+ #include <tools/svlibrary.h>
+ #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+ 
+-#if defined(DISABLE_DYNLOADING) || defined(LINUX)
++#if (defined(DISABLE_DYNLOADING) && !defined(_WIN32)) || defined(LINUX)
+ #include <dlfcn.h>
+ #endif
+ 
+@@ -1044,6 +1044,12 @@
+ // Takes a string like "sfxlo-NotebookbarToolBox"
+ VclBuilder::customMakeWidget GetCustomMakeWidget(const OUString& rName)
+ {
++#if defined(DISABLE_DYNLOADING) && HAVE_FEATURE_DESKTOP && !defined(__EMSCRIPTEN__)
++    // The kit's retained headless layouts use only built-in widgets. Static
++    // native helpers have no exported custom widget factories to look up.
++    SAL_WARN("vcl.builder", "Custom widget unavailable in static native kit: " << rName);
++    return nullptr;
++#else
+     const OUString name = rName == "sfxlo-SidebarToolBox" ? u"sfxlo-NotebookbarToolBox"_ustr : rName;
+     VclBuilder::customMakeWidget pFunction = nullptr;
+     if (sal_Int32 nDelim = name.indexOf('-'); nDelim != -1)
+@@ -1107,6 +1113,7 @@
+ #endif
+     }
+     return pFunction;
++#endif
+ }
+ }
+ 

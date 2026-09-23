@@ -1,0 +1,44 @@
+--- a/vcl/win/app/salshl.cxx
++++ b/vcl/win/app/salshl.cxx
+@@ -21,6 +21,9 @@
+ #include <sal/log.hxx>
+ #include <win/saldata.hxx>
+ 
++#ifdef DISABLE_DYNLOADING
++SalShlData aSalShlData{GetModuleHandleW(nullptr), 0, 0};
++#else
+ SalShlData aSalShlData;
+ 
+ extern "C" BOOL WINAPI DllMain(HINSTANCE hInst, DWORD nReason, LPVOID)
+@@ -29,6 +32,7 @@
+         aSalShlData.mhInst = hInst;
+     return 1;
+ }
++#endif
+ 
+ HCURSOR ImplLoadSalCursor( int nId )
+ {
+--- a/sal/osl/w32/thread.cxx
++++ b/sal/osl/w32/thread.cxx
+@@ -456,6 +456,21 @@
+     }
+ }
+ 
++#ifdef DISABLE_DYNLOADING
++// Static SAL has no DLL entry point. Preserve per-thread cleanup through the
++// executable's TLS directory, including threads created outside osl_createThread.
++static void NTAPI salStaticThreadCallback(PVOID, DWORD reason, PVOID)
++{
++    if (reason == DLL_THREAD_DETACH)
++        osl_callThreadKeyCallbackOnThreadDetach();
++}
++#pragma section(".CRT$XLB", long, read)
++extern "C" __declspec(allocate(".CRT$XLB")) PIMAGE_TLS_CALLBACK const sal_static_thread_callback
++    = salStaticThreadCallback;
++#pragma comment(linker, "/include:_tls_used")
++#pragma comment(linker, "/include:sal_static_thread_callback")
++#endif
++
+ oslThreadKey SAL_CALL osl_createThreadKey(oslThreadKeyCallbackFunction pCallback)
+ {
+     PTLS    pTls = static_cast<PTLS>(malloc( sizeof(TLS) ));

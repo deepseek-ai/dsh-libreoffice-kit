@@ -1,0 +1,11 @@
+--- a/sc/inc/subtotalparam.hxx
++++ b/sc/inc/subtotalparam.hxx
+@@ -36,7 +36,7 @@
+     bool            bGroupedBy:1      = true;   ///< grouped by column
+     bool            bHasHeader:1      = true;   ///< has header row
+ 
+-    struct SubtotalGroup
++    struct SC_DLLPUBLIC SubtotalGroup
+     {
+         bool  bActive    = false; ///< active groups
+         SCCOL nField     = 0;     ///< associated field

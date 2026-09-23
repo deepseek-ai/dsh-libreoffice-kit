@@ -76,11 +76,12 @@ The Node API and engines share the kit version. Installation uses prepared packa
 
 ## What was reduced, and why
 
-The `0.0.1` recipes reduce build components, installed resources, and transfer size separately:
+The recipes reduce build components, linked code, installed resources, and transfer size separately:
 
 | Layer | Changes in the code | Reason |
 | --- | --- | --- |
 | Native build | Disable Java/Python, scripting and extensions, Base database connectivity, PDF import, help/dictionaries, galleries/templates/icon themes, remote control, updates, and unused curl/WebDAV/CMIS/LDAP integrations. | Local OOXML → PDF needs document import and PDF export; desktop automation, database access, PDF input, and online services add dependencies outside that path. |
+| Native linkage | Statically link Core on every native target, restrict exports, and discard unreachable code. System libraries and the Windows CRT remain dynamic. | Reduce code retained by shared-library export boundaries. |
 | Native payload | Remove the verified duplicate macOS `urelibs` alias, SDK tools, launchers, Quick Look/Spotlight resources, disabled libraries, Basic/Python scripts, notebookbars, menus, and toolbars. Strip nonessential symbols while preserving dynamic exports; restore and verify macOS signatures. | Avoid shipping duplicate libraries and desktop/development resources in an application conversion engine. |
 | WASM build and payload | Build Writer, Calc, and Impress for headless Node workers, with Java/Python, bundled fonts, OpenCL/OpenGL, and Skia disabled. Prune icon archives, notebookbars, menus/toolbars, Android sample documents, splash images, and shell resources from `soffice.data`. | Keep the document engines and CPU rendering path while reducing resources loaded into the WASM filesystem. The resource-pruning pass preserves retained bytes and metadata, regenerates offsets, and leaves the loader and compiled module unchanged. |
 | Font payload | Omit bundled font collections; load original font files supplied by the deployment at runtime. | Avoid a fixed font payload and let applications choose the fonts needed for their documents, including CJK coverage and Office-compatible alternatives. |
@@ -90,7 +91,7 @@ The authoritative recipes are [native configuration](engine/native/configure.mjs
 
 Native payload pruning removes XSLT resources and their filter registry, plus `CREDITS.fodt`. Installation `LICENSE.html` copies are removed only when byte-identical third-party notices remain under `licenses/`. The removed XSLT formats include Word 2003 XML, SpreadsheetML, UOF, DocBook, and XHTML; binary Office and OOXML conversion filters remain.
 
-Windows payload pruning removes unused OpenSSL, MSI installers, Shell extensions, ActiveX/SharePoint integrations including `regactivex.dll`, .NET CLI bindings, desktop launchers, Python wizards under both `program/wizards/` and `program/program/wizards/`, and branding images. The conversion helper, scanner/GPG helpers, registered UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
+Windows statically links OpenSSL and disables NSS/GPGME. Payload pruning removes linked archives, scanner/GPG helpers, MSI installers, Shell extensions, ActiveX/SharePoint integrations, .NET CLI bindings, desktop launchers, Python wizards, and branding images. Static service registration omits desktop accessibility and OLE server registration. The conversion helper, selected UNO components, and runtime `.ini` files remain; see [packaging](docs/packaging.md).
 
 Writer, Calc, Impress, binary Office and OOXML filters, PDF export, PDFium for embedded PDF/EMF graphics, shared layout/drawing libraries, charts, ICU and language resources remain. The native `en-US` build language selects UI resources; it does not restrict document text to English. Required runtime configuration and some UI resources remain because document services still use them. Matching source recipes, patches, hashes, and license notices travel with every engine package. These retained dependencies explain why the result is still a substantial document engine.
 

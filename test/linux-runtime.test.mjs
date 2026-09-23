@@ -130,3 +130,14 @@ test('reuse refuses missing or rehashed runtime modules', t => {
 test('other platforms do not acquire Debian libraries', () => {
   for (const platform of ['darwin-arm64', 'win32-x64']) stageLinuxRuntime('/unused', { platform }, { acquire: () => assert.fail('not a Linux package') });
 });
+
+for (const platform of ['linux-arm64-glibc', 'linux-x64-glibc']) test(`static ${platform} validates its closure without restoring NSS`, t => {
+  const f = fixture(t, platform);
+  f.needed['libsofficeapp.so'] = ['libstdc++.so.6', 'libgcc_s.so.1'];
+  const options = { ...f.options, staticLibraries: true, acquire: () => assert.fail('static Core must not acquire NSS') };
+  const before = JSON.stringify(f.prebuild);
+  stageLinuxRuntime(f.directory, f.prebuild, options);
+  assert.equal(JSON.stringify(f.prebuild), before);
+  f.needed['libsofficeapp.so'].push('libnss3.so');
+  assert.throws(() => stageLinuxRuntime(f.directory, f.prebuild, options), /Unbundled Linux runtime dependency/);
+});

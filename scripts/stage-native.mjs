@@ -18,7 +18,8 @@ export function stageNative({ platform, core, build, repo = root }) {
   verifyConfigureInput(platform, configured);
   const config = readFileSync(join(build, 'config_host.mk'), 'utf8');
   const staticLibraries = /^export DISABLE_DYNLOADING=TRUE$/m.test(config);
-  if (staticLibraries) assertUiCoreRevision(source.revision);
+  assert(staticLibraries, 'Native engines require static Core linkage');
+  assertUiCoreRevision(source.revision);
   const setting = (name) => {
     const match = config.match(new RegExp(`^(?:export )?${name}=(.*)$`, 'm'));
     assert(match && match[1], `Core build is missing ${name}`);
@@ -103,7 +104,7 @@ export function stageNative({ platform, core, build, repo = root }) {
     ...prebuild, version: manifest.version, status: 'built',
     // Static macOS has no runtime libraries left in Frameworks. LOK resolves
     // its bootstrap relative to the parent of either sibling directory.
-    engine: { ...prebuild.engine, programDirectory: `program/${staticLibraries
+    engine: { ...prebuild.engine, programDirectory: `program/${staticLibraries && targets[platform].os === 'darwin'
       ? join(relativeLibrary, '..', 'Resources').replaceAll('\\', '/') : relativeLibrary}` },
     source: { ...source, version, files: packagedSource },
     licenses: [
@@ -113,7 +114,7 @@ export function stageNative({ platform, core, build, repo = root }) {
     ],
     files: Object.fromEntries(['bin', 'program', 'sources', 'licenses'].flatMap(inventory)),
   };
-  stageLinuxRuntime(dir, result);
+  stageLinuxRuntime(dir, result, { staticLibraries });
   if (platform.endsWith('-glibc')) result.engine.glibcMinimum = glibcMinimum(dir, Object.keys(result.files));
   writeFileSync(join(dir, 'prebuilds.json'), `${JSON.stringify(result, null, 2)}\n`);
   return verifyEnginePackage(dir);

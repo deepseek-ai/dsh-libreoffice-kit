@@ -1,0 +1,13 @@
+--- a/desktop/Executable_soffice_bin.mk
++++ b/desktop/Executable_soffice_bin.mk
+@@ -40,7 +40,10 @@
+ 
+ $(eval $(call gb_Executable_set_targettype_gui,soffice_bin,NO))
+ 
++# Static VCL supplies the process icon and cursors; desktop icons overlap its IDs.
++ifeq ($(DISABLE_DYNLOADING),)
+ $(eval $(call gb_Executable_add_nativeres,soffice_bin,sofficebin/officeloader))
++endif
+ 
+ $(eval $(call gb_Executable_add_default_nativeres,soffice_bin,$(PRODUCTNAME)))
+ 

@@ -1,0 +1,11 @@
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -1000,7 +1000,7 @@
+ )
+ 
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(LIBXML_LIBS) \
++	$(if $(filter MSC,$(COM)),$(patsubst -l%,%.lib,$(LIBXML_LIBS)),$(LIBXML_LIBS)) \
+ )
+ 
+ ifeq ($(COM),MSC)

@@ -1,0 +1,42 @@
+--- a/solenv/gbuild/platform/com_MSC_defs.mk
++++ b/solenv/gbuild/platform/com_MSC_defs.mk
+@@ -22,7 +22,7 @@
+ 
+ gb_CC := cl
+ gb_CXX := cl
+-gb_LINK := link
++gb_LINK = $(if $(strip $(CXXCLROBJECTS) $(GENCXXCLROBJECTS)),link,$(if $(filter TRUE,$(COM_IS_CLANG)),lld-link,link))
+ gb_DUMPBIN := dumpbin
+ gb_AWK := awk
+ gb_CLASSPATHSEP := ;
+@@ -240,7 +240,9 @@
+ # See gb_Windows_PE_TARGETTYPEFLAGS_DEBUGINFO
+ gb_LINKER_DEBUGINFO_FLAGS :=
+ 
++ifeq ($(strip $(gb_COMPILEROPTFLAGS)),)
+ gb_COMPILEROPTFLAGS := -O2 -Oy-
++endif
+ gb_COMPILERNOOPTFLAGS := -Od
+ gb_COMPILERDEBUGOPTFLAGS :=
+ 
+@@ -256,7 +258,7 @@
+ endef
+ endif
+ 
+-gb_LTOFLAGS := $(if $(filter TRUE,$(ENABLE_LTO)),-GL)
++gb_LTOFLAGS := $(if $(filter TRUE,$(ENABLE_LTO)),$(if $(filter TRUE,$(COM_IS_CLANG)),/clang:-flto=thin,-GL))
+ 
+ # At least VS2022 Preview 17.12.0 Preview 2.1 with --with-latest-c++ emits a "warning
+ # C4857: C++/CLI mode does not support C++ versions newer than C++20; setting language to
+--- a/solenv/gbuild/platform/com_MSC_class.mk
++++ b/solenv/gbuild/platform/com_MSC_class.mk
+@@ -341,7 +341,9 @@
+ endif
+ 
+ ifeq ($(ENABLE_LTO),TRUE)
++ifneq ($(COM_IS_CLANG),TRUE)
+ gb_Windows_PE_TARGETTYPEFLAGS += -LTCG
++endif
+ endif
+ 
+ # Library class

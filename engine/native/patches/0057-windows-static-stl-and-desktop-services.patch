@@ -1,0 +1,38 @@
+--- a/solenv/gbuild/platform/com_MSC_defs.mk
++++ b/solenv/gbuild/platform/com_MSC_defs.mk
+@@ -161,7 +161,8 @@
+ 
+ endif
+ 
+-ifeq ($(HAVE_DLLEXPORTINLINES),TRUE)
++# Mixed clang/MSVC archives must use the same STL DLL inline ABI.
++ifeq ($(HAVE_DLLEXPORTINLINES)-$(DISABLE_DYNLOADING),TRUE-)
+ gb_CXXFLAGS += -Zc:dllexportInlines-
+ endif
+ 
+--- a/embedserv/Library_emser.mk
++++ b/embedserv/Library_emser.mk
+@@ -10,7 +10,10 @@
+ 
+ $(eval $(call gb_Library_Library,emser))
+ 
++# The private static helper is not an out-of-process OLE server.
++ifeq ($(DISABLE_DYNLOADING),)
+ $(eval $(call gb_Library_set_componentfile,emser,embedserv/util/emser,services))
++endif
+ 
+ $(eval $(call gb_Library_set_include,emser,\
+ 	-I$(SRCDIR)/embedserv/source/inc \
+--- a/winaccessibility/Library_winaccessibility.mk
++++ b/winaccessibility/Library_winaccessibility.mk
+@@ -21,7 +21,10 @@
+ 
+ $(eval $(call gb_Library_use_sdk_api,winaccessibility))
+ 
++# The headless static helper exposes no desktop accessibility bridge.
++ifeq ($(DISABLE_DYNLOADING),)
+ $(eval $(call gb_Library_set_componentfile,winaccessibility,winaccessibility/source/service/winaccessibility,services))
++endif
+ 
+ $(eval $(call gb_Library_use_common_precompiled_header,winaccessibility))
+ 

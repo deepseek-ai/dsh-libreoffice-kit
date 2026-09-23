@@ -1,0 +1,56 @@
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -1197,6 +1197,7 @@
+ else # !SYSTEM_REDLAND
+ 
+ define gb_LinkTarget__use_redland_headers
++$(if $(DISABLE_DYNLOADING),$(call gb_LinkTarget_add_defs,$(1),-DREDLAND_STATIC))
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/redland/src \
+ 	$$(INCLUDE) \
+@@ -1205,6 +1206,7 @@
+ endef
+ 
+ define gb_LinkTarget__use_raptor_headers
++$(if $(DISABLE_DYNLOADING),$(call gb_LinkTarget_add_defs,$(1),-DRAPTOR_STATIC))
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/raptor/src \
+ 	$$(INCLUDE) \
+@@ -1213,6 +1215,7 @@
+ endef
+ 
+ define gb_LinkTarget__use_rasqal_headers
++$(if $(DISABLE_DYNLOADING),$(call gb_LinkTarget_add_defs,$(1),-DRASQAL_STATIC))
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/rasqal/src \
+ 	$$(INCLUDE) \
+--- a/external/redland/Library_rdf.mk
++++ b/external/redland/Library_rdf.mk
+@@ -29,6 +29,7 @@
+ ))
+ 
+ $(eval $(call gb_Library_add_defs,rdf,\
++	$(if $(DISABLE_DYNLOADING),-DREDLAND_STATIC) \
+ 	-DLIBRDF_INTERNAL \
+ 	-DWIN32 \
+ 	-DNDEBUG \
+--- a/external/redland/Library_raptor.mk
++++ b/external/redland/Library_raptor.mk
+@@ -26,6 +26,7 @@
+ $(eval $(call gb_Library_set_warnings_disabled,raptor2))
+ 
+ $(eval $(call gb_Library_add_defs,raptor2,\
++	$(if $(DISABLE_DYNLOADING),-DRAPTOR_STATIC) \
+ 	-DHAVE_CONFIG_H \
+ 	-DRAPTOR_INTERNAL \
+ 	-DWIN32 \
+--- a/external/redland/Library_rasqal.mk
++++ b/external/redland/Library_rasqal.mk
+@@ -18,6 +18,7 @@
+ $(eval $(call gb_Library_use_libraries,rasqal,raptor2))
+ 
+ $(eval $(call gb_Library_add_defs,rasqal,\
++	$(if $(DISABLE_DYNLOADING),-DRASQAL_STATIC) \
+ 	-DSV_CONFIG \
+ 	-DRASQAL_INTERNAL \
+ 	-DWIN32 \

@@ -1,0 +1,93 @@
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -1005,6 +1005,7 @@ $(call gb_LinkTarget_add_libs,$(1),\
+ 
+ ifeq ($(COM),MSC)
+ $(call gb_LinkTarget_use_external,$(1),icu_headers)
++$(if $(DISABLE_DYNLOADING),$(call gb_LinkTarget_use_externals,$(1),icuuc icudata))
+ endif
+ 
+ endef
+@@ -1056,7 +1057,7 @@ $(call gb_LinkTarget_set_include,$(1),\
+ 
+ ifeq ($(COM),MSC)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/libxslt/win32/bin.msvc/libxslt.lib \
++	$(gb_UnpackedTarball_workdir)/libxslt/win32/bin.msvc/libxslt$(if $(DISABLE_DYNLOADING),_a).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+@@ -1075,7 +1076,7 @@ $(call gb_LinkTarget_set_include,$(1),\
+ 
+ ifeq ($(COM),MSC)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/libxslt/win32/bin.msvc/libexslt.lib \
++	$(gb_UnpackedTarball_workdir)/libxslt/win32/bin.msvc/libexslt$(if $(DISABLE_DYNLOADING),_a).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+@@ -1523,7 +1524,7 @@ $(call gb_LinkTarget_use_package,$(1),icu_ure)
+ 
+ ifeq ($(OS),WNT)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/icu/source/lib/icudt$(if $(MSVC_USE_DEBUG_RUNTIME),d).lib \
++	$(gb_UnpackedTarball_workdir)/icu/source/lib/$(if $(DISABLE_DYNLOADING),s)icudt$(if $(MSVC_USE_DEBUG_RUNTIME),d).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+@@ -1538,7 +1539,7 @@ $(call gb_LinkTarget_use_package,$(1),icu)
+ 
+ ifeq ($(OS),WNT)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/icu/source/lib/icuin$(if $(MSVC_USE_DEBUG_RUNTIME),d).lib \
++	$(gb_UnpackedTarball_workdir)/icu/source/lib/$(if $(DISABLE_DYNLOADING),s)icuin$(if $(MSVC_USE_DEBUG_RUNTIME),d).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+@@ -1553,7 +1554,7 @@ $(call gb_LinkTarget_use_package,$(1),icu_ure)
+ 
+ ifeq ($(OS),WNT)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/icu/source/lib/icuuc$(if $(MSVC_USE_DEBUG_RUNTIME),d).lib \
++	$(gb_UnpackedTarball_workdir)/icu/source/lib/$(if $(DISABLE_DYNLOADING),s)icuuc$(if $(MSVC_USE_DEBUG_RUNTIME),d).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+--- a/external/icu/ExternalProject_icu.mk
++++ b/external/icu/ExternalProject_icu.mk
+@@ -30,6 +30,7 @@ $(call gb_ExternalProject_get_state_target,icu,build) :
+ 			INSTALL=`cygpath -m /usr/bin/install` $(if $(MSVC_USE_DEBUG_RUNTIME),LDFLAGS="-DEBUG") \
+ 			$(gb_RUN_CONFIGURE) ./configure \
+ 				$(if $(MSVC_USE_DEBUG_RUNTIME),--enable-debug --disable-release) \
++				$(if $(DISABLE_DYNLOADING),--disable-shared --enable-static --with-data-packaging=static) \
+ 				$(gb_CONFIGURE_PLATFORMS) \
+ 				$(if $(CROSS_COMPILING), \
+ 					--with-cross-build=$(WORKDIR_FOR_BUILD)/UnpackedTarball/icu/source \
+--- a/external/libxml2/ExternalProject_libxml2.mk
++++ b/external/libxml2/ExternalProject_libxml2.mk
+@@ -37,11 +37,12 @@
+ 			-DLIBXML2_WITH_PYTHON=OFF \
+ 			-DLIBXML2_WITH_SAX1=ON \
+ 			-DLIBXML2_WITH_ICU=ON \
++			$(if $(DISABLE_DYNLOADING),-DBUILD_SHARED_LIBS=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DCMAKE_C_FLAGS="-DU_STATIC_IMPLEMENTATION") \
+ 			-DICU_INCLUDE_DIR=$(gb_UnpackedTarball_workdir)/icu/source/common/ \
+ 			-DICU_LIBRARY=$(gb_UnpackedTarball_workdir)/icu/source/lib/ \
+ 			$(if $(MSVC_USE_DEBUG_RUNTIME), \
+-				-DICU_UC_LIBRARY_DEBUG=$(gb_UnpackedTarball_workdir)/icu/source/lib/icuucd.lib, \
+-				-DICU_UC_LIBRARY_RELEASE=$(gb_UnpackedTarball_workdir)/icu/source/lib/icuuc.lib) \
++				-DICU_UC_LIBRARY_DEBUG=$(gb_UnpackedTarball_workdir)/icu/source/lib/$(if $(DISABLE_DYNLOADING),s)icuucd.lib, \
++				-DICU_UC_LIBRARY_RELEASE=$(gb_UnpackedTarball_workdir)/icu/source/lib/$(if $(DISABLE_DYNLOADING),s)icuuc.lib) \
+ 		&& $(CMAKE) --build . --config $(if $(MSVC_USE_DEBUG_RUNTIME),Debug,Release) \
+ 		&& rm VERSION \
+ 	)
+--- a/external/libxslt/ExternalProject_libxslt.mk
++++ b/external/libxslt/ExternalProject_libxslt.mk
+@@ -25,7 +25,7 @@ $(call gb_ExternalProject_get_state_target,libxslt,build):
+ 			$(if $(filter TRUE,$(ENABLE_DBGUTIL)),debug=yes) \
+ 			vcmanifest=yes \
+ 			lib=$(gb_UnpackedTarball_workdir)/libxml2/$(if $(MSVC_USE_DEBUG_RUNTIME),Debug,Release) \
+-		&& nmake \
++		&& nmake $(if $(DISABLE_DYNLOADING),'bin.msvc\libxslt_a.lib' 'bin.msvc\libexslt_a.lib') \
+ 	,win32)
+ 	$(call gb_Trace_EndRange,libxslt,EXTERNAL)
+ else # OS!=WNT

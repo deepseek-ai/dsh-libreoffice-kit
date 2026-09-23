@@ -45,34 +45,44 @@ Native manifest fields:
 }
 ```
 
-Windows uses `bin/libreoffice-kit.exe`. The worker loads this package's compiled LibreOfficeKit through the upstream C API. `program/` preserves the Core installation's relative resource and library paths. The manifest's `programDirectory` identifies the library directory inside it: typically `program/program` on Linux/Windows and `program/LibreOfficeDev.app/Contents/Frameworks` on macOS. Staging omits macOS's `MacOS/urelibs` build-tool alias to avoid duplicating the entire `Frameworks` directory; the source receipt records the omission. No system `soffice` executable is invoked.
+Windows uses `bin/libreoffice-kit.exe`. All native recipes link the bundled Core
+libraries into the private helper as static archives, with generated UNO component
+registration. macOS exports only `_main` and uses Mach-O dead stripping; Windows
+removes Core and bundled-library DLL exports and uses `/Gy`, `/Gw`, `/OPT:REF` and
+`/OPT:ICF`; Linux uses function/data sections, `--gc-sections` and `--exclude-libs=ALL`.
+System libraries and frameworks remain dynamic, including the Windows CRT.
+`program/` preserves the installed resource layout. `programDirectory` is
+`program/program` on Linux/Windows and
+`program/LibreOfficeDev.app/Contents/Resources` on macOS. No system `soffice` is invoked.
+Staging omits macOS's duplicate `MacOS/urelibs` build-tool alias.
 
-macOS ARM64 links the bundled Core libraries into the private helper as static archives,
-exports only `_main`, and enables Mach-O dead stripping. Builds default to `-Oz`
-and ThinLTO, including the final Core executable link. Apple system libraries
-remain dynamically linked. Its `programDirectory` is
-`program/LibreOfficeDev.app/Contents/Resources`; the helper resolves the installation
-bootstrap from that directory. Skia, PDFium and OpenSSL remain enabled; NSS and
-GPGME certificate/signature and OpenPGP services are disabled. Linked archives and
-unused standalone UNO, registry and URI tools are omitted. Staging also removes
-autocorr, autotext, wordbook, shell assets and the default texture library
-`palette/standard.sob`. UI layouts use the six-file allowlist in
-`engine/ui-resource-policy.mjs`; adjacent drawing XML and other palettes remain.
-Static macOS builds omit zxcvbn and password-strength bars while preserving password
-hashing, verification and policy checks. The UI policy and patches enter source receipts.
-Helper changes require
-relinking the Core executable with `build-native.mjs --resume`; standalone helper
-replacement is rejected. Other native targets retain their existing linkage.
+Skia remains enabled on macOS/Windows; Linux retains its headless renderer. PDFium
+and OpenSSL remain enabled. NSS and GPGME certificate/signature and OpenPGP services
+are disabled. Windows retains its native MSCNG certificate backend. The static Windows helper omits
+OS accessibility and OLE server registration services; document embedded-object
+processing remains available. Linked archives
+and unused standalone UNO, registry, URI and Windows scanner tools are omitted. Staging removes
+autocorr, autotext, wordbook, shell assets and `palette/standard.sob`. UI layouts
+use the six-file allowlist in `engine/ui-resource-policy.mjs`; adjacent drawing XML
+and other palettes remain. Static builds omit zxcvbn and password-strength bars,
+while preserving password hashing, verification and policy checks. These policies
+and all source patches enter the packaged receipts. Helper changes require relinking
+Core with `build-native.mjs --resume`; standalone replacement is rejected.
+
+macOS ARM64 defaults to `-Oz` and ThinLTO. Other platforms retain their optimization
+defaults. Windows x64 additionally supports experimental
+`--clang-cl --optimization Oz --lto`; WebP retains MSVC, and zlib
+uses ordinary COFF objects for compatibility with external build tools.
 `--optimization default|O2|Os|Oz` and `--lto` / `--no-lto` select comparison builds;
-use a separate build directory per configuration. `--resume` must retain the
-original optimization and LTO settings. To resume the previous default recipe,
-pass `--optimization default --no-lto`. Other platforms retain their optimization defaults.
+use a separate build directory per configuration and retain those options on resume.
+Recipe coverage does not establish a successful build: each architecture requires
+matching-host qualification before release.
 
-The repository owns the complete payload recipe. `engine/native/configure.mjs` disables desktop galleries, templates, icon themes, Base connectivity, scripting, extensions, and Impress remote control, PDF import, help indexing, curl, WebDAV, CMIS, and LDAP. `scripts/slim-native.mjs` removes named desktop resources, developer SDK tools, PDF-import data, Quick Look extensions, Spotlight importers, disabled help/network libraries, residual LDAP libraries, Basic and Python scripting resources, notebookbars, toolbars, menubars, and launchers, strips nonessential symbols while retaining dynamic exports, and restores and verifies macOS ad-hoc signatures. Linux runtime modules covered by distribution receipts or NSS checksum files retain their authenticated bytes. `sources/payload-shaping.json` records removed paths and byte counts; source and reuse checks reject different recorded component selections, staging scripts, or slimming scripts. Writer, Calc, Impress, their filters, fonts, locale resources, and redistribution notices remain available for conversion. Native and WASM builds retain PDFium for PDF graphics embedded in OOXML, including EMF multi-format comments; the owned configure patch permits that renderer without standalone PDF import filters. The WASM patch includes PDFium's existing portable Linux platform implementation, whose source already supports Emscripten, in the link.
+The repository owns the complete payload recipe. `engine/native/configure.mjs` disables desktop galleries, templates, icon themes, Base connectivity, scripting, extensions, and Impress remote control, PDF import, help indexing, curl, WebDAV, CMIS, and LDAP. `scripts/slim-native.mjs` removes named desktop resources, developer SDK tools, PDF-import data, Quick Look extensions, Spotlight importers, disabled help/network libraries, residual LDAP libraries, Basic and Python scripting resources, notebookbars, toolbars, menubars, and launchers, strips nonessential symbols while retaining dynamic exports, and restores and verifies macOS ad-hoc signatures. The static Linux recipe verifies the ELF system-library closure and does not acquire NSS, NSPR or SQLite runtime payloads. `sources/payload-shaping.json` records removed paths and byte counts; source and reuse checks reject different recorded component selections, staging scripts, or slimming scripts. Writer, Calc, Impress, their filters, fonts, locale resources, and redistribution notices remain available for conversion. Native and WASM builds retain PDFium for PDF graphics embedded in OOXML, including EMF multi-format comments; the owned configure patch permits that renderer without standalone PDF import filters. The WASM patch includes PDFium's existing portable Linux platform implementation, whose source already supports Emscripten, in the link.
 
 Native staging removes `share/xslt/` together with `share/registry/xsltfilter.xcd` (under `Contents/Resources/` on macOS). These registrations cover Word 2003 XML, SpreadsheetML, UOF, DocBook, and XHTML; binary DOC/XLS/PPT, OOXML, and PDF export remain supported. Staging also removes `CREDITS.fodt` from the installation root or macOS resources. It copies dependency notices into `licenses/LibreOffice-third-party.html` before pruning an installation `LICENSE.html`; only byte-identical copies are removed. Missing or different retained notices leave the installation copy intact. Other license and notice files remain.
 
-Windows staging removes `program/wizards/`, `program/program/wizards/`, `program/program/shlxthdl/`, `program/program/shell/`, intro images, named desktop launchers, MSI custom-action DLLs, ActiveX/SharePoint integrations including `regactivex.dll`, and .NET CLI bindings and configuration files. It also removes the unused `libcrypto-3.dll` and `libssl-3.dll` pair. Excluded DLLs must be absent from `services.rdb`; a registered component rejects staging and requires Core reconfiguration. The conversion helper `bin/libreoffice-kit.exe`, scanner helper `twain32shim.exe` when present, `gpgme-w32spawn.exe`, all `.ini` files, and registered canvas, accessibility, user-info, and shell components remain. Executables outside the named removal list are retained. These packaging rules require no Core rebuild; disabling OpenSSL or registered components in configure requires a rebuilt engine and fresh conversion qualification.
+Windows staging removes `program/wizards/`, `program/program/wizards/`, `program/program/shlxthdl/`, `program/program/shell/`, intro images, named desktop launchers, MSI custom-action DLLs, ActiveX/SharePoint integrations, and .NET CLI bindings and configuration files. It also removes unused standalone scanner, UNO, registry and URI tools and the unused `libcrypto-3.dll` / `libssl-3.dll` pair. Excluded DLLs must be absent from `services.rdb`; a registered component rejects staging and requires Core reconfiguration. The private helper, required `.ini` files and resources remain. Static archives are omitted after final linkage. Component-selection and linkage changes require a rebuilt engine and fresh conversion qualification.
 
 Linux glibc builds record `engine.glibcMinimum` as a numeric version such as `"2.38"`. Staging derives it from the highest GLIBC version dependency of every ELF in `bin/` and `program/`, after adding bundled libraries; exported version definitions do not contribute. `GLIBC_ABI_DT_RELR` requires glibc 2.36, and unknown GLIBC capability tags reject staging. The entry validates the native identity, required assets, and minimum before comparing Node's reported host glibc. Older manifests without this optional field remain readable but cannot select fallback by version. This check does not establish compatibility with every distribution or other C++ ABIs.
 

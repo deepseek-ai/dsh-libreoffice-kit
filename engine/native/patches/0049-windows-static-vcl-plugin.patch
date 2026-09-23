@@ -1,0 +1,15 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -12709,7 +12709,11 @@
+ libo_ENABLE_VCLPLUG([win])
+ 
+ if test "$_os" = "WINNT"; then
+-    R="$R win"
++    # libo_ENABLE_VCLPLUG may already have registered the Windows plugin.
++    case " $R " in
++        *" win "*) ;;
++        *) R="$R win" ;;
++    esac
+ elif test "$_os" = "Darwin"; then
+     R="$R osx"
+ elif test "$_os" = "iOS"; then

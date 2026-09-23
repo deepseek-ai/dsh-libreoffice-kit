@@ -33,6 +33,7 @@ static LibreOfficeKit* lok_init_2(const char* program, const char* profile)
 #include <string>
 #include <vector>
 #ifdef _WIN32
+#include <windows.h>
 #include <io.h>
 #else
 #include <unistd.h>
@@ -186,6 +187,7 @@ void prepareEnvironment(const Request& request)
     fs::create_directories(fs::u8path(request.profile));
     environment("SAL_LOK_OPTIONS", "unipoll");
     environment("SAL_DISABLE_OPENCL", "1");
+    environment("SAL_ACCESSIBILITY_ENABLED", "0");
     environment("LOK_HOST_ALLOWLIST", "^$");
 #if !defined(__APPLE__) && !defined(_WIN32)
     const auto fontConfig = fs::u8path(request.profile) / "fonts.conf";
@@ -417,9 +419,10 @@ void renderImages(const Request& request, FILE* result)
         }
         const auto path = fs::u8path(request.scratch) / ("tile-" + std::to_string(index) + ".rgba");
         writePixels(path, pixels);
+        const auto utf8Path = path.u8string();
         std::ostringstream painted;
         painted << "{\"ok\":true,\"kind\":\"paint\",\"index\":" << index << ",\"path\":"
-                << jsonString(path.u8string()) << ",\"width\":" << canvasWidth << ",\"height\":" << canvasHeight << '}';
+                << jsonString(std::string(utf8Path.begin(), utf8Path.end())) << ",\"width\":" << canvasWidth << ",\"height\":" << canvasHeight << '}';
         line(result, painted.str());
     }
     throw std::runtime_error("Native raster protocol ended before DONE");
@@ -465,10 +468,14 @@ int wmain(int argc, wchar_t** argv)
 {
     std::vector<std::string> args;
     for (int i = 0; i < argc; ++i) {
-        char* text = lok_wide_string_to_string(argv[i]);
-        if (!text) return 2;
-        args.emplace_back(text);
-        std::free(text);
+        const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+            argv[i], -1, nullptr, 0, nullptr, nullptr);
+        if (length <= 0) return 2;
+        std::string text(length, '\0');
+        if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+                argv[i], -1, text.data(), length, nullptr, nullptr)) return 2;
+        text.pop_back();
+        args.push_back(std::move(text));
     }
     return execute(args);
 }

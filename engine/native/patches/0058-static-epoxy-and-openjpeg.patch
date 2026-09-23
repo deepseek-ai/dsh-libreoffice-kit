@@ -1,0 +1,20 @@
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -322,6 +322,7 @@
+ else # !SYSTEM_EPOXY
+ 
+ define gb_LinkTarget__use_epoxy
++$(if $(DISABLE_DYNLOADING),$(call gb_LinkTarget_add_defs,$(1),-DEPOXY_PUBLIC=extern))
+ $(call gb_LinkTarget_set_include,$(1),\
+        -I$(gb_UnpackedTarball_workdir)/epoxy/include \
+        $$(INCLUDE) \
+--- a/external/pdfium/Library_pdfium.mk
++++ b/external/pdfium/Library_pdfium.mk
+@@ -41,6 +41,7 @@
+     -DUSE_SYSTEM_LIBJPEG \
+     -DUSE_SYSTEM_ZLIB \
+     -DUSE_SYSTEM_ICUUC \
++    $(if $(and $(DISABLE_DYNLOADING),$(if $(filter TRUE,$(SYSTEM_OPENJPEG2)),,TRUE)),-DOPJ_STATIC) \
+     -DMEMORY_TOOL_REPLACES_ALLOCATOR \
+     -DUNICODE \
+     -DWIN32_LEAN_AND_MEAN \

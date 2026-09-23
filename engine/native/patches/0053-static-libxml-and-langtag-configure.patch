@@ -1,0 +1,50 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -10571,10 +10571,15 @@
+         LIBXML_CFLAGS="${LIBXML_CFLAGS} -I${WORKDIR}/UnpackedTarball/libxml2 -I${WORKDIR}/UnpackedTarball/icu/source/i18n -I${WORKDIR}/UnpackedTarball/icu/source/common"
+     fi
+     if test "$COM" = "MSC"; then
++        libxml_static_suffix=
++        if test "$DISABLE_DYNLOADING" = TRUE; then
++            libxml_static_suffix=s
++            LIBXML_CFLAGS="$LIBXML_CFLAGS -DLIBXML_STATIC -DU_STATIC_IMPLEMENTATION"
++        fi
+         if test "$MSVC_USE_DEBUG_RUNTIME" = TRUE; then
+-            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Debug/libxml2d.lib"
++            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Debug/libxml2${libxml_static_suffix}d.lib"
+         else
+-            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Release/libxml2.lib"
++            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Release/libxml2${libxml_static_suffix}.lib"
+         fi
+     else
+         LIBXML_LIBS="-L${WORKDIR}/UnpackedTarball/libxml2/.libs -lxml2"
+@@ -11695,7 +11700,18 @@
+ ICU_MINOR=3
+ ICU_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/icu/source/i18n -I${WORKDIR}/UnpackedTarball/icu/source/common"
+ ICU_LIBS_internal="-L${WORKDIR}/UnpackedTarball/icu/source/lib -licuuc"
++if test "$COM" = MSC -a "$DISABLE_DYNLOADING" = TRUE; then
++    icu_debug_suffix=
++    if test "$MSVC_USE_DEBUG_RUNTIME" = TRUE; then
++        icu_debug_suffix=d
++    fi
++    ICU_CFLAGS_internal="$ICU_CFLAGS_internal -DU_STATIC_IMPLEMENTATION"
++    ICU_LIBS_internal="${WORKDIR}/UnpackedTarball/icu/source/lib/sicuuc${icu_debug_suffix}.lib ${WORKDIR}/UnpackedTarball/icu/source/lib/sicudt${icu_debug_suffix}.lib -ladvapi32"
++fi
+ libo_CHECK_SYSTEM_MODULE([icu],[ICU],[icu-i18n >= 66])
++if test "$COM" = MSC -a "$DISABLE_DYNLOADING" = TRUE -a "$SYSTEM_LIBXML" != TRUE; then
++    LIBXML_LIBS="$LIBXML_LIBS $ICU_LIBS -lbcrypt"
++fi
+ if test "$SYSTEM_ICU" = TRUE; then
+     AC_LANG_PUSH([C++])
+     AC_MSG_CHECKING([for unicode/rbbi.h])
+--- a/external/liblangtag/ExternalProject_liblangtag.mk
++++ b/external/liblangtag/ExternalProject_liblangtag.mk
+@@ -30,7 +30,7 @@
+ 		CFLAGS='$(CFLAGS) -pthread \
+ 			$(call gb_ExternalProject_get_build_flags,liblangtag)' \
+ 		$(gb_CONFIGURE_PLATFORMS) \
+-		$(if $(CROSS_COMPILING),$(if $(filter WNT,$(OS)),"lt_cv_c99_vsnprintf=yes" "ac_cv_va_copy=yes","ac_cv_va_copy=no")) \
++		$(if $(CROSS_COMPILING),"ac_cv_va_copy=C99" $(if $(filter WNT,$(OS)),"lt_cv_c99_vsnprintf=yes")) \
+ 		LIBXML2_CFLAGS="$(LIBXML_CFLAGS)" \
+ 		LIBXML2_LIBS="$(LIBXML_LIBS)" \
+ 		$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________URELIB) \

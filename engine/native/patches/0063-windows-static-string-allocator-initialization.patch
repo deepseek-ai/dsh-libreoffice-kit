@@ -1,0 +1,25 @@
+--- a/sal/rtl/strimp.cxx
++++ b/sal/rtl/strimp.cxx
+@@ -36,8 +36,22 @@
+  */
+ static rtl_arena_type *pre_arena = nullptr;
+ 
++#if defined(_WIN32) && defined(DISABLE_DYNLOADING)
++// Taking a dllimport function's address requires dynamic initialization on
++// Windows. Other Core global constructors can allocate strings before this
++// translation unit initializes, so start with local, constant-initialized
++// wrappers. The pre-init allocator can still replace these pointers normally.
++namespace
++{
++void* SAL_CALL defaultAllocateString(size_t size) { return malloc(size); }
++void defaultFreeString(void* pointer) { free(pointer); }
++}
++constinit rtl_allocateStringFn rtl_allocateString = defaultAllocateString;
++constinit rtl_freeStringFn rtl_freeString = defaultFreeString;
++#else
+ rtl_allocateStringFn rtl_allocateString = malloc;
+ rtl_freeStringFn rtl_freeString = free;
++#endif
+ 
+ extern "C" {
+ static void *pre_allocateStringFn(size_t n)

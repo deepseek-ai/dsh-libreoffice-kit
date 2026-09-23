@@ -1,0 +1,11 @@
+--- a/include/systools/win32/wait_for_multiple_objects.hxx
++++ b/include/systools/win32/wait_for_multiple_objects.hxx
+@@ -20,7 +20,7 @@
+ /* Like WaitForMultipleObjects function, but makes sure to process COM messages during the wait,
+  * allowing other threads access to COM objects instantiated in this thread.
+  */
+-DWORD WaitForMultipleObjects_COMDispatch(DWORD count, const HANDLE* handles, DWORD timeout)
++inline DWORD WaitForMultipleObjects_COMDispatch(DWORD count, const HANDLE* handles, DWORD timeout)
+ {
+     DWORD dwResult;
+     HRESULT hr = CoWaitForMultipleHandles(COWAIT_DISPATCH_CALLS, timeout, count,

@@ -39,6 +39,16 @@ test('macOS static LTO recipes retain exact configuration validation', () => {
   assert.throws(() => configureFlags('darwin-x64', '/cache', 10, undefined, false, { lto: true }), /only for darwin-arm64/);
 });
 
+test('Windows size experiments require explicit clang-cl and retain configure validation', () => {
+  assert.deepEqual(nativeBuildOptions('win32-x64', { clangCl: true }), { optimization: 'O2', lto: false });
+  assert.deepEqual(nativeBuildOptions('win32-x64', { clangCl: true, optimization: 'Oz', lto: true }), { optimization: 'Oz', lto: true });
+  assert.throws(() => nativeBuildOptions('win32-x64', { optimization: 'Oz', lto: true }), /require --clang-cl/);
+  assert.throws(() => nativeBuildOptions('win32-arm64', { clangCl: true }), /requires win32-x64/);
+  const flags = configureFlags('win32-x64', '/cache', 8, undefined, false, { lto: true });
+  assert.ok(flags.includes('--enable-lto'));
+  assert.doesNotThrow(() => verifyConfigureInput('win32-x64', flags));
+});
+
 const row = packageMatrix().find((row) => row.prebuild.platform === 'darwin-arm64');
 const unbuilt = () => ({ ...structuredClone(row.prebuild), status: 'unbuilt', files: {}, source: null, licenses: [] });
 
@@ -272,6 +282,10 @@ test('native recipes preserve upstream platform differences', () => {
 test('native conversion builds omit desktop content and interactive document services', () => {
   for (const { prebuild } of packageMatrix().filter(row => row.prebuild.platform !== 'wasm')) {
     const flags = configureFlags(prebuild.platform, '/build/tarballs', 8);
+    assert.ok(flags.includes('--disable-dynamic-loading'), `${prebuild.platform} must statically link Core`);
+    assert.ok(flags.includes('--enable-customtarget-components'), `${prebuild.platform} must retain static UNO constructors`);
+    assert.ok(flags.includes('--disable-nss') && flags.includes('--disable-gpgmepp'));
+    assert.equal(flags.filter(flag => flag.startsWith('--with-build-platform-configure-options=')).length, 1);
     assert.ok(flags.includes('--enable-pdfium'), `${prebuild.platform} must render embedded PDF graphics`);
     assert.ok(flags.includes('--disable-pdfimport'), `${prebuild.platform} omits standalone PDF import`);
     for (const component of ['extensions', 'database-connectivity', 'scripting', 'sdremote', 'sdremote-bluetooth', 'ldap'])
@@ -286,6 +300,7 @@ test('configure receipts reject stale or overridden components while allowing bu
     const platform = prebuild.platform;
     const flags = configureFlags(platform, '/different/cache', 4);
     assert.doesNotThrow(() => verifyConfigureInput(platform, flags));
+    assert.throws(() => verifyConfigureInput(platform, flags.filter(flag => flag !== '--disable-dynamic-loading')), /rebuild Core/);
     assert.throws(() => verifyConfigureInput(platform, flags.filter(flag => flag !== '--disable-scripting')), /rebuild Core/);
     assert.throws(() => verifyConfigureInput(platform, flags.filter(flag => flag !== '--disable-ldap')), /rebuild Core/);
     assert.throws(() => verifyConfigureInput(platform, [...flags, '--enable-scripting']), /rebuild Core/);

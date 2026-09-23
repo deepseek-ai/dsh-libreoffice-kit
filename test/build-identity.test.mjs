@@ -44,6 +44,13 @@ test('macOS Objective-C++ receives public path mappings', { skip: process.platfo
   assert.equal(spawnSync(executable, [], { encoding: 'utf8' }).stdout.trim(), '/build/libreoffice-kit/source/probe.mm');
 });
 
+test('clang-cl prefix mappings use its clang option forwarding syntax', () => {
+  assert.deepEqual(buildPathFlags('clang-cl', { source: 'D:\\kit\\core' }), [
+    '/clang:-ffile-prefix-map=D:/kit/core=/build/libreoffice-kit/source',
+    '/clang:-fdebug-prefix-map=D:/kit/core=/build/libreoffice-kit/source',
+  ]);
+});
+
 test('Core prefix-map patches preserve optimization, debug policy and user overrides', { skip: process.platform === 'win32' }, () => {
   const native = readFileSync(new URL('../engine/native/patches/0008-preserve-optimization-with-prefix-maps.patch', import.meta.url), 'utf8');
   const wasm = readFileSync(new URL('../engine/wasm-source/patches/0011-preserve-optimization-with-prefix-maps.patch', import.meta.url), 'utf8');

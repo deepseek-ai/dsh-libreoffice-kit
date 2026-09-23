@@ -1,15 +1,17 @@
-diff --git a/external/xmlsec/ExternalProject_xmlsec.mk b/external/xmlsec/ExternalProject_xmlsec.mk
-index f7ec89816..884f8bce3 100644
 --- a/external/xmlsec/ExternalProject_xmlsec.mk
 +++ b/external/xmlsec/ExternalProject_xmlsec.mk
-@@ -35,8 +35,8 @@ $(call gb_ExternalProject_get_state_target,xmlsec,build) :
- 		cscript /e:javascript configure.js crypto=mscng xslt=no iconv=no static=no \
+@@ -32,11 +32,11 @@
+ $(call gb_ExternalProject_get_state_target,xmlsec,build) :
+ 	$(call gb_Trace_StartRange,xmlsec,EXTERNAL)
+ 	$(call gb_ExternalProject_run,build,\
+-		cscript /e:javascript configure.js crypto=mscng xslt=no iconv=no static=no \
++		cscript /e:javascript configure.js crypto=mscng xslt=no iconv=no static=$(if $(DISABLE_DYNLOADING),yes,no) \
  			lib=$(gb_UnpackedTarball_workdir)/libxml2/$(if $(MSVC_USE_DEBUG_RUNTIME),Debug,Release) \
  			$(if $(filter TRUE,$(ENABLE_DBGUTIL)),debug=yes cruntime=/MDd) \
 -			cflags="$(SOLARINC) $(LIBXML_CFLAGS)" \
 -		&& nmake \
 +			cflags="$(SOLARINC) $(LIBXML_CFLAGS) -utf-8" \
-+		&& LINK='/PDBALTPATH:%_PDB%' nmake \
++		&& LINK='/PDBALTPATH:%_PDB%' nmake $(if $(DISABLE_DYNLOADING),'binaries\libxmlsec_a.lib' 'binaries\libxmlsec-mscng_a.lib') \
  	,win32)
  	$(call gb_Trace_EndRange,xmlsec,EXTERNAL)
  

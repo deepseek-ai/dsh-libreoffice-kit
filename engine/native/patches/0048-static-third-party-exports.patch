@@ -1,0 +1,169 @@
+--- a/external/skia/Library_skia.mk
++++ b/external/skia/Library_skia.mk
+@@ -19,7 +19,7 @@
+ 
+ $(eval $(call gb_Library_add_defs,skia,\
+     -DSKIA_IMPLEMENTATION=1 \
+-    -DSKIA_DLL \
++    $(if $(DISABLE_DYNLOADING),,-DSKIA_DLL) \
+     -DSK_USER_CONFIG_HEADER="<config_skia.h>" \
+     $(if $(filter INTEL,$(CPUNAME)),$(if $(filter WNT,$(OS)),-DSK_CPU_SSE_LEVEL=SK_CPU_SSE_LEVEL_SSE2,-DSK_CPU_SSE_LEVEL=0)) \
+     $(if $(filter X86_64,$(CPUNAME)),-DSK_CPU_SSE_LEVEL=SK_CPU_SSE_LEVEL_SSE2) \
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -138,7 +138,7 @@
+ $(call gb_LinkTarget_use_libraries,$(1),skia)
+ $(call gb_LinkTarget_add_defs,$(1),\
+ 	-DSK_USER_CONFIG_HEADER="<config_skia.h>" \
+-	-DSKIA_DLL \
++	$(if $(DISABLE_DYNLOADING),,-DSKIA_DLL) \
+ )
+ endef
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo,\
+@@ -1645,8 +1645,8 @@
+ $(call gb_LinkTarget_use_package,$(1),openssl)
+ ifeq ($(OS),WNT)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/openssl/libcrypto.lib \
+-	$(gb_UnpackedTarball_workdir)/openssl/libssl.lib \
++	$(gb_UnpackedTarball_workdir)/openssl/libcrypto$(if $(DISABLE_DYNLOADING),_static).lib \
++	$(gb_UnpackedTarball_workdir)/openssl/libssl$(if $(DISABLE_DYNLOADING),_static).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+@@ -4401,7 +4401,7 @@
+ define gb_LinkTarget__use_pdfium
+ $(call gb_LinkTarget_set_include,$(1),\
+        -I$(gb_UnpackedTarball_workdir)/pdfium/public \
+-       -DCOMPONENT_BUILD \
++       $(if $(DISABLE_DYNLOADING),,-DCOMPONENT_BUILD) \
+        $$(INCLUDE) \
+ )
+ $(call gb_LinkTarget_use_libraries,$(1),pdfium)
+--- a/external/pdfium/Library_pdfium.mk
++++ b/external/pdfium/Library_pdfium.mk
+@@ -44,7 +44,7 @@
+     -DMEMORY_TOOL_REPLACES_ALLOCATOR \
+     -DUNICODE \
+     -DWIN32_LEAN_AND_MEAN \
+-    -DCOMPONENT_BUILD \
++    $(if $(DISABLE_DYNLOADING),,-DCOMPONENT_BUILD) \
+ ))
+ ifeq ($(SYSTEM_OPENJPEG2),TRUE)
+ $(eval $(call gb_Library_add_defs,pdfium,\
+--- a/external/librevenge/Library_revenge.mk
++++ b/external/librevenge/Library_revenge.mk
+@@ -26,7 +26,7 @@
+ #  about unresolved external symbol RVNGStream::~RVNGStream
+ $(eval $(call gb_Library_add_defs,revenge,\
+ 	-DBOOST_ALL_NO_LIB \
+-	-DDLL_EXPORT \
++	$(if $(DISABLE_DYNLOADING),,-DDLL_EXPORT) \
+ 	-DLIBREVENGE_BUILD \
+ 	-DLIBREVENGE_STREAM_BUILD \
+ 	-DNDEBUG \
+--- a/external/libmwaw/Library_mwaw.mk
++++ b/external/libmwaw/Library_mwaw.mk
+@@ -27,7 +27,7 @@
+ $(eval $(call gb_Library_add_defs,mwaw,\
+ 	-DBUILD_MWAW \
+ 	-DNDEBUG \
+-	-D_WINDLL \
++	$(if $(DISABLE_DYNLOADING),,-D_WINDLL) \
+ ))
+ 
+ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
+--- a/external/libstaroffice/Library_staroffice.mk
++++ b/external/libstaroffice/Library_staroffice.mk
+@@ -27,7 +27,7 @@
+ 
+ $(eval $(call gb_Library_add_defs,staroffice,\
+ 	-DBUILD_STOFF \
+-	-D_WINDLL \
++	$(if $(DISABLE_DYNLOADING),,-D_WINDLL) \
+ 	-DNDEBUG \
+ ))
+ 
+--- a/external/libwps/Library_wps.mk
++++ b/external/libwps/Library_wps.mk
+@@ -27,7 +27,7 @@
+ 
+ $(eval $(call gb_Library_add_defs,wps,\
+ 	-DBUILD_WPS\
+-	-DDLL_EXPORT \
++	$(if $(DISABLE_DYNLOADING),,-DDLL_EXPORT) \
+ 	-DNDEBUG \
+ ))
+ 
+--- a/external/libodfgen/Library_odfgen.mk
++++ b/external/libodfgen/Library_odfgen.mk
+@@ -24,7 +24,7 @@
+ ))
+ 
+ $(eval $(call gb_Library_add_defs,odfgen,\
+-	-DDLL_EXPORT \
++	$(if $(DISABLE_DYNLOADING),,-DDLL_EXPORT) \
+ 	-DLIBODFGEN_BUILD \
+ 	-DNDEBUG \
+ 	-DPACKAGE=\"libodfgen\" \
+--- a/external/libetonyek/Library_etonyek.mk
++++ b/external/libetonyek/Library_etonyek.mk
+@@ -34,7 +34,7 @@
+ 
+ $(eval $(call gb_Library_add_defs,etonyek,\
+ 	-DBOOST_ALL_NO_LIB \
+-	-DDLL_EXPORT \
++	$(if $(DISABLE_DYNLOADING),,-DDLL_EXPORT) \
+ 	-DLIBETONYEK_BUILD \
+ 	-DNDEBUG \
+ ))
+--- a/external/libwpd/Library_wpd.mk
++++ b/external/libwpd/Library_wpd.mk
+@@ -28,7 +28,7 @@
+ 
+ $(eval $(call gb_Library_add_defs,wpd,\
+ 	-DBOOST_ALL_NO_LIB \
+-	-DDLL_EXPORT \
++	$(if $(DISABLE_DYNLOADING),,-DDLL_EXPORT) \
+ 	-DLIBWPD_BUILD \
+ 	-DNDEBUG \
+ ))
+--- a/external/libwpg/Library_wpg.mk
++++ b/external/libwpg/Library_wpg.mk
+@@ -26,7 +26,7 @@
+ 
+ $(eval $(call gb_Library_add_defs,wpg,\
+ 	-DBOOST_ALL_NO_LIB \
+-	-DDLL_EXPORT \
++	$(if $(DISABLE_DYNLOADING),,-DDLL_EXPORT) \
+ 	-DLIBWPG_BUILD \
+ 	-DNDEBUG \
+ ))
+--- a/xmlsecurity/Library_xsec_xmlsec.mk
++++ b/xmlsecurity/Library_xsec_xmlsec.mk
+@@ -90,11 +90,12 @@
+ 
+ $(eval $(call gb_Library_add_defs,xsec_xmlsec,\
+ 	-DXMLSEC_CRYPTO_MSCRYPTO \
++	$(if $(DISABLE_DYNLOADING),-DXMLSEC_STATIC) \
+ ))
+ 
+ $(eval $(call gb_Library_add_libs,xsec_xmlsec,\
+-	$(gb_UnpackedTarball_workdir)/xmlsec/win32/binaries/libxmlsec-mscng.lib \
+-	$(gb_UnpackedTarball_workdir)/xmlsec/win32/binaries/libxmlsec.lib \
++	$(gb_UnpackedTarball_workdir)/xmlsec/win32/binaries/libxmlsec-mscng$(if $(DISABLE_DYNLOADING),_a).lib \
++	$(gb_UnpackedTarball_workdir)/xmlsec/win32/binaries/libxmlsec$(if $(DISABLE_DYNLOADING),_a).lib \
+ ))
+ 
+ $(eval $(call gb_Library_use_system_win32_libs,xsec_xmlsec,\
+--- a/external/xmlsec/ExternalPackage_xmlsec.mk
++++ b/external/xmlsec/ExternalPackage_xmlsec.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,xmlsec,xmlsec))
+ 
+-ifeq ($(OS),WNT)
++ifeq ($(OS)-$(DISABLE_DYNLOADING),WNT-)
+ $(eval $(call gb_ExternalPackage_add_file,xmlsec,$(LIBO_LIB_FOLDER)/libxmlsec-mscng.dll,win32/binaries/libxmlsec-mscng.dll))
+ $(eval $(call gb_ExternalPackage_add_file,xmlsec,$(LIBO_LIB_FOLDER)/libxmlsec.dll,win32/binaries/libxmlsec.dll))
+ endif

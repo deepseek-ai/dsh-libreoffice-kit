@@ -1,0 +1,17 @@
+--- a/external/libwebp/ExternalProject_libwebp.mk
++++ b/external/libwebp/ExternalProject_libwebp.mk
+@@ -16,11 +16,14 @@
+ ifeq ($(COM),MSC)
+ $(eval $(call gb_ExternalProject_use_nmake,libwebp,build))
+ 
++# Keep the MSVC build of ISA-dispatched WebP code: its nmake rules compile SSE4.1
++# sources in the same batch as baseline sources, without clang per-file ISA flags.
+ # Explicitly passing in ARCH (for the known architectures, at least) avoids
+ # workdir/UnpackedTarball/libwebp/Makefile.vc not being able to detect it when CC is clang-cl:
+ $(call gb_ExternalProject_get_state_target,libwebp,build):
+ 	$(call gb_Trace_StartRange,libwebp,EXTERNAL)
+ 	$(call gb_ExternalProject_run,build,\
++		$(if $(filter TRUE,$(COM_IS_CLANG)),CC="$(shell cygpath -ws $(MSVC_CXX))") \
+ 		nmake -nologo -f Makefile.vc CFG=$(if $(MSVC_USE_DEBUG_RUNTIME),debug,release)-static RTLIBCFG=dynamic OBJDIR=output \
+ 		    $(if $(filter INTEL,$(CPUNAME)),ARCH=x86, \
+ 		    $(if $(filter X86_64,$(CPUNAME)),ARCH=x64, \

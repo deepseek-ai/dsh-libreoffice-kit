@@ -140,8 +140,13 @@ export function verifyLinuxClosure(directory, prebuild, inspect = file => run('r
 }
 
 /** Supplement matching glibc builds, retaining validated runtime receipts during helper reuse. */
-export function stageLinuxRuntime(directory, prebuild, { acquire = acquireDebianRuntime, inspect } = {}) {
+export function stageLinuxRuntime(directory, prebuild, { acquire = acquireDebianRuntime, inspect, staticLibraries = false } = {}) {
   if (!prebuild.platform.endsWith('-glibc')) return;
+  if (staticLibraries) {
+    assert(!Object.hasOwn(prebuild.files, receiptPath), 'Static Core must not reuse the legacy NSS runtime payload');
+    verifyLinuxClosure(directory, prebuild, inspect);
+    return;
+  }
   const architecture = prebuild.platform.includes('-arm64-') ? 'arm64' : 'amd64';
   const validate = (item, spec) => {
     assert(item && item.architecture === architecture && item.files.length === spec.files.length, `Invalid Linux runtime package: ${spec.name}`);

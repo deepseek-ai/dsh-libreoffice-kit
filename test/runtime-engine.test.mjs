@@ -13,8 +13,8 @@ test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and
   const converter = await createConverter({ timeoutMs: 90_000 });
   try {
     if (process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND) assert.equal(converter.backend, process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND);
-    const inputPath = join(root, 'document.docx');
-    const outputPath = join(root, 'document.pdf');
+    const inputPath = join(root, '文档 😀.docx');
+    const outputPath = join(root, '输出 😀.pdf');
     await writeFile(inputPath, documentFixture('Node worker conversion 中文', 'Unavailable Test Font'));
     const result = await converter.render({ inputPath, outputPath });
     assert.equal((await readFile(outputPath)).subarray(0, 5).toString(), '%PDF-');

@@ -1,0 +1,15 @@
+--- a/external/nss/ExternalProject_nss.mk
++++ b/external/nss/ExternalProject_nss.mk
+@@ -18,6 +18,12 @@
+ $(eval $(call gb_ExternalProject_use_externals,nss,\
+ 	zlib \
+ ))
++
++ifeq ($(COM_IS_CLANG)$(COM),TRUEMSC)
++# NSS retains its MSVC compiler; translate the public path maps to MSVC syntax.
++$(call gb_ExternalProject_get_state_target,nss,build): CFLAGS := /experimental:deterministic $(patsubst /clang:-ffile-prefix-map=%,/pathmap:%,$(filter-out /clang:-fdebug-prefix-map=% /clang:-O%,$(CFLAGS)))
++$(call gb_ExternalProject_get_state_target,nss,build): CXX := $(MSVC_CXX)
++endif
+ 
+ ifeq ($(OS),WNT)
+ $(call gb_ExternalProject_get_state_target,nss,build): \

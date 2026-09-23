@@ -163,28 +163,32 @@ test('macOS removes a byte-identical build alias and rejects an alias with diffe
   assert.equal(readFileSync(join(directory, program, 'lib.dylib'), 'utf8'), 'runtime');
 });
 
-test('static macOS staging removes linked archives and preserves runtime resources', t => {
+for (const platform of ['darwin-arm64', 'darwin-x64', 'win32-x64', 'win32-arm64', 'linux-x64-glibc', 'linux-arm64-glibc']) {
+test(`${platform} static staging removes linked archives and preserves runtime resources`, t => {
   const { directory, put } = fixture(t);
-  const program = 'program/Office.app/Contents/Frameworks';
-  const archive = `${program}/libcore.a`;
+  const program = platform.startsWith('darwin-') ? 'program/Office.app/Contents/Frameworks' : 'program/program';
+  const archive = `${program}/${platform.startsWith('win32-') ? 'icore.lib' : 'libcore.a'}`;
+  const launcher = platform.startsWith('darwin-') ? 'program/Office.app/Contents/MacOS/uno'
+    : `${program}/${platform.startsWith('win32-') ? 'twain32shim.exe' : 'uno.bin'}`;
   put(archive, '!<arch>\n');
+  put(launcher, 'unused');
   put(`${program}/fundamentalrc`, 'runtime');
   put('bin/worker', 'executable');
-  assert.deepEqual(pruneNativePayload(directory, 'darwin-arm64', program), { removed: [], removedBytes: 0 });
-  assert.deepEqual(pruneNativePayload(directory, 'darwin-arm64', program, { staticLibraries: true }),
-    { removed: [archive], removedBytes: 8 });
+  assert.deepEqual(pruneNativePayload(directory, platform, program), { removed: [], removedBytes: 0 });
+  assert.deepEqual(pruneNativePayload(directory, platform, program, { staticLibraries: true }),
+    { removed: [launcher, archive], removedBytes: 14 });
   assert.equal(readFileSync(join(directory, program, 'fundamentalrc'), 'utf8'), 'runtime');
   assert.equal(readFileSync(join(directory, 'bin/worker'), 'utf8'), 'executable');
   put(archive, 'not an archive');
-  assert.throws(() => pruneNativePayload(directory, 'darwin-arm64', program, { staticLibraries: true }), /Expected linked static archive/);
+  assert.throws(() => pruneNativePayload(directory, platform, program, { staticLibraries: true }), /Expected linked static archive/);
   assert.equal(readFileSync(join(directory, archive), 'utf8'), 'not an archive');
 });
 
-test('static conversion payload keeps required layouts and drawing definitions while dropping editing assets', async t => {
+test(`${platform} static payload keeps required layouts while dropping editing assets`, async t => {
   const { requiredUiResources } = await import('../engine/ui-resource-policy.mjs');
   const { directory, put } = fixture(t);
-  const program = 'program/Office.app/Contents/Frameworks';
-  const resources = 'program/Office.app/Contents/Resources';
+  const program = platform.startsWith('darwin-') ? 'program/Office.app/Contents/Frameworks' : 'program/program';
+  const resources = platform.startsWith('darwin-') ? 'program/Office.app/Contents/Resources' : 'program/share';
   const ui = `${resources}/config/soffice.cfg`;
   put(`${program}/fundamentalrc`, 'runtime');
   for (const file of requiredUiResources) put(`${ui}/${file}`, 'required layout');
@@ -193,12 +197,14 @@ test('static conversion payload keeps required layouts and drawing definitions w
   for (const file of removed) put(`${resources}/${file}`, 'unused');
   put(`${ui}/simpress/effects.xml`, 'drawing effects');
   put(`${resources}/palette/standard.soc`, 'colors');
-  pruneNativePayload(directory, 'darwin-arm64', program, { staticLibraries: true });
+  pruneNativePayload(directory, platform, program, { staticLibraries: true });
   for (const file of removed) assert.ok(!existsSync(join(directory, resources, file)));
   for (const file of requiredUiResources) assert.equal(readFileSync(join(directory, ui, file), 'utf8'), 'required layout');
   assert.equal(readFileSync(join(directory, ui, 'simpress/effects.xml'), 'utf8'), 'drawing effects');
   assert.equal(readFileSync(join(directory, resources, 'palette/standard.soc'), 'utf8'), 'colors');
 });
+
+}
 
 test('symbol cleanup retains dynamic exports, signs macOS files, and checks the resulting signature', t => {
   const { directory, put } = fixture(t);

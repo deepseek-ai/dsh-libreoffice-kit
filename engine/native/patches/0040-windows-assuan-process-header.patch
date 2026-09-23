@@ -1,0 +1,19 @@
+--- a/external/libassuan/w32-stdc.patch
++++ b/external/libassuan/w32-stdc.patch
+@@ -72,3 +72,16 @@
+    fdp = fd_child_list;
+    if (fdp)
+      {
++--- src/assuan-listen.c
+++++ src/assuan-listen.c
++@@ -26,6 +26,10 @@
++ #include <stdlib.h>
++ #include <stdio.h>
++ #include <string.h>
+++#ifdef HAVE_W32_SYSTEM
+++# include <process.h>
+++# define getpid _getpid
+++#endif
++ #ifdef HAVE_UNISTD_H
++ # include <unistd.h>
++ #endif

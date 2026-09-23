@@ -27,7 +27,8 @@ export function publicBuildValue(value, paths) {
 export function buildPathFlags(platform, paths) {
   const mappings = buildPathMap(paths);
   if (platform.startsWith('win32-')) return ['/experimental:deterministic', ...mappings.map(([from, to]) => `/pathmap:${from}=${to}`)];
-  return mappings.reverse().flatMap(([from, to]) => [`-ffile-prefix-map=${from}=${to}`, `-fdebug-prefix-map=${from}=${to}`]);
+  const flags = mappings.reverse().flatMap(([from, to]) => [`-ffile-prefix-map=${from}=${to}`, `-fdebug-prefix-map=${from}=${to}`]);
+  return platform === 'clang-cl' ? flags.map(flag => `/clang:${flag}`) : flags;
 }
 
 /** Both gbuild and external configure projects receive the prefix mappings. */

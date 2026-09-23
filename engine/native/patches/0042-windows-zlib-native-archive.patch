@@ -1,0 +1,15 @@
+--- a/external/zlib/StaticLibrary_zlib.mk
++++ b/external/zlib/StaticLibrary_zlib.mk
+@@ -12,6 +12,12 @@
+ $(eval $(call gb_StaticLibrary_use_unpacked,zlib,zlib))
+ 
+ $(eval $(call gb_StaticLibrary_set_warnings_disabled,zlib))
++
++ifeq ($(COM_IS_CLANG)$(COM),TRUEMSC)
++# NSS and autoconf libraries consume this archive using the original MSVC tools.
++# Keep zlib's size optimization while exposing ordinary COFF instead of bitcode.
++$(eval $(call gb_StaticLibrary_add_cflags,zlib,/clang:-fno-lto))
++endif
+ 
+ $(eval $(call gb_StaticLibrary_add_generated_cobjects,zlib,\
+ 	UnpackedTarball/zlib/adler32 \

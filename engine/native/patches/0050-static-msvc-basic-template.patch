@@ -1,0 +1,11 @@
+--- a/include/basic/modsizeexceeded.hxx
++++ b/include/basic/modsizeexceeded.hxx
+@@ -28,7 +28,7 @@
+ 
+ namespace com::sun::star::task { class XInteractionContinuation; }
+ 
+-#if defined(_MSC_VER) && !defined(__clang__)
++#if defined(_MSC_VER) && !defined(__clang__) && !defined(DISABLE_DYNLOADING)
+ // MSVC automatically applies dllexport to template instantiations if they are a base class
+ // of a dllexport class, and this template instantiation is a case of that. If we don't
+ // dllimport here, MSVC will complain about duplicate symbols in a mergelibs build.

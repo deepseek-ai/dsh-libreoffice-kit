@@ -105,7 +105,6 @@ export function pruneNativePayload(directory, platform, programDirectory, { stat
     }
   }
   if (staticLibraries) {
-    assert(darwin, 'Static archive pruning is qualified only for macOS');
     // This private conversion helper has no interactive editing or texture picker.
     for (const name of ['autocorr', 'autotext', 'wordbook', 'shell']) remove(`${resources}/${name}`);
     remove(`${resources}/palette/standard.sob`);
@@ -117,8 +116,8 @@ export function pruneNativePayload(directory, platform, programDirectory, { stat
     }
     // These desktop/developer commands are not invoked by the private helper;
     // the static UNO launcher would otherwise duplicate the linked engine.
-    for (const name of ['uno', 'regview', 'uri-encode']) remove(`${launchers}/${name}`);
-    for (const file of files(directory, 'program').filter(file => file.endsWith('.a'))) {
+    for (const name of ['uno', 'uno.bin', 'regview', 'uri-encode', 'uri-encode.exe', 'twain32shim.exe']) remove(`${launchers}/${name}`);
+    for (const file of files(directory, 'program').filter(file => /\.(?:a|lib)$/i.test(file))) {
       assert(header(join(directory, file)) === 0x72613c21, `Expected linked static archive: ${file}`);
       remove(file);
     }

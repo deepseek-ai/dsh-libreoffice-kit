@@ -1,0 +1,108 @@
+--- /dev/null
++++ b/external/dsh-static-msvc.props
+@@ -0,0 +1,17 @@
++<?xml version="1.0" encoding="utf-8"?>
++<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <!-- Static bundled libraries share Core's dynamic CRT and section pruning. -->
++  <!-- MSVC IL cannot be consumed by LLVM lld-link. -->
++  <PropertyGroup>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
++  </PropertyGroup>
++  <ItemDefinitionGroup>
++    <ClCompile>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
++      <RuntimeLibrary>$(DSHStaticRuntime)</RuntimeLibrary>
++      <PreprocessorDefinitions>$(DSHStaticDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <AdditionalOptions>/GL- /Gw %(AdditionalOptions)</AdditionalOptions>
++    </ClCompile>
++  </ItemDefinitionGroup>
++</Project>
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -1695,7 +1695,8 @@
+ 	$(ARGON2_CFLAGS) \
+ 	$$(INCLUDE) \
+ )
+-$(call gb_LinkTarget_add_libs,$(1),$(ARGON2_LIBS))
++$(if $(and $(filter MSC,$(COM)),$(DISABLE_DYNLOADING)),$(call gb_LinkTarget_add_defs,$(1),-DARGON2_STATIC))
++$(call gb_LinkTarget_add_libs,$(1),$(if $(and $(filter MSC,$(COM)),$(DISABLE_DYNLOADING)),$(gb_UnpackedTarball_workdir)/argon2/vs2015/build/Argon2Static.lib,$(ARGON2_LIBS)))
+ $(call gb_LinkTarget_use_package,$(1),argon2)
+ endef
+ 
+@@ -2532,7 +2533,7 @@
+ 	-I$(gb_UnpackedTarball_workdir)/lcms2/include \
+ 	$$(INCLUDE) \
+ )
+-$(call gb_LinkTarget_add_libs,$(1),$(LCMS2_LIBS))
++$(call gb_LinkTarget_add_libs,$(1),$(if $(and $(filter MSC,$(COM)),$(DISABLE_DYNLOADING)),$(gb_UnpackedTarball_workdir)/lcms2/bin/lcms2_static.lib,$(LCMS2_LIBS)))
+ 
+ endef
+ 
+@@ -2557,7 +2558,7 @@
+ $(call gb_LinkTarget_use_package,$(1),lpsolve)
+ ifeq ($(COM),MSC)
+ $(call gb_LinkTarget_add_libs,$(1),\
+-	$(gb_UnpackedTarball_workdir)/lpsolve/lpsolve55/lpsolve55.lib \
++	$(gb_UnpackedTarball_workdir)/lpsolve/lpsolve55/lpsolve55$(if $(DISABLE_DYNLOADING),_static).lib \
+ )
+ else
+ $(call gb_LinkTarget_add_libs,$(1),\
+--- /dev/null
++++ b/external/argon2/static-api.patch.0
+@@ -0,0 +1,14 @@
++--- include/argon2.h
+++++ include/argon2.h
++@@ -27,7 +27,10 @@
++ #endif
++ 
++ /* Symbols visibility control */
++-#ifdef A2_VISCTL
+++#if defined(ARGON2_STATIC)
+++#define ARGON2_PUBLIC
+++#define ARGON2_LOCAL
+++#elif defined(A2_VISCTL)
++ #define ARGON2_PUBLIC __attribute__((visibility("default")))
++ #define ARGON2_LOCAL __attribute__ ((visibility ("hidden")))
++ #elif defined(_MSC_VER)
+--- a/external/argon2/UnpackedTarball_argon2.mk
++++ b/external/argon2/UnpackedTarball_argon2.mk
+@@ -15,6 +15,7 @@
+ 	external/argon2/0001-Fix-possible-compiler-error-due-to-undefined-_MSC_VE.patch \
+ 	$(if $(filter WNT_AARCH64,$(OS)_$(CPUNAME)),external/argon2/0002-Add-WinARM64-vcxproj-config.patch) \
+ 	external/argon2/private-symbols.patch.0 \
++	external/argon2/static-api.patch.0 \
+ ))
+ 
+ # vim: set noet sw=4 ts=4:
+--- a/external/argon2/ExternalPackage_argon2.mk
++++ b/external/argon2/ExternalPackage_argon2.mk
+@@ -11,7 +11,7 @@
+ 
+ $(eval $(call gb_ExternalPackage_use_external_project,argon2,argon2))
+ 
+-ifeq ($(COM),MSC)
++ifeq ($(COM)-$(DISABLE_DYNLOADING),MSC-)
+ $(eval $(call gb_ExternalPackage_add_file,argon2,$(LIBO_LIB_FOLDER)/Argon2OptDll.dll,vs2015/build/Argon2OptDll.dll))
+ endif # $(COM)
+ 
+--- /dev/null
++++ b/external/lpsolve/cvc6-static.bat
+@@ -0,0 +1,6 @@
++@echo off
++set src=../lp_MDO.c ../shared/commonlib.c ../shared/mmio.c ../shared/myblas.c ../ini.c ../colamd/colamd.c ../lp_rlp.c ../lp_crash.c ../bfp/bfp_LUSOL/lp_LUSOL.c ../bfp/bfp_LUSOL/LUSOL/lusol.c ../lp_Hash.c ../lp_lib.c ../lp_wlp.c ../lp_matrix.c ../lp_mipbb.c ../lp_MPS.c ../lp_params.c ../lp_presolve.c ../lp_price.c ../lp_pricePSE.c ../lp_report.c ../lp_scale.c ../lp_simplex.c ../lp_SOS.c ../lp_utils.c ../yacc_read.c
++cl /c -I.. -I../shared -I../bfp -I../bfp/bfp_LUSOL -I../bfp/bfp_LUSOL/LUSOL -I../colamd %SOLARINC% %RUNTIME_FLAG% /O1 /Gy /Gw /Zp8 /Gz -DWIN32 -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -DYY_NEVER_INTERACTIVE -DPARSER_LP -DINVERSE_ACTIVE=INVERSE_LUSOL -DRoleIsExternalInvEngine %src%
++if errorlevel 1 exit /b 1
++lib /nologo /out:lpsolve55_static.lib lp_MDO.obj commonlib.obj mmio.obj myblas.obj ini.obj colamd.obj lp_rlp.obj lp_crash.obj lp_LUSOL.obj lusol.obj lp_Hash.obj lp_lib.obj lp_wlp.obj lp_matrix.obj lp_mipbb.obj lp_MPS.obj lp_params.obj lp_presolve.obj lp_price.obj lp_pricePSE.obj lp_report.obj lp_scale.obj lp_simplex.obj lp_SOS.obj lp_utils.obj yacc_read.obj
++exit /b %errorlevel%
+--- a/external/lpsolve/UnpackedTarball_lpsolve.mk
++++ b/external/lpsolve/UnpackedTarball_lpsolve.mk
+@@ -23,6 +23,8 @@
+ 
+ ifeq ($(OS_FOR_BUILD),WNT)
+ 
++$(eval $(call gb_UnpackedTarball_add_file,lpsolve,lpsolve55/cvc6-static.bat,external/lpsolve/cvc6-static.bat))
++
+ $(eval $(call gb_UnpackedTarball_set_patchflags,lpsolve,--binary))
+ $(eval $(call gb_UnpackedTarball_add_patches,lpsolve,\
+ 	external/lpsolve/lp_solve_5.5-windows.patch \

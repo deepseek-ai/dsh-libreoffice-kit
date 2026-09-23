@@ -1,0 +1,84 @@
+--- a/external/gpgmepp/Wincompatible-function-pointer-types.patch
++++ b/external/gpgmepp/Wincompatible-function-pointer-types.patch
+@@ -29,3 +29,81 @@
+                if (!func)
+                  FreeLibrary (handle);
+              }
++--- src/assuan-support.c
+++++ src/assuan-support.c
++@@ -25,6 +25,7 @@
++ 
++ #include <assert.h>
++ #include <stdlib.h>
+++#include <stdint.h>
++ #include <errno.h>
++ 
++ #ifdef HAVE_SYS_TYPES_H
++@@ -184,7 +185,7 @@
++    to reflect the value of the FD in the peer process (on
++    Windows).  */
++ static int
++-my_spawn (assuan_context_t ctx, pid_t *r_pid, const char *name,
+++my_spawn (assuan_context_t ctx, assuan_pid_t *r_pid, const char *name,
++ 	  const char **argv,
++ 	  assuan_fd_t fd_in, assuan_fd_t fd_out,
++ 	  assuan_fd_t *fd_child_list,
++@@ -193,6 +194,7 @@
++ {
++   int err = 0;
++   struct spawn_fd_item_s *fd_items;
+++  pid_t pid;
++   int i;
++ 
++   (void)ctx;
++@@ -291,7 +293,9 @@
++     {
++       err = _gpgme_io_spawn (name, (char*const*)argv,
++                              (IOSPAWN_FLAG_NOCLOSE | IOSPAWN_FLAG_DETACHED),
++-                             fd_items, atfork, atforkvalue, r_pid);
+++                             fd_items, atfork, atforkvalue, r_pid ? &pid : NULL);
+++      if (!err && r_pid)
+++        *r_pid = (assuan_pid_t) pid;
++     }
++   if (!err)
++     {
++@@ -312,8 +316,8 @@
++ 
++ 
++ /* If action is 0, like waitpid.  If action is 1, just release the PID?  */
++-static pid_t
++-my_waitpid (assuan_context_t ctx, pid_t pid,
+++static assuan_pid_t
+++my_waitpid (assuan_context_t ctx, assuan_pid_t pid,
++ 	    int nowait, int *status, int options)
++ {
++   (void)ctx;
++@@ -354,20 +358,20 @@
++ }
++ 
++ 
++-static int
+++static assuan_fd_t
++ my_socket (assuan_context_t ctx, int namespace, int style, int protocol)
++ {
++   (void)ctx;
++-  return _gpgme_io_socket (namespace, style, protocol);
++-}
++-
++-
++-static int
++-my_connect (assuan_context_t ctx, int sock, struct sockaddr *addr,
+++  return (assuan_fd_t) (intptr_t) _gpgme_io_socket (namespace, style, protocol);
+++}
+++
+++
+++static int
+++my_connect (assuan_context_t ctx, assuan_fd_t sock, struct sockaddr *addr,
++ 	    socklen_t length)
++ {
++   (void)ctx;
++-  return _gpgme_io_connect (sock, addr, length);
+++  return _gpgme_io_connect ((int) (intptr_t) sock, addr, length);
++ }
++ 
++ 

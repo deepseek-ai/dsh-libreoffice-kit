@@ -1,0 +1,56 @@
+--- a/external/liborcus/Library_orcus.mk
++++ b/external/liborcus/Library_orcus.mk
+@@ -32,7 +32,7 @@
+ $(eval $(call gb_Library_add_defs,orcus,\
+ 	-DHAVE_FILESYSTEM \
+ 	-DBOOST_ALL_NO_LIB \
+-	-D__ORCUS_BUILDING_DLL \
++	$(if $(DISABLE_DYNLOADING),-D__ORCUS_STATIC_LIB -D__ORCUS_PSR_STATIC_LIB,-D__ORCUS_BUILDING_DLL) \
+ 	-D__ORCUS_GNUMERIC \
+ 	-D__ORCUS_ODS \
+ 	-D__ORCUS_XLSX \
+--- a/external/liborcus/Library_orcus-parser.mk
++++ b/external/liborcus/Library_orcus-parser.mk
+@@ -31,7 +31,7 @@
+ $(eval $(call gb_Library_add_defs,orcus-parser,\
+ 	-DHAVE_FILESYSTEM \
+ 	-DBOOST_ALL_NO_LIB \
+-	-D__ORCUS_PSR_BUILDING_DLL \
++	$(if $(DISABLE_DYNLOADING),-D__ORCUS_PSR_STATIC_LIB,-D__ORCUS_PSR_BUILDING_DLL) \
+ ))
+ 
+ # Needed when building against MSVC in C++17 mode, as
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -3496,6 +3496,7 @@
+ define gb_LinkTarget__use_orcus
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/liborcus/include \
++	$(if $(DISABLE_DYNLOADING),-D__ORCUS_STATIC_LIB -D__ORCUS_PSR_STATIC_LIB) \
+ 	$$(INCLUDE) \
+ )
+ 
+@@ -3508,6 +3509,7 @@
+ define gb_LinkTarget__use_orcus-parser
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/liborcus/include \
++	$(if $(DISABLE_DYNLOADING),-D__ORCUS_STATIC_LIB -D__ORCUS_PSR_STATIC_LIB) \
+ 	$$(INCLUDE) \
+ )
+ 
+@@ -3528,6 +3530,7 @@
+ 
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/liborcus/include \
++	$(if $(DISABLE_DYNLOADING),-D__ORCUS_STATIC_LIB -D__ORCUS_PSR_STATIC_LIB) \
+ 	$$(INCLUDE) \
+ )
+ 
+@@ -3546,6 +3549,7 @@
+ 
+ $(call gb_LinkTarget_set_include,$(1),\
+ 	-I$(gb_UnpackedTarball_workdir)/liborcus/include \
++	$(if $(DISABLE_DYNLOADING),-D__ORCUS_STATIC_LIB -D__ORCUS_PSR_STATIC_LIB) \
+ 	$$(INCLUDE) \
+ )
+ 
