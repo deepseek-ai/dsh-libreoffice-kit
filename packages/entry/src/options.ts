@@ -1,6 +1,8 @@
 /** Validated deployment limits shared by native and Node WASM conversions. */
 import type { ConverterOptions } from './index.ts'
 import { systemFontDirectories } from './fonts.ts'
+import { defaultFontMetadataCacheDirectory } from './font-metadata-cache.ts'
+import { isAbsolute } from 'node:path'
 
 const SANS_CJK_FAMILIES = ['Microsoft YaHei', 'Microsoft YaHei UI', '微软雅黑', 'PingFang SC', 'Noto Sans CJK SC',
   'Noto Sans SC', 'Source Han Sans SC', 'SimHei', '黑体', 'Heiti SC', 'STHeiti']
@@ -26,6 +28,8 @@ export const FONT_FALLBACKS: readonly (readonly string[])[] = [
 
 /** Resolved limits and font settings used by every conversion of one converter. */
 export interface ResolvedOptions {
+  readonly fontMetadataCacheDirectory: string | false
+  readonly maxFontMetadataCacheBytes: number
   readonly timeoutMs: number
   readonly maxInputBytes: number
   readonly maxOutputBytes: number
@@ -46,7 +50,7 @@ const DEFAULT_LIMITS = {
   timeoutMs: 120_000, maxInputBytes: 64 * 1024 * 1024, maxOutputBytes: 128 * 1024 * 1024,
   maxImageResolution: 144, maxArchiveEntries: 20_000, maxUncompressedBytes: 512 * 1024 * 1024,
   maxFontFiles: 20_000, maxFontFileBytes: 256 * 1024 * 1024, maxLoadedFontBytes: 512 * 1024 * 1024,
-  maxFontResolutionEntries: 4096,
+  maxFontResolutionEntries: 4096, maxFontMetadataCacheBytes: 32 * 1024 * 1024,
 }
 
 const FONT_COLLECTION_NAMES = ['fontDirectories', 'initialFontFamilies'] as const
@@ -84,10 +88,15 @@ export function resolveOptions(input: ConverterOptions = {}): ResolvedOptions {
   if (callerOptions === null || typeof callerOptions !== 'object' || Array.isArray(callerOptions)) throw new TypeError('Converter options must be an object.')
   const merged: Record<string, unknown> = { ...DEFAULT_LIMITS, fontDirectories: systemFontDirectories(),
     fontFallbacks: FONT_FALLBACKS, initialFontFamilies: [], ...input }
-  for (const key of Object.keys(input)) if (!(key in DEFAULT_LIMITS) && !(FONT_COLLECTION_NAMES as readonly string[]).includes(key) && key !== 'fontFallbacks') {
+  for (const key of Object.keys(input)) if (!(key in DEFAULT_LIMITS) && !(FONT_COLLECTION_NAMES as readonly string[]).includes(key) && key !== 'fontFallbacks' && key !== 'fontMetadataCacheDirectory') {
     throw new TypeError(`Unknown converter option: ${key}`)
   }
+  const cacheDirectory = input.fontMetadataCacheDirectory === undefined ? defaultFontMetadataCacheDirectory() : input.fontMetadataCacheDirectory
+  if (cacheDirectory !== false && (typeof cacheDirectory !== 'string' || !isAbsolute(cacheDirectory) || cacheDirectory.includes('\0')))
+    throw new TypeError('fontMetadataCacheDirectory must be an absolute path or false.')
   return {
+    fontMetadataCacheDirectory: cacheDirectory,
+    maxFontMetadataCacheBytes: positiveSafeInteger(merged.maxFontMetadataCacheBytes, 'maxFontMetadataCacheBytes'),
     timeoutMs: positiveSafeInteger(merged.timeoutMs, 'timeoutMs'),
     maxInputBytes: positiveSafeInteger(merged.maxInputBytes, 'maxInputBytes'),
     maxOutputBytes: positiveSafeInteger(merged.maxOutputBytes, 'maxOutputBytes'),

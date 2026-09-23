@@ -50,7 +50,7 @@ try {
 - **使用环境中可用的字体。** 默认发现常规系统和用户字体目录，也可通过 `fontDirectories` 指定扫描目录；自定义目录会替换默认列表。`fontkit` 读取字体元数据和字形覆盖，将选中的原始字体文件交给引擎。
 - **优先保留文档指定的字体。** 已安装的同名字体族优先，包括书法和装饰字体。WASM 字体请求还携带字重、斜体信息，以便选择已安装的对应字面；缺字时可以继续从字体目录中选择补充字体。
 - **允许配置替换顺序。** 默认 `fontFallbacks` 覆盖常见西文和简体中文字体，例如 Calibri 缺失时选择 Carlito、Cambria 缺失时选择 Caladea。调用方传入的分组会替换默认值。这些规则只选择可用字体，不会安装字体；具体见[默认分组](packages/entry/src/options.ts)。
-- **提供缺失字体诊断和资源预算。** `missingFonts` 报告可读文档 XML 中声明但不可用的字体族；`maxFontFiles`、`maxFontFileBytes` 和 `maxLoadedFontBytes` 限制索引及显式导入。转换器复用首次字体元数据快照，字体变化后需要重新创建。
+- **提供缺失字体诊断和资源预算。** `missingFonts` 报告可读文档 XML 中声明但不可用的字体族；`maxFontFiles`、`maxFontFileBytes` 和 `maxLoadedFontBytes` 限制索引及显式导入。每次操作重新发现并验证字体，未变化文件的元数据通过进程内共享和有界用户级磁盘缓存复用；见[缓存选项与失效规则](packages/entry/README.zh.md#字体元数据缓存)。
 
 引擎不捆绑或下载字体集合。部署方根据文档需求和再分发权限提供字体；最小化容器需要安装字体或指定字体目录。WASM 仅使用导入的字体，没有可用字体时以 `unavailable` 拒绝转换。macOS 和 Windows 原生引擎还可使用操作系统管理的字体。
 

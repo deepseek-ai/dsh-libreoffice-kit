@@ -7,7 +7,7 @@ import { auditNpmArchive } from './publication-privacy.mjs';
 import { assert } from './verify-artifacts.mjs';
 
 /** Runtime entries every adapter build must produce; `files` publishes exactly these bundles. */
-const BUILT_ENTRIES = ['lib/index.js', 'lib/cli.js', 'lib/worker.js'];
+const BUILT_ENTRIES = ['lib/index.js', 'lib/cli.js', 'lib/worker.js', 'lib/font-snapshot-worker.js'];
 
 /**
  * Compile the adapter's leaf TypeScript project and bundle its public and Worker entries.

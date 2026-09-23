@@ -6,12 +6,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createConverter } from '../src/index.ts'
 import type { WorkerRequest } from '../src/worker.ts'
-const state = vi.hoisted(() => ({ behavior: 'ok', terminated: false }))
+const state = vi.hoisted(() => ({ behavior: 'ok', terminated: false,
+  started: undefined as (() => void) | undefined }))
 vi.mock('../src/engine.ts', () => ({ ENGINE_VERSION: 'test', resolveEngine: async () => ({ backend: 'wasm' }) }))
 vi.mock('node:worker_threads', () => ({ Worker: class extends EventEmitter {
   stdout = new PassThrough(); stderr = new PassThrough()
-  constructor(_url: URL, options: { workerData: WorkerRequest }) {
+  snapshot: boolean
+  constructor(entry: URL, options: { workerData: WorkerRequest }) {
     super()
+    this.snapshot = entry.pathname.endsWith('/font-snapshot-worker.js')
+    if (this.snapshot) {
+      queueMicrotask(() => this.emit('message', { ok: true, snapshot: { faces: [], records: [], generation: 'empty' } }))
+      return
+    }
+    state.started?.()
+    state.started = undefined
     const data = options.workerData
     if (!('kind' in data.operation)) throw new Error('Wrong worker operation')
     const operation = data.operation
@@ -22,7 +31,7 @@ vi.mock('node:worker_threads', () => ({ Worker: class extends EventEmitter {
       else this.emit('message', { ok: true, images: { schemaVersion: 1, backend: 'wasm', rasterEngine: 'pdfium', source: 'saved', images: [], inputPath: operation.inputPath } })
     })() }, 5)
   }
-  async terminate() { await new Promise(resolve => setTimeout(resolve, 5)); state.terminated = true; return 0 }
+  async terminate() { await new Promise(resolve => setTimeout(resolve, 5)); if (!this.snapshot) state.terminated = true; return 0 }
 } }))
 const roots: string[] = []
 afterEach(async () => { state.behavior = 'ok'; state.terminated = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
@@ -61,8 +70,9 @@ it('never removes a pre-existing directory or admits a cancelled request', async
 it('disposal aborts an in-flight batch and waits until its worker exits', async () => {
   const request = await fixture(), converter = await createConverter()
   state.behavior = 'hang'
+  const converting = new Promise<void>(resolve => { state.started = resolve })
   const pending = converter.renderImages(request)
-  await new Promise(resolve => setTimeout(resolve, 20))
+  await converting
   const rejected = expect(pending).rejects.toThrow(/disposed/)
   await converter.dispose(); await rejected
   expect(state.terminated).toBe(true)

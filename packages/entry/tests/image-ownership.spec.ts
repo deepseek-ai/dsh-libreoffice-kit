@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { createConverter } from '../src/index.ts'
 import type { WorkerRequest } from '../src/worker.ts'
 const state = vi.hoisted(() => ({ wrongManifest: false, cleanupPath: '', cleanupError: new Error('image cleanup denied'),
-  events: [] as string[], fonts: [] as unknown[] }))
+  events: [] as string[], fonts: [] as unknown[], scans: 0 }))
 vi.mock('../src/engine.ts', () => ({ ENGINE_VERSION: 'test', resolveEngine: async () => ({ backend: 'wasm' }) }))
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
@@ -15,24 +15,30 @@ vi.mock('node:fs/promises', async importOriginal => {
 })
 vi.mock('node:worker_threads', () => ({ Worker: class extends EventEmitter {
   stdout = { resume() {} }; stderr = { resume() {} }
-  constructor(_url: URL, options: { workerData: WorkerRequest }) {
+  snapshot: boolean
+  constructor(entry: URL, options: { workerData: WorkerRequest }) {
     super()
+    this.snapshot = entry.pathname.endsWith('/font-snapshot-worker.js')
+    if (this.snapshot) {
+      state.scans++
+      queueMicrotask(() => this.emit('message', { ok: true, snapshot: { faces: [], records: [], generation: 'empty' } }))
+      return
+    }
     const data = options.workerData
     state.events.push('start'); state.fonts.push(data.fontFaces)
     setTimeout(() => {
-      this.emit('message', { kind: 'fonts', faces: [] })
       this.emit('message', state.wrongManifest ? { ok: true, output: new Uint8Array([1]), missingFonts: [] }
         : { ok: true, images: { schemaVersion: 1, backend: 'wasm', source: 'saved', rasterEngine: 'pdfium', images: [], inputPath: data.operation.inputPath } })
     }, 1)
   }
-  async terminate() { state.events.push('terminate'); return 0 }
+  async terminate() { if (!this.snapshot) state.events.push('terminate'); return 0 }
 } }))
 const roots: string[] = []
 let testFontFamily = ''
 let testIndex = 0
 beforeEach(() => { testFontFamily = `image-ownership-${testIndex++}` })
 afterEach(async () => {
-  state.wrongManifest = false; state.cleanupPath = ''; state.events = []; state.fonts = []
+  state.wrongManifest = false; state.cleanupPath = ''; state.events = []; state.fonts = []; state.scans = 0
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 async function fixture() {
@@ -58,12 +64,13 @@ it('rejects an image worker without its manifest and removes its owned directory
     expect(state.events).toEqual(['start', 'terminate'])
   } finally { await converter.dispose() }
 })
-it('starts queued batches only after prior worker cleanup and reuses the returned font snapshot', async () => {
+it('starts queued batches only after prior worker cleanup and revalidates one snapshot per batch', async () => {
   const first = await fixture(), second = { ...first, outputDir: `${first.outputDir}-second` }, converter = await createConverter(converterOptions())
   try {
     const result = await Promise.all([converter.renderImages(first), converter.renderImages(second)])
     expect(state.events).toEqual(['start', 'terminate', 'start', 'terminate'])
-    expect(state.fonts).toEqual([undefined, []])
+    expect(state.fonts).toEqual([[], []])
+    expect(state.scans).toBe(2)
     for (let index = 0; index < 2; index++)
       expect(JSON.parse(await readFile(join([first, second][index]!.outputDir, 'manifest.json'), 'utf8'))).toEqual(result[index])
   } finally { await converter.dispose() }

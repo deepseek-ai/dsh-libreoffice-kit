@@ -18,21 +18,9 @@ vi.mock('node:worker_threads', async (importOriginal) => {
     ...actual,
     Worker: class extends actual.Worker {
       constructor(entry: URL, options: WorkerOptions) {
-        expect(entry.pathname).toMatch(/\/worker\.js$/)
         expect(options.execArgv).toEqual([])
-        const data = options.workerData as WorkerRequest
-        const fontDirectory = data.options.fontDirectories[0]
-        if (data.engine.backend === 'wasm' && fontDirectory !== undefined) {
-          const path = join(fontDirectory, 'fixture.ttf')
-          const { size, mtimeMs, ctimeMs, dev, ino } = statSync(path)
-          options = { ...options, workerData: { ...data, fontFaces: [{
-            path, size, mtimeMs, ctimeMs, dev, ino, faceIndex: 0,
-            family: 'Fixture Face', aliases: ['fixtureface'], style: 'Regular',
-            weight: 400, width: 5, italic: false, fixed: false, decorative: false, postscriptName: 'FixtureFace',
-            coverage: [[0, 0x10ffff]],
-          }] } }
-        }
-        super(new URL('./worker-bootstrap.mjs', import.meta.url), options)
+        super(new URL(entry.pathname.endsWith('/font-snapshot-worker.js') ? './font-snapshot-stub.mjs' : './worker-bootstrap.mjs',
+          import.meta.url), options)
       }
     },
   }

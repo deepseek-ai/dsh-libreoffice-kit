@@ -13,20 +13,25 @@ vi.mock('../src/engine.ts', async importOriginal => ({
 }))
 
 const observations = vi.hoisted(() => [] as WorkerRequest[])
+const scans = vi.hoisted(() => ({ count: 0 }))
 vi.mock('node:worker_threads', () => ({
   Worker: class extends EventEmitter {
     stdout = { resume() {} }
     stderr = { resume() {} }
-    constructor(_entry: URL, options: { workerData: WorkerRequest }) {
+    constructor(entry: URL, options: { workerData: WorkerRequest }) {
       super()
-      const turn = observations.length
-      observations.push(options.workerData)
-      queueMicrotask(() => {
-        if (options.workerData.fontFaces === undefined) this.emit('message', { kind: 'fonts', faces: [{
+      if (entry.pathname.endsWith('/font-snapshot-worker.js')) {
+        scans.count++
+        queueMicrotask(() => this.emit('message', { ok: true, snapshot: { generation: 'fixture', records: [], faces: [{
           path: '/font.ttf', size: 4, mtimeMs: 1, ctimeMs: 1, dev: 1, ino: 1, faceIndex: 0,
           family: 'Fixture', style: 'Regular', aliases: ['fixture'], weight: 400, width: 5,
           italic: false, fixed: false, postscriptName: 'Fixture',
-        }] })
+        }] } }))
+        return
+      }
+      const turn = observations.length
+      observations.push(options.workerData)
+      queueMicrotask(() => {
         this.emit('message', { kind: 'font-cache', entries: [{
           key: turn < 2 ? '{"family":"Fixture"}' : '{"family":"Other"}',
           codePoints: [65 + turn], emptyRequest: false,
@@ -42,6 +47,7 @@ vi.mock('node:worker_threads', () => ({
 const roots: string[] = []
 afterEach(async () => {
   observations.length = 0
+  scans.count = 0
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -59,12 +65,13 @@ it('shares font faces and match entries across converters and rejects creation a
   await second.render({ inputPath, outputPath: join(root, 'second.pdf') })
   await third.render({ inputPath, outputPath: join(root, 'third.pdf') })
   await fourth.render({ inputPath, outputPath: join(root, 'fourth.pdf') })
-  expect(observations[0]!.fontFaces).toBeUndefined()
+  expect(observations[0]!.fontFaces).toHaveLength(1)
   expect(observations[0]!.fontCache).toEqual([])
   expect(observations[1]!.fontFaces).toHaveLength(1)
   expect(observations[1]!.fontCache).toEqual([expect.objectContaining({ codePoints: [65] })])
   expect(observations[2]!.fontCache).toEqual([expect.objectContaining({ codePoints: [65, 66] })])
   expect(observations[3]!.fontCache).toEqual([expect.objectContaining({ key: '{"family":"Other"}', codePoints: [67] })])
+  expect(scans.count).toBe(4)
   await factory.dispose()
   await expect(factory.create()).rejects.toMatchObject({ code: 'unavailable' })
 })
@@ -90,7 +97,7 @@ it('shares bounded font state across compatibility converters without a caller-o
   const second = await createConverter(options)
   await second.render({ inputPath, outputPath: join(root, 'second.pdf') })
   await second.dispose()
-  expect(observations[0]!.fontFaces).toBeUndefined()
+  expect(observations[0]!.fontFaces).toHaveLength(1)
   expect(observations[0]!.fontCache).toEqual([])
   expect(observations[1]!.fontFaces).toHaveLength(1)
   expect(observations[1]!.fontCache).toEqual([expect.objectContaining({ codePoints: [65] })])
@@ -98,7 +105,7 @@ it('shares bounded font state across compatibility converters without a caller-o
   const isolated = await createConverter({ ...options, initialFontFamilies: ['standalone-isolated-state'] })
   await isolated.render({ inputPath, outputPath: join(root, 'isolated.pdf') })
   await isolated.dispose()
-  expect(observations[2]!.fontFaces).toBeUndefined()
+  expect(observations[2]!.fontFaces).toHaveLength(1)
   expect(observations[2]!.fontCache).toEqual([])
 })
 
