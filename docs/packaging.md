@@ -116,6 +116,15 @@ The workspace resolves the Core URL from `.gitmodules` and the commit from the `
 
 Format/header unit fixtures are never release evidence. Release verification also requires real DOC, DOCX, XLS, XLSX, PPT and PPTX conversion smokes through a relocated offline installation on the corresponding host. No flag promotes fake headers or an `unbuilt` target into a release artifact.
 
+The manual `libreoffice-kit-import-native.yml` workflow can reuse an existing native
+build, including a cross-compiled engine. Provision a one-job runner with label
+`libreoffice-kit-import-<platform>` and `LIBREOFFICE_KIT_PREBUILT_DIRECTORY` pointing
+to its engine package. Supply the full repository commit matching its source
+receipts. The workflow verifies every payload hash and the source recipe before
+transfer, then runs conversion tests on the matching hosted architecture. Only a
+successful test job uploads `core-payload-<platform>`; transfer artifacts are named
+`unverified-native-<platform>`. This workflow does not publish npm or Releases.
+
 ## Native worker
 
 The entry starts one worker per document and supplies absolute input, output, profile, and program paths plus bounded conversion or raster settings. Conversion uses the existing one-result JSON protocol. Native image batches keep one helper alive, exchange bounded paint commands, and return raw tile files inside the operation scratch directory; Node validates and encodes those pixels as PNG. Diagnostics use stderr. Cancellation terminates the helper and waits for exit before deleting files.
