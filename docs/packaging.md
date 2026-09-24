@@ -125,6 +125,10 @@ transfer, then runs conversion tests on the matching hosted architecture. Only a
 successful test job uploads `core-payload-<platform>`; transfer artifacts are named
 `unverified-native-<platform>`. This workflow does not publish npm or Releases.
 
+Windows configure reports active antivirus software without writing EICAR test
+files or requiring scanner exclusions. Antivirus protection remains enabled
+during compilation.
+
 ## Native worker
 
 The entry starts one worker per document and supplies absolute input, output, profile, and program paths plus bounded conversion or raster settings. Conversion uses the existing one-result JSON protocol. Native image batches keep one helper alive, exchange bounded paint commands, and return raw tile files inside the operation scratch directory; Node validates and encodes those pixels as PNG. Diagnostics use stderr. Cancellation terminates the helper and waits for exit before deleting files.

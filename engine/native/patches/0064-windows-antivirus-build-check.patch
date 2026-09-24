@@ -1,0 +1,25 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -16212,20 +16212,8 @@
+     if [ [ "$ANTIVIRUS_LIST" != "NULL" ] ]; then
+         if [ [ "$ANTIVIRUS_LIST" != "NOT_FOUND" ] ]; then
+             AC_MSG_RESULT([found])
+-            EICAR_STRING='X5O!P%@AP@<:@4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
+-            echo $EICAR_STRING > $SRC_ROOT/eicar
+-            EICAR_TEMP_FILE_CONTENTS=`cat $SRC_ROOT/eicar`
+-            rm $SRC_ROOT/eicar
+-            if [ [ "$EICAR_STRING" != "$EICAR_TEMP_FILE_CONTENTS" ] ]; then
+-                AC_MSG_ERROR([Exclude the build and source directories associated with LibreOffice in the following Antivirus software: $ANTIVIRUS_LIST])
+-            fi
+-            echo $EICAR_STRING > $BUILDDIR/eicar
+-            EICAR_TEMP_FILE_CONTENTS=`cat $BUILDDIR/eicar`
+-            rm $BUILDDIR/eicar
+-            if [ [ "$EICAR_STRING" != "$EICAR_TEMP_FILE_CONTENTS" ] ]; then
+-                AC_MSG_ERROR([Exclude the build and source directories associated with LibreOffice in the following Antivirus software: $ANTIVIRUS_LIST])
+-            fi
+-            add_warning "To speed up builds and avoid failures in unit tests, it is highly recommended that you exclude the build and source directories associated with LibreOffice in the following Antivirus software: $ANTIVIRUS_LIST"
++            dnl Keep antivirus protection active; do not write a test signature that it will quarantine.
++            add_warning "Active Antivirus software may slow the build: $ANTIVIRUS_LIST"
+         else
+             AC_MSG_RESULT([not found])
+         fi
