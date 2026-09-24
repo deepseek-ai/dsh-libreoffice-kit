@@ -1,0 +1,15 @@
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -2506,6 +2506,12 @@
+ 
+ else # !SYSTEM_LCMS2
+ 
++ifeq ($(COM)-$(DISABLE_DYNLOADING),MSC-TRUE)
++# External configure scripts inherit this exported variable too. Keep their
++# color-management dependency on the same static archive as Core itself.
++LCMS2_LIBS := $(gb_UnpackedTarball_workdir)/lcms2/bin/lcms2_static.lib
++endif
++
+ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
+ 	lcms2 \
+ ))
