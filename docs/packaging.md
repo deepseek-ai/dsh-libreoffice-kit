@@ -149,3 +149,11 @@ Font registration uses process-local CoreText on macOS, private GDI fonts on Win
 The entry records selected alternatives for missing document families in the conversion's private `user/registrymodifications.xcu` VCL table. Installed original and metric-compatible families are resolved by LibreOffice before that table. Native preloading requests regular faces; weight and italic selection depend on the native engine and discoverable fonts. Font priorities are defined by the entry's `fontFallbacks` option.
 
 The owned Core patch passes `UpdateDocMode::NO_UPDATE` to document loading. The worker uses LOKit's supported `Batch=true,EnableMacrosExecution=false` options and sets an empty matching host allowlist. These controls suppress document updates, macro execution, and LOK network host access; they do not establish an operating-system sandbox around native code.
+
+Local and SSH native builds enter Actions through `libreoffice-kit-import-native.yml`,
+which tests the engine on its target architecture. `libreoffice-kit-qualify.yml`
+can build WASM alone with `wasm_only`. `libreoffice-kit-collect.yml` accepts five
+successful build/import run IDs and an immutable source commit, rechecks payload
+hashes and corresponding recipes, and creates the complete five-artifact input
+for the tagged release workflow. Collection does not replace the release workflow's
+installed conversion tests and does not publish to GitHub or npm.

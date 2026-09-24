@@ -60,7 +60,7 @@ function fixture(t, platform = 'darwin-arm64') {
     filter: file => file !== join(root, 'engine/core') && !file.includes('/reference/') });
   writeFileSync(join(repo, 'core-source.json'), JSON.stringify(source));
   mkdirSync(join(repo, 'scripts'));
-  for (const file of ['stage-native.mjs', 'slim-native.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
+  for (const file of ['build-native.mjs', 'stage-native.mjs', 'slim-native.mjs']) cpSync(join(root, 'scripts', file), join(repo, 'scripts', file));
   writeFileSync(join(repo, 'package.json'), JSON.stringify(readJson(join(root, 'package.json'))));
   const manifest = readJson(join(root, 'packages', platform, 'package.json'));
   const target = join(repo, 'packages', platform);
@@ -95,7 +95,7 @@ function fixture(t, platform = 'darwin-arm64') {
   const wasm = platform === 'wasm';
   const files = ['engine/build-identity.mjs', ...(wasm
     ? ['engine/core-source.mjs', ...['source.json', 'source.mjs', 'autogen.input', 'lok.cxx', 'build.mjs', 'stage.mjs', 'slim.mjs', ...readdirSync(join(root, 'engine/wasm-source/patches')).map(file => `patches/${file}`)].map(file => `engine/wasm-source/${file}`)]
-    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()])];
+    : ['engine/core-source.mjs', 'engine/native/worker.cxx', 'engine/native/configure.mjs', 'engine/native/core-patches.mjs', 'scripts/build-native.mjs', 'scripts/stage-native.mjs', 'scripts/slim-native.mjs', ...corePatchFiles()])];
   for (const file of files) put(`sources/${file}`, readFileSync(join(root, file)));
   put('sources/core-source.json', JSON.stringify(source));
   if (!wasm) {
