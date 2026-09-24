@@ -72,14 +72,23 @@ while preserving password hashing, verification and policy checks. These policie
 and all source patches enter the packaged receipts. Helper changes require relinking
 Core with `build-native.mjs --resume`; standalone replacement is rejected.
 
-macOS ARM64 defaults to `-Oz` and ThinLTO. Other platforms retain their optimization
-defaults. Windows x64 additionally supports experimental
-`--clang-cl --optimization Oz --lto`; WebP retains MSVC, and zlib
-uses ordinary COFF objects for compatibility with external build tools.
+All released native targets default to `-Oz` and ThinLTO; Windows uses clang-cl
+and lld-link with an explicit target triple, including x64-to-ARM64 cross builds.
+Build-host tools use the build machine's triple. WebP retains MSVC, and zlib
+remains ordinary COFF for external projects that use the MSVC linker. These
+exceptions are statically linked but are not LLVM bitcode.
 `--optimization default|O2|Os|Oz` and `--lto` / `--no-lto` select comparison builds;
-use a separate build directory per configuration and retain those options on resume.
-Recipe coverage does not establish a successful build: each architecture requires
-matching-host qualification before release.
+Windows `--msvc` selects the original MSVC policy for comparisons. Linux native
+recipes remain development-only and retain their existing compiler policy.
+WASM uses `-Oz` at compile and link time and full LLVM LTO through Emscripten.
+Its filesystem also drops autocorrection, autotext, wordbooks, default bitmap
+textures, gallery/templates/wizards and desktop start/about/tip dialogs. It keeps
+persistent-editor layouts, document colors, gradients and document filters.
+Both engine families omit zxcvbn and password-strength meters; password policy
+checks and document cryptography are retained. Skia remains enabled on macOS and
+Windows. Use separate build directories for comparison configurations and keep
+those options on resume. Recipe coverage is not a successful build; every target
+requires matching-host qualification.
 
 The repository owns the complete payload recipe. `engine/native/configure.mjs` disables desktop galleries, templates, icon themes, Base connectivity, scripting, extensions, and Impress remote control, PDF import, help indexing, curl, WebDAV, CMIS, and LDAP. `scripts/slim-native.mjs` removes named desktop resources, developer SDK tools, PDF-import data, Quick Look extensions, Spotlight importers, disabled help/network libraries, residual LDAP libraries, Basic and Python scripting resources, notebookbars, toolbars, menubars, and launchers, strips nonessential symbols while retaining dynamic exports, and restores and verifies macOS ad-hoc signatures. The static Linux recipe verifies the ELF system-library closure and does not acquire NSS, NSPR or SQLite runtime payloads. `sources/payload-shaping.json` records removed paths and byte counts; source and reuse checks reject different recorded component selections, staging scripts, or slimming scripts. Writer, Calc, Impress, their filters, fonts, locale resources, and redistribution notices remain available for conversion. Native and WASM builds retain PDFium for PDF graphics embedded in OOXML, including EMF multi-format comments; the owned configure patch permits that renderer without standalone PDF import filters. The WASM patch includes PDFium's existing portable Linux platform implementation, whose source already supports Emscripten, in the link.
 

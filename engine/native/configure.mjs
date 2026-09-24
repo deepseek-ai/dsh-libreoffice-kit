@@ -3,17 +3,21 @@ import { readCoreSource } from '../core-source.mjs';
 import { buildVendor } from '../build-identity.mjs';
 export const source = readCoreSource();
 
-export function nativeBuildOptions(platform, { optimization = platform === 'darwin-arm64' ? 'Oz' : 'default', lto = platform === 'darwin-arm64', clangCl = false } = {}) {
-  if (clangCl && platform !== 'win32-x64') throw new Error('--clang-cl is experimental and requires win32-x64');
+export function nativeBuildOptions(platform, {
+  clangCl = platform.startsWith('win32-'),
+  optimization = platform.startsWith('darwin-') || clangCl ? 'Oz' : 'default',
+  lto = platform.startsWith('darwin-') || clangCl,
+} = {}) {
+  if (clangCl && !platform.startsWith('win32-')) throw new Error('--clang-cl requires Windows');
   if (!['default', 'O2', 'Os', 'Oz'].includes(optimization)) throw new Error('--optimization must be default, O2, Os, or Oz');
-  if ((lto || optimization !== 'default') && platform !== 'darwin-arm64' && !clangCl)
-    throw new Error('Optimization overrides are qualified only for darwin-arm64; Windows experiments require --clang-cl');
+  if ((lto || optimization !== 'default') && !platform.startsWith('darwin-') && !clangCl)
+    throw new Error('Optimization overrides require macOS or Windows with --clang-cl');
   // clang-cl needs forwarded options; make the O2 control explicit so prefix maps never suppress optimization.
   return { optimization: clangCl && optimization === 'default' ? 'O2' : optimization, lto };
 }
 
 export function configureFlags(platform, tarballs, parallelism, visualStudio = '2022', crossCompile = false, { lto = nativeBuildOptions(platform).lto } = {}) {
-  if (lto && !['darwin-arm64', 'win32-x64'].includes(platform)) throw new Error('LTO is qualified only for darwin-arm64 or experimental win32-x64');
+  if (lto && !/^(darwin|win32)-(arm64|x64)$/.test(platform)) throw new Error('Native LTO requires macOS or Windows');
   const flags = [
     `--with-vendor=${buildVendor}`,
     '--disable-debug', '--disable-dbgutil', '--disable-symbols', '--disable-werror',

@@ -3,15 +3,22 @@
 import { assertRequiredUiResources } from '../ui-resource-policy.mjs';
 
 const ui = '/instdir/share/config/soffice.cfg/';
+// These dialogs belong to the desktop shell, not the embedded document editor.
+const desktopLayouts = new Set([
+  'sfx/ui/startcenter.ui', 'sfx/ui/safemodequerydialog.ui',
+  'cui/ui/aboutdialog.ui', 'cui/ui/tipofthedaydialog.ui',
+]);
 
 function desktopResource(filename) {
   if (filename.startsWith(ui)) {
     const relative = filename.slice(ui.length);
     // The shared WASM engine runs persistent editors: VCL idle work and editing
     // commands instantiate layouts beyond the native conversion allowlist.
-    return relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
+    return desktopLayouts.has(relative) || relative.split('/').at(-1).startsWith('notebookbar') || /(?:^|\/)(?:toolbar|menubar)\//.test(relative);
   }
-  return /^\/instdir\/share\/config\/images(?:_[a-z0-9_]+)?\.zip$/.test(filename)
+  return /^\/instdir\/share\/(?:autocorr|autotext|wordbook|gallery|template|wizards|tipoftheday|shell)\//.test(filename)
+    || filename === '/instdir/share/palette/standard.sob'
+    || /^\/instdir\/share\/config\/images(?:_[a-z0-9_]+)?\.zip$/.test(filename)
     || /^\/(?:core\/)?android\/default-document\//.test(filename)
     || /^\/instdir\/program\/intro(?:-highres)?\.png$/.test(filename)
     || filename.startsWith('/instdir/program/shell/');

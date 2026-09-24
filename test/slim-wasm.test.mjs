@@ -16,6 +16,13 @@ function fixture(paths) {
 
 test('WASM repacking preserves editor layouts outside the conversion allowlist and removes desktop chrome', () => {
   const desktop = [
+    '/instdir/share/autocorr/acor_en-US.dat', '/instdir/share/autotext/en-US/standard.bau',
+    '/instdir/share/wordbook/en-US.dic', '/instdir/share/palette/standard.sob',
+    '/instdir/share/gallery/texture.png', '/instdir/share/template/default.ott',
+    '/instdir/share/wizards/example.xba', '/instdir/share/tipoftheday/example.png',
+    '/instdir/share/shell/logo.png',
+    '/instdir/share/config/soffice.cfg/sfx/ui/startcenter.ui',
+    '/instdir/share/config/soffice.cfg/cui/ui/tipofthedaydialog.ui',
     '/android/default-document/example.odt', '/android/default-document/example_test.ods',
     '/core/android/default-document/example.odt', '/core/android/default-document/example_test.ods',
     '/instdir/share/config/soffice.cfg/modules/swriter/ui/notebookbar.ui',
@@ -34,6 +41,7 @@ test('WASM repacking preserves editor layouts outside the conversion allowlist a
     ...requiredUiResources.map(file => `/instdir/share/config/soffice.cfg/${file}`),
     '/instdir/share/config/soffice.cfg/settings.xml', '/instdir/share/elsewhere/keep.ui',
     '/instdir/share/registry/main.xcd', '/instdir/share/registry/writer.xcd',
+    '/instdir/share/palette/standard.soc', '/instdir/share/palette/standard.sog',
     '/instdir/share/fonts/font.ttf', '/instdir/share/liblangtag/language.xml',
     '/instdir/LICENSE', '/instdir/NOTICE',
   ];

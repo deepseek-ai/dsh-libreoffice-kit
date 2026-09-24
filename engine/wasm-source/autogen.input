@@ -28,3 +28,6 @@
 --without-webdav
 --disable-libcmis
 --disable-breakpad
+--enable-lto
+--with-galleries=no
+--with-templates=no

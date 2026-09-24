@@ -1,0 +1,26 @@
+--- a/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
++++ b/solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk
+@@ -70,7 +70,7 @@
+ endif
+ 
+ # Linker and compiler optimize + debug flags are handled in LinkTarget.mk
+-gb_LINKEROPTFLAGS :=
++gb_LINKEROPTFLAGS := -Oz
+ gb_LINKERSTRIPDEBUGFLAGS :=
+ # This maps to g3, no source maps, but DWARF with current emscripten!
+ # https://developer.chrome.com/blog/wasm-debugging-2020/
+@@ -80,7 +80,13 @@
+ gb_DEBUGINFO_FLAGS += -gseparate-dwarf -gsplit-dwarf -gpubnames
+ endif
+ 
+-gb_COMPILEROPTFLAGS := -O3
++gb_COMPILEROPTFLAGS := -Oz
++
++ifeq ($(ENABLE_LTO),TRUE)
++# Emscripten's LLVM tools consume bitcode directly, without a native gold plugin.
++gb_LTOFLAGS := -flto
++gb_LTOPLUGINFLAGS :=
++endif
+ 
+ # We need at least code elimination, otherwise linking OOMs even with 64GB.
+ # So we "fake" -Og support to mean -O1 for Emscripten and always enable it for debug in configure.

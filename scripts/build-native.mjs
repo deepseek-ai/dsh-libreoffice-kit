@@ -20,7 +20,9 @@ const build = resolve(value('--build', join(root, '.build', `native-${platform}`
 const tarballs = resolve(value('--tarballs', join(root, '.build/tarballs')));
 const parallelism = value('--jobs', '8');
 if (args.includes('--lto') && args.includes('--no-lto')) throw new Error('--lto and --no-lto cannot be combined');
-const clangCl = args.includes('--clang-cl');
+if (args.includes('--clang-cl') && args.includes('--msvc')) throw new Error('--clang-cl and --msvc cannot be combined');
+if (args.includes('--msvc') && !platform.startsWith('win32-')) throw new Error('--msvc requires Windows');
+const clangCl = args.includes('--clang-cl') || (platform.startsWith('win32-') && !args.includes('--msvc'));
 const { optimization, lto } = nativeBuildOptions(platform, {
   optimization: value('--optimization'),
   lto: args.includes('--no-lto') ? false : args.includes('--lto') ? true : undefined,
@@ -66,7 +68,11 @@ if (clangCl) {
   // Core's nmake/autoconf wrappers require a real path, not a PATH lookup name.
   const shortPath = spawnSync(join(cygwin, 'bin/cygpath.exe'), ['-m', '-s', compiler.stdout.trim().split(/\r?\n/)[0]], { encoding: 'utf8' });
   if (shortPath.status !== 0 || /\s/.test(shortPath.stdout.trim())) throw new Error('clang-cl requires a compiler path without spaces');
-  buildEnvironment.CC = buildEnvironment.CXX = `${shortPath.stdout.trim()} -fuse-ld=lld`;
+  const command = arch => `${shortPath.stdout.trim()} --target=${arch === 'arm64' ? 'aarch64' : 'x86_64'}-pc-windows-msvc -fuse-ld=lld`;
+  buildEnvironment.CC = buildEnvironment.CXX = command(platform.slice('win32-'.length));
+  // Core configures executable build tools separately when cross-compiling.
+  // Never let an ARM64 target compiler produce tools that must run on x64.
+  buildEnvironment.CC_FOR_BUILD = buildEnvironment.CXX_FOR_BUILD = command(process.arch);
   const llvmDirectory = dirname(compiler.stdout.trim().split(/\r?\n/)[0]);
   if (!existsSync(join(llvmDirectory, 'lld-link.exe')))
     throw new Error('--clang-cl requires lld-link.exe beside clang-cl.exe');
