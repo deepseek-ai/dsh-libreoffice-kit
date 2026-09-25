@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-workspace",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
@@ -25,13 +25,14 @@
     "typecheck": "tsc -b packages/entry"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "@vitest/coverage-v8": "^4.1.8",
-    "tsdown": "^0.22.2",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.8",
-    "tsx": "^4.22.4",
     "js-yaml": "^4.2.0",
-    "@types/js-yaml": "^4.0.9"
+    "pdfjs-dist": "6.3.289",
+    "tsdown": "^0.22.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   }
 }

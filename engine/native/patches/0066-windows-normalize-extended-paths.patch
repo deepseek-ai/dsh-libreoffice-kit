@@ -1,0 +1,81 @@
+--- a/sal/osl/w32/file_url.cxx
++++ b/sal/osl/w32/file_url.cxx
+@@ -690,7 +690,12 @@
+                 }
+                 else
+                 {
+-                    sDecodedURL = GetCaseCorrectPathName(sDecodedURL->subView(nSkip));
++                    sTempPath = sDecodedURL->subView(nSkip);
++                    // Extended paths do not resolve dot segments. Normalize before
++                    // GetCaseCorrectPathName can itself add an extended prefix.
++                    if (isAbsolute(sTempPath))
++                        sTempPath = removeRelativeParts(sTempPath);
++                    sDecodedURL = GetCaseCorrectPathName(sTempPath);
+                     if (sDecodedURL->getLength() <= MAX_PATH - 12
+                         || sDecodedURL->startsWith(WSTR_SYSTEM_ROOT_PATH)
+                         || sDecodedURL->startsWith(WSTR_LONG_PATH_PREFIX))
+--- a/sal/qa/osl/file/osl_File.cxx
++++ b/sal/qa/osl/file/osl_File.cxx
+@@ -28,6 +28,7 @@
+ #include <cppunit/extensions/HelperMacros.h>
+ 
+ #include <memory>
++#include <string>
+ 
+ #ifdef _WIN32
+ #include <prewin.h>
+@@ -595,6 +596,9 @@
+         void getSystemPathFromFileURL_001_92();
+         void getSystemPathFromFileURL_004();
+         void getSystemPathFromFileURL_005();
++#ifdef _WIN32
++        void getSystemPathFromFileURL_long();
++#endif
+ 
+         // test case for getFileURLFromSystemPath
+         void getFileURLFromSystemPath_001();
+@@ -628,6 +632,9 @@
+             CPPUNIT_TEST(getSystemPathFromFileURL_001_92);
+             CPPUNIT_TEST(getSystemPathFromFileURL_004);
+             CPPUNIT_TEST(getSystemPathFromFileURL_005);
++#ifdef _WIN32
++            CPPUNIT_TEST(getSystemPathFromFileURL_long);
++#endif
+             CPPUNIT_TEST(getFileURLFromSystemPath_001);
+             CPPUNIT_TEST(getFileURLFromSystemPath_002);
+             CPPUNIT_TEST(getFileURLFromSystemPath_003);
+@@ -663,6 +670,34 @@
+                 OString const& _sUnixAssumeResultString);
+ 
+     };
++
++#ifdef _WIN32
++    void SystemPath_FileURL::getSystemPathFromFileURL_long()
++    {
++        const OUString roots[] = { u"C:\\"_ustr, u"\\\\localhost\\dsh-missing-share\\"_ustr };
++        const OUString suffix = u"\\program\\..\\.\\share\\\\file.ui"_ustr;
++        for (const auto& root : roots)
++        {
++            for (sal_Int32 length : { 249, 260, 300 })
++            {
++                std::u16string padding(length - root.getLength() - suffix.getLength(), u'a');
++                padding[100] = '\\';
++                const OUString middle(padding.data(), padding.size());
++                const OUString path = root + middle + suffix;
++                const OUString url = u"file:///"_ustr + path.replace('\\', '/');
++                OUString result;
++                CPPUNIT_ASSERT_EQUAL(osl::FileBase::E_None,
++                    osl::FileBase::getSystemPathFromFileURL(url, result));
++                OUString expected = root + middle + "\\share\\file.ui";
++                if (expected.getLength() > MAX_PATH - 12)
++                    expected = root.startsWith("\\\\")
++                        ? u"\\\\?\\UNC\\"_ustr + expected.copy(2)
++                        : u"\\\\?\\"_ustr + expected;
++                CPPUNIT_ASSERT(expected.equalsIgnoreAsciiCase(result));
++            }
++        }
++    }
++#endif
+ 
+     // if bDirection==sal_True, check getSystemPathFromFileURL
+     // if bDirection==sal_False, check getFileURLFromSystemPath
