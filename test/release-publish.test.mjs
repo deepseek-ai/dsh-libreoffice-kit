@@ -6,6 +6,7 @@ import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { enginePrefix, kitManifest, readJson, root, releaseRepository, sourceRepository, releaseTag, releaseTargets, tarballName } from '../scripts/platform-matrix.mjs';
+import { engineVersion } from '../scripts/platform-matrix.mjs';
 import {
   publicationAssets,
   publishRelease,
@@ -34,6 +35,7 @@ function fixture(t, platforms = releaseTargets([])) {
   const version = readJson(join(root, 'package.json')).version;
   const env = { GITHUB_REF: `refs/tags/${releaseTag(version)}`, GITHUB_SHA: '1'.repeat(40) };
   const packages = platforms.map(platform => {
+    const version = engineVersion(platform);
     const file = engineArchiveName({ name: `${enginePrefix}-${platform}`, version });
     const manifest = { name: `${enginePrefix}-${platform}`, version };
     const gzip = join(directory, tarballName(manifest));
@@ -61,6 +63,18 @@ function fixture(t, platforms = releaseTargets([])) {
 test('publication accepts the complete adapter-declared engine inventory with matching verification metadata', t => {
   const { directory, release, env } = fixture(t);
   assert.deepEqual(validatePublication(directory, env), release);
+});
+
+test('publication rejects replacing a retained engine with the Node API version', t => {
+  const { directory, release, env, save } = fixture(t);
+  const mac = release.packages.find(record => record.platform === 'darwin-arm64');
+  assert.equal(mac.version, '0.1.1');
+  assert.equal(release.version, '0.1.2');
+  mac.version = release.version;
+  mac.file = engineArchiveName(mac);
+  mac.install.file = mac.file.replace(/\.xz$/, '');
+  save('release.json', release);
+  assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
 
 test('publication rejects receipts missing legacy Office conversion results', t => {

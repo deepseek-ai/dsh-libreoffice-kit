@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { assert, sha256 } from './verify-artifacts.mjs';
 import { auditReleaseCandidate } from './release-privacy.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
-import { enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
+import { engineVersion, enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
 import { verifyEngineArchiveRecord } from './engine-archive.mjs';
 
 /**
@@ -29,7 +29,7 @@ export function validatePublication(directory, env = process.env, { target = 'gi
   for (const [index, record] of release.packages.entries()) {
     assert(record.platform === release.platforms[index], 'Release platform differs from the canonical engine asset');
     verifyEngineArchiveRecord(record);
-    assert(record.version === release.version && statSync(join(directory, record.file)).size === record.bytes && sha256(join(directory, record.file)) === record.sha256, `Invalid release tarball: ${record.file}`);
+    assert(record.version === engineVersion(record.platform) && statSync(join(directory, record.file)).size === record.bytes && sha256(join(directory, record.file)) === record.sha256, `Invalid release tarball: ${record.file}`);
   }
   const evidence = readJson(join(directory, 'verification.json'));
   assert(evidence.sourceCommit === env.GITHUB_SHA && /^[a-f0-9]{40}$/.test(evidence.sourceCommit), 'Verification is not for this release commit');

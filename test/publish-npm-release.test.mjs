@@ -8,7 +8,7 @@ import test from 'node:test';
 import { npmFixture } from './archive-fixture.mjs';
 import { packEngineArchive } from '../scripts/engine-archive.mjs';
 import { prepareNpmRelease } from '../scripts/prepare-npm-release.mjs';
-import { enginePrefix, kitManifest, releaseTag, releaseTargets, sourceRepository, tarballName } from '../scripts/platform-matrix.mjs';
+import { engineVersion, enginePrefix, kitManifest, releaseTag, releaseTargets, sourceRepository, tarballName } from '../scripts/platform-matrix.mjs';
 import { sha256 } from '../scripts/verify-artifacts.mjs';
 import { downloadRegistryArchive, npmRegistry, npmVersionState, publishNpmPackages, publishNpmRelease, validateDistTag, validateNpmPublication } from '../scripts/publish-npm-release.mjs';
 
@@ -22,6 +22,7 @@ function fixture(t, changeManifest = manifest => manifest) {
   const env = { GITHUB_REF: `refs/tags/${releaseTag(version)}`, GITHUB_SHA: '1'.repeat(40) };
   const platforms = releaseTargets([]);
   const packages = platforms.map((platform, index) => {
+    const version = engineVersion(platform);
     const manifest = changeManifest({ name: `${enginePrefix}-${platform}`, version, publishConfig: { access: 'public' },
       repository: { type: 'git', url: `git+https://github.com/${sourceRepository}.git` } }, index);
     const gzip = join(directory, tarballName(manifest));
@@ -176,6 +177,21 @@ test('a fully published family produces zero pending stages and no registry writ
     return present();
   } });
   assert.deepEqual(result, { staged: 0, skippedPublished: 3, stages: [] });
+});
+
+test('Windows-only releases stage the patched engines and adapter while retaining published macOS and WASM', async () => {
+  const publication = { version: '0.1.2', packages: [...releaseTargets([]).map(platform => ({
+    name: `${enginePrefix}-${platform}`, version: engineVersion(platform), path: `/temporary/${platform}.tgz`, integrity,
+  })), { name: kitManifest().name, version: '0.1.2', path: '/temporary/entry.tgz', integrity }] };
+  const writes = [];
+  const result = await publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
+    if (args[0] === 'view') return args[1].endsWith('@0.1.1') ? present() : absent();
+    writes.push(args[2]);
+    return stageSuccess(args, publication);
+  } });
+  assert.deepEqual(writes, ['/temporary/win32-arm64.tgz', '/temporary/win32-x64.tgz', '/temporary/entry.tgz']);
+  assert.equal(result.staged, 3);
+  assert.equal(result.skippedPublished, 3);
 });
 
 test('only an explicit npm 404 establishes absence; authentication and transport failures stop', () => {

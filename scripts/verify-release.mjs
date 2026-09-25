@@ -20,7 +20,6 @@ export function verifyRelease({ repo = root, platforms, metadataOnly = false } =
   const matrix = packageMatrix(repo);
   assert(JSON.stringify(matrix.map((row) => row.prebuild.platform).sort()) === JSON.stringify([...Object.keys(targets), 'wasm'].sort()), 'Declared engine package matrix is incomplete or duplicated');
   for (const row of matrix) {
-    assert(row.manifest.version === workspace.version, `Version mismatch: ${row.manifest.name}`);
     verifyEngineMetadata(row.manifest, row.prebuild);
   }
   const ref = process.env.GITHUB_REF ?? '';

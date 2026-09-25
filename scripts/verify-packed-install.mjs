@@ -73,6 +73,9 @@ export function verifyPackedInstall(directory, options = {}) {
     run(process.execPath, ['smoke.mjs', expectedBackend], { cwd: consumer,
       env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' }, timeout: 180_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
+    const windowsLongPaths = process.platform === 'win32' ? JSON.parse(run(process.execPath,
+      [join(root, 'scripts/verify-windows-long-paths.mjs'), join(consumer, 'node_modules', '@deepseek-ai', `libreoffice-kit-${platform}`)],
+      { timeout: 240_000, env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' } })) : undefined;
     assert(result.backend === expectedBackend && result.pdfBytes > 100, 'Installed conversion did not return the expected PDF/backend');
     assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
       'Installed conversion must include DOC, DOCX, XLS, XLSX, PPT, and PPTX PDFs');
@@ -92,7 +95,7 @@ export function verifyPackedInstall(directory, options = {}) {
     // Record the installed adapter so a receipt proves which build converted.
     const adapterRecord = { name: adapter.manifest.name, version: adapter.manifest.version,
       file: basename(adapter.file), sha256: sha256(adapter.file) };
-    return { ...result, ...(macOS ? { macOS } : {}), adapter: adapterRecord, installedOutsideRepository: true, network: 'offline', ...(keep ? { retainedInstallation: keep } : {}) };
+    return { ...result, ...(windowsLongPaths ? { windowsLongPaths } : {}), ...(macOS ? { macOS } : {}), adapter: adapterRecord, installedOutsideRepository: true, network: 'offline', ...(keep ? { retainedInstallation: keep } : {}) };
   } finally { rmSync(work, { recursive: true, force: true, maxRetries: 3 }); }
 }
 
