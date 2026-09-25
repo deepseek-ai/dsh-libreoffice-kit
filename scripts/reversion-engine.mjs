@@ -1,7 +1,7 @@
 /** Change package identity only when every engine byte and source recipe still matches. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { kitManifest, readJson, root } from './platform-matrix.mjs';
+import { engineVersion, readJson, root } from './platform-matrix.mjs';
 import { assert, verifyEnginePackage } from './verify-artifacts.mjs';
 import { verifyPreparedEngine } from './prepare-artifacts.mjs';
 
@@ -14,7 +14,7 @@ export function reversionEngine(platform, directory, fromVersion, repo = root) {
   const manifest = JSON.parse(originalManifest);
   const prebuild = JSON.parse(originalPrebuild);
   const target = readJson(join(repo, 'packages', platform, 'package.json'));
-  assert(manifest.version === fromVersion && target.version === kitManifest(repo).version,
+  assert(manifest.version === fromVersion && target.version === engineVersion(platform, repo),
     'Reused engine version differs from the explicit source or target');
   assert(JSON.stringify({ ...manifest, version: target.version }) === JSON.stringify(target),
     'Only the package version may differ when reusing an engine');

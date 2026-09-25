@@ -13,7 +13,7 @@ export interface RuntimeInfo {
 
 /**
  * Inspect installed engine metadata without starting, downloading, or building an engine.
- * @returns Public entry paths, engine version, and selected backend.
+ * @returns Public entry paths, Node API version, and selected backend.
  * @throws ConversionError when the installed engine is unavailable or invalid.
  */
 export async function discoverRuntime(): Promise<RuntimeInfo> {

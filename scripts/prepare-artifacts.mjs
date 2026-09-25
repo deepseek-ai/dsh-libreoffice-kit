@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { corePatchFiles } from '../engine/native/core-patches.mjs';
 import { verifyConfigureInput } from '../engine/native/configure.mjs';
 import { readCoreSource } from '../engine/core-source.mjs';
-import { enginePrefix, isMain, kitManifest, kitNativeTargets, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, targets } from './platform-matrix.mjs';
+import { engineVersion, enginePrefix, isMain, kitManifest, kitNativeTargets, readJson, releaseAssetUrl, releaseRepository, releaseTag, root, targets } from './platform-matrix.mjs';
 import { assert, regularFile, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { run } from './pack-utils.mjs';
 import { fetchReleaseAsset } from './github-release-fetch.mjs';
@@ -35,7 +35,7 @@ export function artifactPlan(selection = '', repo = root) {
 
 /** Reject different source pins, helpers or patches even when an engine reuses the package version. */
 export function verifyPreparedEngine(platform, directory = join(root, 'packages', platform), repo = root) {
-  const version = readJson(join(repo, 'package.json')).version;
+  const version = engineVersion(platform, repo);
   const manifest = readJson(regularFile(directory, 'package.json'));
   assert(manifest.name === `${enginePrefix}-${platform}` && manifest.version === version, 'Prepared engine package/version mismatch');
   const result = verifyEnginePackage(directory);

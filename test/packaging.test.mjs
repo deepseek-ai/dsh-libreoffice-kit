@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { enginePrefix, kitDirectory, kitManifest, kitNativeTargets, packageMatrix, readJson, root, wasmName } from '../scripts/platform-matrix.mjs';
+import { engineVersion } from '../scripts/platform-matrix.mjs';
 import { regularFile, safePath, verifyEngineMetadata, verifyEnginePackage, verifyNativeHeader, verifyNativeImage, verifyNoInstallHooks } from '../scripts/verify-artifacts.mjs';
 import { engineFamilyVersion, verifyKitMetadata, verifyKitPackage } from '../scripts/verify-kit.mjs';
 import { packRelease, stagePackage, workflowRepositoryUrl } from '../scripts/pack-release.mjs';
@@ -51,7 +52,7 @@ const unbuilt = () => ({ ...structuredClone(row.prebuild), status: 'unbuilt', fi
 function packedAdapterManifest(source = kitManifest()) {
   const manifest = structuredClone(source);
   for (const field of ['dependencies', 'optionalDependencies']) {
-    for (const name of Object.keys(manifest[field] ?? {})) if (manifest[field][name] === 'workspace:*') manifest[field][name] = engineFamilyVersion();
+    for (const name of Object.keys(manifest[field] ?? {})) if (manifest[field][name] === 'workspace:*') manifest[field][name] = engineVersion(name.slice('@deepseek-ai/libreoffice-kit-'.length));
   }
   return packKitManifest(manifest);
 }
@@ -88,7 +89,7 @@ test('the release declares macOS and Windows on ARM64/x64, and WASM while other 
   const missingWasm = structuredClone(manifest);
   delete missingWasm.optionalDependencies[wasmName];
   assert.throws(() => verifyKitMetadata(missingWasm), /Optional dependency matrix/);
-  assert.throws(() => verifyKitMetadata(manifest, true), /engine family version/);
+  assert.throws(() => verifyKitMetadata(manifest, true), /declared platform version/);
   verifyKitMetadata(packedAdapterManifest(manifest), true);
 });
 
@@ -96,8 +97,7 @@ test('the installed adapter preserves the canonical optional list and pins prepa
   const source = kitManifest();
   const manifest = packedAdapterManifest(source);
   assert.deepEqual(Object.keys(manifest.optionalDependencies), Object.keys(source.optionalDependencies ?? {}));
-  const version = engineFamilyVersion();
-  const url = () => version;
+  const url = name => engineVersion(name.slice('@deepseek-ai/libreoffice-kit-'.length));
   assert.equal(manifest.optionalDependencies[wasmName], url(wasmName));
   for (const native of kitNativeTargets(source)) assert.equal(manifest.optionalDependencies[`${enginePrefix}-${native}`], url(`${enginePrefix}-${native}`));
   for (const name of ['fflate', 'fontkit', 'saxes']) assert.equal(manifest.dependencies[name], source.dependencies[name]);
@@ -119,10 +119,10 @@ test('adapter engine declarations reject unknown native packages and mismatched 
   }
   const invalidSource = structuredClone(source);
   invalidSource.optionalDependencies[`${enginePrefix}-darwin-arm64`] = engineFamilyVersion();
-  assert.throws(() => verifyKitMetadata(invalidSource), /engine family version/);
+  assert.throws(() => verifyKitMetadata(invalidSource), /declared platform version/);
   const invalidPacked = packedAdapterManifest(source);
   invalidPacked.optionalDependencies[`${enginePrefix}-darwin-arm64`] = '0.0.0';
-  assert.throws(() => verifyKitMetadata(invalidPacked, true, kitNativeTargets(source)), /engine family version/);
+  assert.throws(() => verifyKitMetadata(invalidPacked, true, kitNativeTargets(source)), /declared platform version/);
   const requiredWasm = packedAdapterManifest(source);
   requiredWasm.dependencies[wasmName] = engineFamilyVersion();
   assert.throws(() => verifyKitMetadata(requiredWasm, true), /must be optional/);

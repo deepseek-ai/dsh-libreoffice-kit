@@ -6,11 +6,19 @@ import { dirname, isAbsolute, resolve, relative, sep, join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 
-/**
- * Engine-family version every installed engine package must carry. The engine
- * family shares its release version with this Node API.
- */
+/** Node API release version returned by runtime discovery. */
 export const ENGINE_VERSION = '0.1.2'
+
+/** Exact compatible engine versions; unchanged platforms retain their published packages. */
+export const ENGINE_VERSIONS: Readonly<Record<string, string>> = Object.freeze({
+  'darwin-arm64': '0.1.1',
+  'darwin-x64': '0.1.1',
+  'linux-arm64-glibc': '0.1.1',
+  'linux-x64-glibc': '0.1.1',
+  'win32-arm64': '0.1.2',
+  'win32-x64': '0.1.2',
+  wasm: '0.1.1',
+})
 
 /** npm scope and name prefix shared by the engine packages this adapter installs. */
 const ENGINE_PREFIX = '@deepseek-ai/libreoffice-kit'
@@ -178,7 +186,7 @@ async function readEngine(packageFile: string, backend: EngineBackend, target: s
     readFile(resolve(root, 'prebuilds.json'), 'utf8').then(text => JSON.parse(text) as EnginePrebuildManifest),
   ])
   const engine = manifest.engine
-  if (pkg.name !== `${ENGINE_PREFIX}-${target}` || pkg.version !== ENGINE_VERSION || manifest.version !== pkg.version || manifest.schemaVersion !== 1 || manifest.status !== 'built'
+  if (pkg.name !== `${ENGINE_PREFIX}-${target}` || pkg.version !== ENGINE_VERSIONS[target] || manifest.version !== pkg.version || manifest.schemaVersion !== 1 || manifest.status !== 'built'
     || engine === undefined || engine.kind !== backend || manifest.platform !== target) throw new Error(`Installed LibreOfficeKit ${backend} package has an incompatible or incomplete manifest.`)
   const minimum = engine.glibcMinimum
   if (minimum !== undefined && (!target.endsWith('-glibc') || !glibcVersion(minimum))) throw new Error('Installed LibreOfficeKit engine has an invalid glibcMinimum.')

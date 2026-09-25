@@ -28,7 +28,7 @@ import type { FontResolutionCacheEntry } from './font-loader.ts'
 import type { WorkerRequest } from './worker.ts'
 export { ConversionError } from './errors.ts'
 export type { ConversionErrorCode } from './errors.ts'
-export { ENGINE_VERSION } from './engine.ts'
+export { ENGINE_VERSION, ENGINE_VERSIONS } from './engine.ts'
 
 /** Host limits used by both native and Node WASM conversions. All byte limits are positive safe integers. */
 export interface ConverterOptions {

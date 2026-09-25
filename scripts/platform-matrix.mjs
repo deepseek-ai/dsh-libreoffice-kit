@@ -21,6 +21,12 @@ export const targets = Object.freeze({
   'win32-x64': { os: 'win32', cpu: 'x64', runner: 'windows-2022' },
 });
 
+/** Exact package version selected for a platform by this checkout. */
+export function engineVersion(platform, repo = root) {
+  if (platform !== 'wasm' && !Object.hasOwn(targets, platform)) throw new Error(`Unknown engine platform: ${platform}`);
+  return readJson(join(repo, 'packages', platform, 'package.json')).version;
+}
+
 export function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'));
 }

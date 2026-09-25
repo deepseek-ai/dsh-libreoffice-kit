@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { chmodSync, readFileSync } from 'node:fs'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import { documentFixture } from './document-fixture.ts'
-import { ENGINE_VERSION, installedPackageExists, platformTarget, resolveEngine } from '../src/engine.ts'
+import { ENGINE_VERSIONS, ENGINE_VERSION, installedPackageExists, platformTarget, resolveEngine } from '../src/engine.ts'
 import { resolveOptions } from '../src/options.ts'
 import { inspectDocument } from '../src/ooxml.ts'
 
@@ -38,14 +38,14 @@ async function engineFixture(): Promise<EngineFixture> {
   await mkdir(join(native, 'program'), { recursive: true })
   await mkdir(wasm)
   await writeFile(join(native, 'helper'), 'fixture', { mode: 0o755 })
-  const manifest = () => ({ schemaVersion: 1, version: familyVersion, platform: 'linux-arm64-glibc', status: 'built',
+  const manifest = () => ({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'linux-arm64-glibc', status: 'built',
     engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: '2.38' } })
   const writeNative = async (values: Record<string, unknown> = manifest()) => { await writeFile(join(native, 'prebuilds.json'), JSON.stringify(values)) }
   await writeNative()
-  await writeFile(join(native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: familyVersion }))
-  await writeFile(join(wasm, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-wasm', version: familyVersion }))
+  await writeFile(join(native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: ENGINE_VERSIONS['linux-arm64-glibc'] }))
+  await writeFile(join(wasm, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-wasm', version: ENGINE_VERSIONS['linux-arm64-glibc'] }))
   for (const file of ['loader', 'wasm', 'data', 'metadata']) await writeFile(join(wasm, file), 'fixture')
-  await writeFile(join(wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: familyVersion, platform: 'wasm', status: 'built', engine: {
+  await writeFile(join(wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'wasm', status: 'built', engine: {
     kind: 'wasm', loader: 'loader', wasm: 'wasm', data: 'data', metadata: 'metadata', programDirectory: '/instdir/program',
   } }))
   return { directory, native, wasm, writeNative }
@@ -54,6 +54,12 @@ async function engineFixture(): Promise<EngineFixture> {
 describe('engine discovery', () => {
   it('the adapter pins the engine family version its manifests record', () => {
     expect(ENGINE_VERSION).toBe(familyVersion)
+    for (const [platform, version] of Object.entries(ENGINE_VERSIONS)) {
+      const manifest = JSON.parse(readFileSync(join(import.meta.dirname, '../../', platform, 'package.json'), 'utf8')) as { version: string }
+      expect(version).toBe(manifest.version)
+    }
+    expect(ENGINE_VERSIONS['win32-x64']).toBe('0.1.2')
+    expect(ENGINE_VERSIONS.wasm).toBe('0.1.1')
   })
 
   it('selects glibc and rejects unsupported libc or host architectures', () => {
@@ -152,6 +158,25 @@ describe('document inspection', () => {
 })
 
 describe('engine resolution', () => {
+  it('accepts retained macOS engines and requires the patched Windows versions', async () => {
+    const fixture = await engineFixture()
+    try {
+      for (const platform of ['darwin', 'win32']) for (const arch of ['x64', 'arm64']) {
+        const target = `${platform}-${arch}`
+        const writeVersion = async (version: string) => {
+          await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: `@deepseek-ai/libreoffice-kit-${target}`, version }))
+          await fixture.writeNative({ schemaVersion: 1, version, platform: target, status: 'built',
+            engine: { kind: 'native', executable: 'helper', programDirectory: 'program' } })
+        }
+        const resolve = () => resolveEngine(() => join(fixture.native, 'package.json'), () => true, { platform, arch })
+        await writeVersion(ENGINE_VERSIONS[target]!)
+        await expect(resolve()).resolves.toMatchObject({ backend: 'native' })
+        await writeVersion(platform === 'win32' ? '0.1.1' : '0.1.2')
+        await expect(resolve()).rejects.toThrow(/incompatible or incomplete/)
+      }
+    } finally { await rm(fixture.directory, { recursive: true, force: true }) }
+  })
+
   it.each(['darwin', 'win32'])('%s never resolves WASM when its native package is missing', async platform => {
     const resolve = vi.fn((name: string): never => {
       throw Object.assign(new Error(`Cannot find module '${name}/package.json'`), { code: 'MODULE_NOT_FOUND' })
@@ -215,14 +240,14 @@ describe('engine resolution', () => {
         .rejects.toThrow(/elsewhere/)
       await expect(resolveEngine(() => { throw Object.assign(new Error('no message'), { code: 'MODULE_NOT_FOUND', message: undefined }) }))
         .rejects.toBeInstanceOf(Error)
-      await writeFile(join(fixture.wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: familyVersion, platform: 'wasm', status: 'unbuilt', engine: { kind: 'wasm' } }))
+      await writeFile(join(fixture.wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'wasm', status: 'unbuilt', engine: { kind: 'wasm' } }))
       await expect(resolveEngine(absent, () => false, { platform: 'linux', arch: 'x64' })).rejects.toThrow(/incompatible or incomplete/)
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })
 
   it('rejects every incomplete native manifest field in turn', async () => {
     const fixture = await engineFixture()
-    const base = { schemaVersion: 1, version: familyVersion, platform: 'linux-arm64-glibc', status: 'built',
+    const base = { schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'linux-arm64-glibc', status: 'built',
       engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: '2.38' } }
     const resolve = () => resolveEngine(() => join(fixture.native, 'package.json'), () => true,
       { platform: 'linux', arch: 'arm64', report: () => ({ header: { glibcVersionRuntime: '2.39' } }) })
@@ -282,7 +307,7 @@ describe('glibc floors', () => {
   it('older manifests remain readable and an unknown libc never selects a native ABI', async () => {
     const fixture = await engineFixture()
     try {
-      await fixture.writeNative({ schemaVersion: 1, version: familyVersion, platform: 'linux-arm64-glibc', status: 'built',
+      await fixture.writeNative({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'linux-arm64-glibc', status: 'built',
         engine: { kind: 'native', executable: 'helper', programDirectory: 'program' } })
       expect((await resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).backend).toBe('native')
       expect((await resolveWith(fixture, () => ({ header: {}, sharedObjects: ['/lib/libc.so.6'] }))).backend).toBe('wasm')
@@ -292,7 +317,7 @@ describe('glibc floors', () => {
   it('patch components compare numerically with an omitted patch equal to zero', async () => {
     const fixture = await engineFixture()
     try {
-      await fixture.writeNative({ schemaVersion: 1, version: familyVersion, platform: 'linux-arm64-glibc', status: 'built',
+      await fixture.writeNative({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'linux-arm64-glibc', status: 'built',
         engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: '2.2.5' } })
       expect((await resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.2' } }))).backend).toBe('wasm')
       expect((await resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.2.5' } }))).backend).toBe('native')
@@ -304,14 +329,14 @@ describe('glibc floors', () => {
     const fixture = await engineFixture()
     try {
       for (const value of [null, 2.38, '', '2', '2.38.0.1', '02.38', '2.38 ', 'GLIBC_2.38', '9007199254740992.1']) {
-        await fixture.writeNative({ schemaVersion: 1, version: familyVersion, platform: 'linux-arm64-glibc', status: 'built',
+        await fixture.writeNative({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'linux-arm64-glibc', status: 'built',
           engine: { kind: 'native', executable: 'helper', programDirectory: 'program', glibcMinimum: value } })
         await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toThrow(/invalid glibcMinimum/)
       }
       await fixture.writeNative()
-      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-x64-glibc', version: familyVersion }))
+      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-x64-glibc', version: ENGINE_VERSIONS['linux-arm64-glibc'] }))
       await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toThrow(/incompatible or incomplete/)
-      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: familyVersion }))
+      await writeFile(join(fixture.native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: ENGINE_VERSIONS['linux-arm64-glibc'] }))
       await rm(join(fixture.native, 'helper'))
       await expect(resolveWith(fixture, () => ({ header: { glibcVersionRuntime: '2.17' } }))).rejects.toMatchObject({ code: 'ENOENT' })
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
