@@ -16,7 +16,9 @@ Node API 与各平台引擎独立指定版本。0.1.3 使用 macOS 和 Windows �
 npm install @deepseek-ai/libreoffice-kit@0.1.3
 ```
 
-npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
+npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，Windows 上，引擎可执行文件或程序目录路径达到 260 个字符时，在私有操作目录中使用 helper 临时副本和指向已安装资源的 junction。资源保留在安装目录，junction 在 helper 关闭后清理。渲染器若在返回协议响应前退出，会携带退出状态和捕获的诊断信息拒绝操作。
+
+在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';

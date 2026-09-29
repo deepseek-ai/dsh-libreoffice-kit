@@ -52,6 +52,8 @@ npm exec -- dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 
 Conversion workers run the package's shipped JavaScript with an empty `execArgv`; consumer launch flags such as `--input-type=module` are not inherited.
 
+On Windows, an engine executable or program path of 260 or more characters uses a temporary helper copy and a junction to the installed resources inside the private operation directory. Resources stay in their installation, and the junction remains until the helper closes. A renderer that exits before returning a protocol response rejects with its exit status and captured diagnostics.
+
 On Linux, the native child searches the selected engine's program directory before system paths for shared libraries. Caller-provided `LD_LIBRARY_PATH` and `LD_PRELOAD` are not inherited.
 
 The caller authorizes input access and owns private input/output directories; paths must be absolute and remain unchanged during conversion. Input files must be regular Office files within the configured byte limits. ZIP entry and uncompressed-size limits apply to OOXML; binary DOC/XLS/PPT files use OLE compound containers validated by the LibreOffice importer. Binary formats retain the same conversion deadline and input/output limits. Output creation uses exclusive mode and permissions `0600`; an existing output is never overwritten. Failed or cancelled renders remove newly created outputs. `maxOutputBytes` limits the returned PDF and its read buffer; native temporary disk files can grow until export completes, then oversized PDFs are rejected and deleted before Node reads them. The caller owns successful PDFs and may send their bytes to a browser PDF viewer.
