@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/libreoffice-kit-workspace",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
@@ -30,6 +30,7 @@
     "@vitest/coverage-v8": "^4.1.8",
     "js-yaml": "^4.2.0",
     "pdfjs-dist": "6.3.289",
+    "pngjs": "7.0.0",
     "tsdown": "^0.22.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",

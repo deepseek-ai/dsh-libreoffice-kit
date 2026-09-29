@@ -2,6 +2,18 @@
 
 English | [中文](README.zh.md)
 
+## Direct raster fixtures
+
+`color-blocks.docx`, `color-blocks.xlsx`, and `color-blocks.pptx` are repository-authored, minimal OOXML files with a red (`D73027`) block on the left, a blue (`236FC2`) block on the right, and black text. The document and slide are one 6 × 4 inch page; the worksheet is `Render!A1:B2`. They contain no images, links, or user documents. The shared [pixel check](../runtime-render-content.mjs) decodes 72 DPI PNG output, composites it onto white, and requires visible filled areas, dark text, and the intended color order without depending on font metrics or whole-image hashes. Runtime tests and offline installed-package rehearsals use the same files. `LIBREOFFICE_RENDER_ARTIFACTS` retains inputs, PNGs, manifests, and diagnostics in a unique subdirectory on success or failure.
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `color-blocks.docx` | 1082 | `7c86b96d6aaf5fd8d542951976984d3c4bb13f08846d04baf835790c21acc0ee` |
+| `color-blocks.xlsx` | 2040 | `775fae375cdae29c4ce90099daf362fa25eb7bc45b11a8029694e031131f3f52` |
+| `color-blocks.pptx` | 1787 | `a459fb78af5f6446fa5bfcb6623454c984e82bf9f15cfcf27710bb995741702c` |
+
+## PDF conversion fixtures
+
 `one-sheet.xlsx` and `one-slide.pptx` contain the text `Office preview 中文文档` in one worksheet and one slide, without images or external resources. They exercise Calc and Impress loading and PDF export in native and WASM installation checks. They do not establish complex-document fidelity.
 
 The XML parts come unchanged from DeepSeek Harness's `apps/web/tests/office-fixture.ts`, function `realOfficeBytes`, using its default font. That source file's SHA-256 is `f606419564c82b4e4d9905dc570086aeaa121e9b49a6859148adeef37392045f`; its MIT notice is retained in the repository [NOTICE](../../NOTICE). The function was already exercised through the real Web preview and installed converter.

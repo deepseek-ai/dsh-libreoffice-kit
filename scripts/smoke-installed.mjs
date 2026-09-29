@@ -7,6 +7,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
 import { embeddedPdfDocumentParts } from './runtime-embedded-pdf-fixture.mjs';
+import { renderOfficeContent } from './test/runtime-render-content.mjs';
 
 const parts = {
   '[Content_Types].xml': '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
@@ -25,6 +26,8 @@ const server = createServer((_request, response) => {
 });
 try {
   assert.equal(converter.backend, process.argv[2]);
+  console.log(`Installed ${converter.backend}: DOCX, XLSX, and PPTX direct raster content`);
+  const rendering = await renderOfficeContent(converter, resolve('rendering'), process.argv[2]);
   console.log(`Installed ${converter.backend}: DOCX conversion`);
   const result = await converter.render({ inputPath, outputPath });
   const pdf = await readFile(outputPath);
@@ -34,7 +37,7 @@ try {
   for (const [extension, fixture] of [['doc', 'one-page.doc'], ['xls', 'one-sheet.xls'], ['ppt', 'one-slide.ppt'], ['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
     console.log(`Installed ${converter.backend}: ${extension.toUpperCase()} conversion`);
     const formatOutput = resolve(`roundtrip.${extension}.pdf`);
-    const converted = await converter.render({ inputPath: resolve('fixtures', fixture), outputPath: formatOutput });
+    const converted = await converter.render({ inputPath: resolve('test', 'fixtures', fixture), outputPath: formatOutput });
     const bytes = await readFile(formatOutput);
     assert.equal(converted.backend, converter.backend);
     assert.equal(bytes.subarray(0, 5).toString('ascii'), '%PDF-', `${extension} output is not PDF`);
@@ -64,7 +67,7 @@ try {
   await converter.render({ inputPath: externalInput, outputPath: externalOutput });
   assert.equal((await readFile(externalOutput)).subarray(0, 5).toString('ascii'), '%PDF-');
   assert.equal(requests, 0, 'Document conversion fetched an external HTTP image');
-  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, embeddedGraphics })}\n`);
+  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, rendering, embeddedGraphics })}\n`);
 } finally {
   await converter.dispose();
   if (server.listening) {

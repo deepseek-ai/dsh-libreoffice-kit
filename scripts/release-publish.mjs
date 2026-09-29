@@ -8,6 +8,7 @@ import { auditReleaseCandidate } from './release-privacy.mjs';
 import { verifyReleaseSourceTag } from './release-source-tag.mjs';
 import { engineVersion, enginePrefix, isMain, kitManifest, readJson, releaseRepository, releaseTag, releaseTargets, root, sourceRepository, tarballName } from './platform-matrix.mjs';
 import { verifyEngineArchiveRecord } from './engine-archive.mjs';
+import { assertRenderingEvidence } from './rendering-evidence.mjs';
 
 /**
  * Check the candidate against its verification receipts before any upload.
@@ -42,6 +43,7 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     const conversion = record[platform === 'wasm' ? 'wasm' : 'native'];
     assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => conversion?.formats?.[format]?.backend === (platform === 'wasm' ? 'wasm' : 'native')
       && conversion.formats[format].pdfBytes > 100), `Missing Office format conversion evidence: ${platform}`);
+    assertRenderingEvidence(conversion?.rendering, platform === 'wasm' ? 'wasm' : 'native');
     assert(conversion?.adapter?.sha256 === adapterSha256,
       `Verification belongs to different adapter bytes: ${platform}`);
     assert(conversion?.embeddedGraphics?.pdfInEmf === true,

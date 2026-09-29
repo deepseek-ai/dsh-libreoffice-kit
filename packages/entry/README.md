@@ -6,14 +6,14 @@ Convert, recalculate, and directly render local Office documents with prebuilt L
 
 Binary `.doc`, `.xls`, and `.ppt` inputs must be OLE compound documents, such as Office 97–2003 files. Renamed RTF/HTML and `.wps` inputs are unsupported. `missingFonts` is empty for binary inputs because their font tables are interpreted by LibreOffice rather than the OOXML inspector.
 
-The Node API version is independent of its platform engine versions. Version 0.1.2 uses Windows engines 0.1.2 and retains macOS/WASM engines 0.1.1. `ENGINE_VERSION` and `discoverRuntime().version` identify the Node API; `ENGINE_VERSIONS` lists the exact compatible engine versions.
+The Node API version is independent of its platform engine versions. Version 0.1.3 uses macOS and Windows engines 0.1.3 and retains WASM engine 0.1.1. `ENGINE_VERSION` and `discoverRuntime().version` identify the Node API; `ENGINE_VERSIONS` lists the exact compatible engine versions.
 
 ## Installation and usage
 
 Install with Node.js 22.19.0 or newer:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.1.2
+npm install @deepseek-ai/libreoffice-kit@0.1.3
 ```
 
 npm installs the matching native engine on macOS/Windows ARM64 or x64, and the shared WASM engine on Linux. macOS and Windows require their native package; a missing or invalid package rejects `createConverter` with `unavailable`, without switching to WASM. Linux uses WASM unless a compatible development native package was installed explicitly. Conversion failures never switch engines.
@@ -53,7 +53,7 @@ The caller authorizes input access and owns private input/output directories; pa
 
 ## Engines, fonts, and runtime behavior
 
-The Node API and engine packages share the kit release version. `ENGINE_VERSION` pins both WASM and native optional dependencies to the exact engine version. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
+The Node API reports its release version through `ENGINE_VERSION`; `ENGINE_VERSIONS` pins each platform engine independently. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
 
 Defaults and all options are documented in the shipped TypeScript declarations in `lib/types/index.d.ts`. Font directories use conventional system/user paths for the selected OS. Indexing skips missing or protected sources and propagates other filesystem errors. `fontkit` indexes original font files and selects installed faces and glyph coverage; it does not rewrite fonts. Each operation discovers font candidates again and revalidates cached file identities. It uses one ordered metadata snapshot; matching entries are invalidated when that snapshot changes. A detected font change during conversion rejects the operation and removes its output. Original font bytes and decoded glyph coverage remain conversion-local. `missingFonts` contains absent families declared in readable document XML, excluding unrelated engine defaults. Missing glyphs without a named missing family are not a complete document accessibility report.
 

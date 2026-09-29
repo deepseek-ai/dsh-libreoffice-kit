@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/libreoffice-kit",
   "description": "Convert, recalculate, and render Office documents with prebuilt LibreOffice",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publishConfig": {
     "access": "public"
   },

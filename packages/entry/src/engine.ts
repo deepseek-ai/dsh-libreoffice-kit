@@ -7,16 +7,16 @@ import { dirname, isAbsolute, resolve, relative, sep, join } from 'node:path'
 const require = createRequire(import.meta.url)
 
 /** Node API release version returned by runtime discovery. */
-export const ENGINE_VERSION = '0.1.2'
+export const ENGINE_VERSION = '0.1.3'
 
 /** Exact compatible engine versions; unchanged platforms retain their published packages. */
 export const ENGINE_VERSIONS: Readonly<Record<string, string>> = Object.freeze({
-  'darwin-arm64': '0.1.1',
-  'darwin-x64': '0.1.1',
+  'darwin-arm64': '0.1.3',
+  'darwin-x64': '0.1.3',
   'linux-arm64-glibc': '0.1.1',
   'linux-x64-glibc': '0.1.1',
-  'win32-arm64': '0.1.2',
-  'win32-x64': '0.1.2',
+  'win32-arm64': '0.1.3',
+  'win32-x64': '0.1.3',
   wasm: '0.1.1',
 })
 

@@ -1,3 +1,4 @@
+import { renderingEvidenceFixture } from './rendering-evidence-fixture.mjs';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -54,6 +55,7 @@ function fixture(t, platforms = releaseTargets([])) {
   const evidence = { sourceCommit: env.GITHUB_SHA, releaseManifestSha256, platforms: platforms.map(platform => ({
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
+      rendering: renderingEvidenceFixture(platform === 'wasm' ? 'wasm' : 'native'),
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
   })) };
   save('verification.json', evidence);
@@ -67,12 +69,11 @@ test('publication accepts the complete adapter-declared engine inventory with ma
 
 test('publication rejects replacing a retained engine with the Node API version', t => {
   const { directory, release, env, save } = fixture(t);
-  const mac = release.packages.find(record => record.platform === 'darwin-arm64');
-  assert.equal(mac.version, '0.1.1');
-  assert.equal(release.version, '0.1.2');
-  mac.version = release.version;
-  mac.file = engineArchiveName(mac);
-  mac.install.file = mac.file.replace(/\.xz$/, '');
+  const retained = release.packages.find(record => record.platform === 'wasm');
+  assert.notEqual(retained.version, release.version);
+  retained.version = release.version;
+  retained.file = engineArchiveName(retained);
+  retained.install.file = retained.file.replace(/\.xz$/, '');
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
@@ -99,6 +100,24 @@ test('publication requires embedded graphics evidence from every installed engin
   delete evidence.platforms[0].native.embeddedGraphics;
   save('verification.json', evidence);
   assert.throws(() => validatePublication(directory, env), /Missing embedded PDF graphic/);
+});
+
+test('publication rejects missing, blank, or PDF-derived Office rendering receipts', t => {
+  const { directory, env, evidence, save } = fixture(t);
+  for (const platform of evidence.platforms) {
+    for (const extension of ['docx', 'xlsx', 'pptx']) {
+      for (const change of ['missing', 'blank', 'pdfium']) {
+        const invalid = structuredClone(evidence);
+        const record = invalid.platforms.find(entry => entry.platform === platform.platform);
+        const rendering = record[platform.platform === 'wasm' ? 'wasm' : 'native'].rendering;
+        if (change === 'missing') delete rendering[extension];
+        else if (change === 'blank') Object.assign(rendering[extension], { visiblePixels: 0, redPixels: 0, bluePixels: 0, darkPixels: 0 });
+        else rendering[extension].rasterEngine = 'pdfium';
+        save('verification.json', invalid);
+        assert.throws(() => validatePublication(directory, env), /rendering evidence|image is blank|must use LibreOffice pixels/);
+      }
+    }
+  }
 });
 
 test('publication rejects partial, duplicate and undeclared development targets', t => {

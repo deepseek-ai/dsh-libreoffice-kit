@@ -2,12 +2,14 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { npm, npmEnvironment, pnpm, run } from './pack-utils.mjs';
 import { assert, sha256, verifyEnginePackage } from './verify-artifacts.mjs';
 import { auditMacOS } from './audit-macos.mjs';
 import { verifyKitPackage } from './verify-kit.mjs';
 import { hostTarget, isMain, kitDirectory, readJson, root, tarballName } from './platform-matrix.mjs';
 import { materializeEngineArchive } from './engine-archive.mjs';
+import { assertRenderingEvidence } from './rendering-evidence.mjs';
 
 /**
  * Resolve the adapter tarball the rehearsal installs: the candidate directory's
@@ -69,9 +71,16 @@ export function verifyPackedInstall(directory, options = {}) {
     cpSync(join(root, 'scripts/smoke-installed.mjs'), join(consumer, 'smoke.mjs'));
     cpSync(join(root, 'test/runtime-linked-fixture.mjs'), join(consumer, 'runtime-linked-fixture.mjs'));
     cpSync(join(root, 'test/runtime-embedded-pdf-fixture.mjs'), join(consumer, 'runtime-embedded-pdf-fixture.mjs'));
-    cpSync(join(root, 'test/fixtures'), join(consumer, 'fixtures'), { recursive: true });
+    mkdirSync(join(consumer, 'test'));
+    mkdirSync(join(consumer, 'scripts'));
+    cpSync(join(root, 'test/runtime-render-content.mjs'), join(consumer, 'test/runtime-render-content.mjs'));
+    cpSync(join(root, 'scripts/rendering-evidence.mjs'), join(consumer, 'scripts/rendering-evidence.mjs'));
+    // The zero-dependency PNG decoder is qualification tooling, outside the released package.
+    cpSync(dirname(createRequire(import.meta.url).resolve('pngjs/package.json')), join(consumer, 'node_modules/pngjs'), { recursive: true });
+    cpSync(join(root, 'test/fixtures'), join(consumer, 'test/fixtures'), { recursive: true });
     run(process.execPath, ['smoke.mjs', expectedBackend], { cwd: consumer,
-      env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' }, timeout: 180_000 });
+      env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '',
+        ...(process.env.LIBREOFFICE_RENDER_ARTIFACTS ? { LIBREOFFICE_RENDER_ARTIFACTS: resolve(process.env.LIBREOFFICE_RENDER_ARTIFACTS) } : {}) }, timeout: 180_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
     const windowsLongPaths = process.platform === 'win32' ? JSON.parse(run(process.execPath,
       [join(root, 'scripts/verify-windows-long-paths.mjs'), join(consumer, 'node_modules', '@deepseek-ai', `libreoffice-kit-${platform}`)],
@@ -80,11 +89,15 @@ export function verifyPackedInstall(directory, options = {}) {
     assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => result.formats?.[format]?.backend === result.backend && result.formats[format].pdfBytes > 100),
       'Installed conversion must include DOC, DOCX, XLS, XLSX, PPT, and PPTX PDFs');
     assert(result.embeddedGraphics?.pdfInEmf === true, 'Installed conversion must preserve embedded PDF graphics');
+    assertRenderingEvidence(result.rendering, expectedBackend);
     if (keep) {
       mkdirSync(dirname(keep), { recursive: true });
       for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'runtime-embedded-pdf-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'roundtrip.doc.pdf', 'roundtrip.xls.pdf', 'roundtrip.ppt.pdf', 'roundtrip.xlsx.pdf', 'roundtrip.pptx.pdf', 'external.docx', 'external.pdf', 'embedded-pdf.docx', 'embedded-pdf.pdf'])
         rmSync(join(consumer, file));
-      rmSync(join(consumer, 'fixtures'), { recursive: true });
+      rmSync(join(consumer, 'test'), { recursive: true });
+      rmSync(join(consumer, 'scripts'), { recursive: true });
+      rmSync(join(consumer, 'rendering'), { recursive: true });
+      rmSync(join(consumer, 'node_modules/pngjs'), { recursive: true });
       try { renameSync(consumer, keep); }
       catch (error) {
         if (error.code !== 'EXDEV') throw error;

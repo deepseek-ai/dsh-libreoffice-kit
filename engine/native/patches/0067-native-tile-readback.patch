@@ -1,0 +1,36 @@
+--- a/desktop/source/lib/init.cxx
++++ b/desktop/source/lib/init.cxx
+@@ -187,7 +187,7 @@
+ #include <vcl/ImageTree.hxx>
+ #include <vcl/ITiledRenderable.hxx>
+ #include <vcl/dialoghelper.hxx>
+-#if defined(_WIN32) && !USE_HEADLESS_CODE
++#if defined(MACOSX) || (defined(_WIN32) && !USE_HEADLESS_CODE)
+ #include <vcl/BitmapTools.hxx>
+ #endif
+ #include <unicode/uchar.h>
+@@ -4285,9 +4285,13 @@
+     // Set background to transparent by default.
+     pDevice->SetBackground(Wallpaper(COL_TRANSPARENT));
+ 
++#if defined(MACOSX) || (defined(_WIN32) && !USE_HEADLESS_CODE)
++    pDevice->SetOutputSizePixel(Size(nCanvasWidth, nCanvasHeight));
++#else
+     pDevice->SetOutputSizePixelScaleOffsetAndLOKBuffer(
+                 Size(nCanvasWidth, nCanvasHeight), 1.0, Point(),
+                 pBuffer);
++#endif
+ 
+     pDoc->paintTile(*pDevice, nCanvasWidth, nCanvasHeight,
+                     nTilePosX, nTilePosY, nTileWidth, nTileHeight);
+@@ -4304,8 +4308,8 @@
+         pDevice->DrawRect(aRect);
+     }
+ 
+-#if defined(_WIN32) && !USE_HEADLESS_CODE
+-    // pBuffer was not used there
++#if defined(MACOSX) || (defined(_WIN32) && !USE_HEADLESS_CODE)
++    // These devices paint into their own surfaces; LOK receives a BGRA copy.
+     pDevice->EnableMapMode(false);
+     Bitmap aBmp(pDevice->GetBitmap({ 0, 0 }, { nCanvasWidth, nCanvasHeight }));
+     vcl::bitmap::fillWithData(pBuffer, aBmp);

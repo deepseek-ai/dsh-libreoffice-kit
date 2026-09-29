@@ -5,8 +5,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { documentFixture, officeFuzzFixture } from './runtime-fixture.mjs';
+import { renderOfficeContent } from './runtime-render-content.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
+test('real engine paints visible DOCX, XLSX, and PPTX content with the expected colors', { skip: !enabled, timeout: 240_000 }, async () => {
+  const { createConverter } = await import(pathToFileURL(enabled).href);
+  const root = await mkdtemp(join(tmpdir(), 'libreoffice-real-render-'));
+  const converter = await createConverter({ timeoutMs: 90_000 });
+  try {
+    const rendering = await renderOfficeContent(converter, join(root, 'rendering'), process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND ?? converter.backend);
+    console.log(JSON.stringify({ rendering }));
+  } finally { await converter.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
 test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {
   const { createConverter, ConversionError } = await import(pathToFileURL(enabled).href);
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-real-runtime-test-'));
