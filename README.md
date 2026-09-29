@@ -18,10 +18,18 @@ Binary `.doc`, `.xls`, and `.ppt` support covers OLE compound documents such as 
 
 ## Quick start
 
-Requires Node.js **22.19.0 or newer**. Install the `0.1.0` package with its optional engines:
+Requires Node.js **22.19.0 or newer**. Install the `0.1.3` package with its optional engines:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.1.0
+npm install @deepseek-ai/libreoffice-kit@0.1.3
+```
+
+The package installs the `dsoffice` command. From a local installation:
+
+```sh
+npm exec -- dsoffice render --input report.docx --output-dir report-pages --pages 1
+npm exec -- dsoffice convert --input report.docx --output report.pdf
+npm exec -- dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 ```
 
 ```js

@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   } })
   const command = positionals[0] ?? ''
   if (positionals.length !== 1 || !['capabilities', 'convert', 'recalculate', 'render'].includes(command))
-    throw new TypeError('Usage: libreoffice-kit capabilities --json | render --input <file> --output-dir <fresh-directory> [--pages all|1,3] [--sheet <name> --range A1:D20] [--dpi 144] | convert --input <file> --output <file> [--sheet <name>] | recalculate --input <workbook> --output <xlsx|ods>')
+    throw new TypeError('Usage: dsoffice capabilities --json | render --input <file> --output-dir <fresh-directory> [--pages all|1,3] [--sheet <name> --range A1:D20] [--dpi 144] | convert --input <file> --output <file> [--sheet <name>] | recalculate --input <workbook> --output <xlsx|ods>')
   if (command === 'capabilities') {
     if (Object.keys(values).some(key => key !== 'json')) throw new TypeError('capabilities accepts only --json.')
     process.stdout.write(`${JSON.stringify({ runtime: await discoverRuntime(), conversions: CONVERSION_FORMATS,

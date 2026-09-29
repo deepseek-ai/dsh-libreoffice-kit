@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { zipSync, strToU8 } from 'fflate';
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
@@ -27,6 +28,11 @@ const server = createServer((_request, response) => {
 });
 try {
   assert.equal(converter.backend, process.argv[2]);
+  // Exercise the installed command shim as well as the CLI's literal-argument entry.
+  const capabilities = process.platform === 'win32'
+    ? execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'node_modules\\.bin\\dsoffice.cmd capabilities --json'], { encoding: 'utf8', timeout: 30_000 })
+    : execFileSync('./node_modules/.bin/dsoffice', ['capabilities', '--json'], { encoding: 'utf8', timeout: 30_000 });
+  assert.equal(JSON.parse(capabilities).runtime.backend, process.argv[2]);
   const rasterChecks = {};
   const rasterErrors = [];
   for (const [name, render] of [

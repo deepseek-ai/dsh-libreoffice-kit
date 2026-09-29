@@ -47,6 +47,6 @@
     "@deepseek-ai/libreoffice-kit-wasm": "workspace:*"
   },
   "bin": {
-    "libreoffice-kit": "./lib/cli.js"
+    "dsoffice": "./lib/cli.js"
   }
 }

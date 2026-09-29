@@ -41,7 +41,14 @@ try {
 
 长驻服务如果需要为多个并发转换槽提供一个显式生命周期所有者，可创建 `createConverterFactory(options)`，再通过 `factory.create()` 建立转换器。这些转换器使用 factory 私有缓存，同时仍分别拥有 Worker、原生 helper、配置目录和输出。释放 factory 会停止并等待它创建的全部转换器。
 
-`convert()` 按输出后缀导出格式，`recalculate()` 在保存前刷新电子表格公式结果，`renderImages()` 在全新目录中写入 PNG tile 和 `manifest.json`。Office 图像直接从一次加载的模型绘制，PDF 使用 PDFium。CLI 通过 `libreoffice-kit capabilities|convert|recalculate|render` 提供相同行为。
+`convert()` 按输出后缀导出格式，`recalculate()` 在保存前刷新电子表格公式结果，`renderImages()` 在全新目录中写入 PNG tile 和 `manifest.json`。Office 图像直接从一次加载的模型绘制，PDF 使用 PDFium。CLI 通过 `dsoffice capabilities|convert|recalculate|render` 提供相同行为。
+
+```sh
+npm exec -- dsoffice render --input report.docx --output-dir report-pages --pages 1
+npm exec -- dsoffice render --input budget.xlsx --output-dir budget-preview --sheet Summary --range A1:D20
+npm exec -- dsoffice convert --input report.docx --output report.pdf
+npm exec -- dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
+```
 
 转换 worker 以空的 `execArgv` 运行包内发布的 JavaScript；`--input-type=module` 之类的调用方启动参数不会被继承。
 
