@@ -182,13 +182,13 @@ test('a fully published family produces zero pending stages and no registry writ
   assert.deepEqual(result, { staged: 0, skippedPublished: 3, stages: [] });
 });
 
-test('native releases stage the engines and adapter while retaining published WASM', async () => {
+test('already published WASM is retained while new native engines and the adapter are staged', async () => {
   const publication = { version: kitManifest().version, packages: [...releaseTargets([]).map(platform => ({
-    name: `${enginePrefix}-${platform}`, version: engineVersion(platform), path: `/temporary/${platform}.tgz`, integrity,
+    name: `${enginePrefix}-${platform}`, version: platform === 'wasm' ? '0.0.0-retained' : engineVersion(platform), path: `/temporary/${platform}.tgz`, integrity,
   })), { name: kitManifest().name, version: kitManifest().version, path: '/temporary/entry.tgz', integrity }] };
   const writes = [];
   const result = await publishNpmPackages(publication, { ...quiet, tag: 'latest', run(args) {
-    if (args[0] === 'view') return args[1].endsWith('@0.1.1') ? present() : absent();
+    if (args[0] === 'view') return args[1] === `${enginePrefix}-wasm@0.0.0-retained` ? present() : absent();
     writes.push(args[2]);
     return stageSuccess(args, publication);
   } });

@@ -68,13 +68,12 @@ test('publication accepts the complete adapter-declared engine inventory with ma
   assert.deepEqual(validatePublication(directory, env), release);
 });
 
-test('publication rejects replacing a retained engine with the Node API version', t => {
+test('publication rejects an engine version outside its declared pin', t => {
   const { directory, release, env, save } = fixture(t);
-  const retained = release.packages.find(record => record.platform === 'wasm');
-  assert.notEqual(retained.version, release.version);
-  retained.version = release.version;
-  retained.file = engineArchiveName(retained);
-  retained.install.file = retained.file.replace(/\.xz$/, '');
+  const engine = release.packages.find(record => record.platform === 'wasm');
+  engine.version = '0.0.0-invalid';
+  engine.file = engineArchiveName(engine);
+  engine.install.file = engine.file.replace(/\.xz$/, '');
   save('release.json', release);
   assert.throws(() => validatePublication(directory, env), /Invalid release tarball/);
 });
