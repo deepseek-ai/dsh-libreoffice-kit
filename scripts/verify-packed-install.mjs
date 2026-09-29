@@ -83,6 +83,17 @@ export function verifyPackedInstall(directory, options = {}) {
       env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '',
         ...(process.env.LIBREOFFICE_RENDER_ARTIFACTS ? { LIBREOFFICE_RENDER_ARTIFACTS: resolve(process.env.LIBREOFFICE_RENDER_ARTIFACTS) } : {}) }, timeout: 720_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
+    let windowsLongCli;
+    if (process.platform === 'win32') {
+      const longConsumer = join(work, 'long-install', 'a'.repeat(80), 'b'.repeat(80), 'c'.repeat(80));
+      mkdirSync(dirname(longConsumer), { recursive: true });
+      cpSync(consumer, longConsumer, { recursive: true });
+      const receipt = join(work, 'long-cli.json');
+      run(process.execPath, [join(root, 'scripts/smoke-installed-cli.mjs'), longConsumer, join(work, 'long-cli-images'), receipt],
+        { cwd: consumer, timeout: 360_000, env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' } });
+      windowsLongCli = readJson(receipt);
+      assertRenderingEvidence(windowsLongCli, 'native');
+    }
     const windowsLongPaths = process.platform === 'win32' ? JSON.parse(run(process.execPath,
       [join(root, 'scripts/verify-windows-long-paths.mjs'), join(consumer, 'node_modules', '@deepseek-ai', `libreoffice-kit-${platform}`)],
       { timeout: 240_000, env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' } })) : undefined;
@@ -112,7 +123,7 @@ export function verifyPackedInstall(directory, options = {}) {
     // Record the installed adapter so a receipt proves which build converted.
     const adapterRecord = { name: adapter.manifest.name, version: adapter.manifest.version,
       file: basename(adapter.file), sha256: sha256(adapter.file) };
-    return { ...result, ...(windowsLongPaths ? { windowsLongPaths } : {}), ...(macOS ? { macOS } : {}), adapter: adapterRecord, installedOutsideRepository: true, network: 'offline', ...(keep ? { retainedInstallation: keep } : {}) };
+    return { ...result, ...(windowsLongPaths ? { windowsLongPaths, windowsLongCli } : {}), ...(macOS ? { macOS } : {}), adapter: adapterRecord, installedOutsideRepository: true, network: 'offline', ...(keep ? { retainedInstallation: keep } : {}) };
   } finally { rmSync(work, { recursive: true, force: true, maxRetries: 3 }); }
 }
 
