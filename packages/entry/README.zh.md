@@ -6,7 +6,7 @@
 
 二进制 `.doc`、`.xls`、`.ppt` 输入必须是 OLE 复合文档，例如 Office 97–2003 文件。不支持改后缀的 RTF/HTML 和 `.wps`。二进制输入的 `missingFonts` 为空，因为其字体表由 LibreOffice 读取，而不是由 OOXML 检查器读取。
 
-Node API 与各平台引擎独立指定版本。0.1.3 使用 macOS 和 Windows 引擎 0.1.3，保留 WASM 引擎 0.1.1。`ENGINE_VERSION` 和 `discoverRuntime().version` 表示 Node API 版本；`ENGINE_VERSIONS` 列出各平台兼容的精确引擎版本。
+Node API 与各平台引擎独立指定版本。0.1.3 使用 macOS、Windows 和 WASM 引擎 0.1.3。`ENGINE_VERSION` 和 `discoverRuntime().version` 表示 Node API 版本；`ENGINE_VERSIONS` 列出各平台兼容的精确引擎版本。
 
 ## 安装与使用
 

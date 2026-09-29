@@ -17,7 +17,7 @@ export const ENGINE_VERSIONS: Readonly<Record<string, string>> = Object.freeze({
   'linux-x64-glibc': '0.1.1',
   'win32-arm64': '0.1.3',
   'win32-x64': '0.1.3',
-  wasm: '0.1.1',
+  wasm: '0.1.3',
 })
 
 /** npm scope and name prefix shared by the engine packages this adapter installs. */

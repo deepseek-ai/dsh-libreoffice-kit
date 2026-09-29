@@ -43,9 +43,9 @@ async function engineFixture(): Promise<EngineFixture> {
   const writeNative = async (values: Record<string, unknown> = manifest()) => { await writeFile(join(native, 'prebuilds.json'), JSON.stringify(values)) }
   await writeNative()
   await writeFile(join(native, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-linux-arm64-glibc', version: ENGINE_VERSIONS['linux-arm64-glibc'] }))
-  await writeFile(join(wasm, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-wasm', version: ENGINE_VERSIONS['linux-arm64-glibc'] }))
+  await writeFile(join(wasm, 'package.json'), JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-wasm', version: ENGINE_VERSIONS.wasm }))
   for (const file of ['loader', 'wasm', 'data', 'metadata']) await writeFile(join(wasm, file), 'fixture')
-  await writeFile(join(wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'wasm', status: 'built', engine: {
+  await writeFile(join(wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: ENGINE_VERSIONS.wasm, platform: 'wasm', status: 'built', engine: {
     kind: 'wasm', loader: 'loader', wasm: 'wasm', data: 'data', metadata: 'metadata', programDirectory: '/instdir/program',
   } }))
   return { directory, native, wasm, writeNative }
@@ -59,7 +59,7 @@ describe('engine discovery', () => {
       expect(version).toBe(manifest.version)
     }
     expect(ENGINE_VERSIONS['win32-x64']).toBe('0.1.3')
-    expect(ENGINE_VERSIONS.wasm).toBe('0.1.1')
+    expect(ENGINE_VERSIONS.wasm).toBe('0.1.3')
   })
 
   it('selects glibc and rejects unsupported libc or host architectures', () => {
@@ -240,7 +240,7 @@ describe('engine resolution', () => {
         .rejects.toThrow(/elsewhere/)
       await expect(resolveEngine(() => { throw Object.assign(new Error('no message'), { code: 'MODULE_NOT_FOUND', message: undefined }) }))
         .rejects.toBeInstanceOf(Error)
-      await writeFile(join(fixture.wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: ENGINE_VERSIONS['linux-arm64-glibc'], platform: 'wasm', status: 'unbuilt', engine: { kind: 'wasm' } }))
+      await writeFile(join(fixture.wasm, 'prebuilds.json'), JSON.stringify({ schemaVersion: 1, version: ENGINE_VERSIONS.wasm, platform: 'wasm', status: 'unbuilt', engine: { kind: 'wasm' } }))
       await expect(resolveEngine(absent, () => false, { platform: 'linux', arch: 'x64' })).rejects.toThrow(/incompatible or incomplete/)
     } finally { await rm(fixture.directory, { recursive: true, force: true }) }
   })

@@ -6,7 +6,7 @@ Convert, recalculate, and directly render local Office documents with prebuilt L
 
 Binary `.doc`, `.xls`, and `.ppt` inputs must be OLE compound documents, such as Office 97–2003 files. Renamed RTF/HTML and `.wps` inputs are unsupported. `missingFonts` is empty for binary inputs because their font tables are interpreted by LibreOffice rather than the OOXML inspector.
 
-The Node API version is independent of its platform engine versions. Version 0.1.3 uses macOS and Windows engines 0.1.3 and retains WASM engine 0.1.1. `ENGINE_VERSION` and `discoverRuntime().version` identify the Node API; `ENGINE_VERSIONS` lists the exact compatible engine versions.
+The Node API version is independent of its platform engine versions. Version 0.1.3 uses macOS, Windows and WASM engines 0.1.3. `ENGINE_VERSION` and `discoverRuntime().version` identify the Node API; `ENGINE_VERSIONS` lists the exact compatible engine versions.
 
 ## Installation and usage
 
