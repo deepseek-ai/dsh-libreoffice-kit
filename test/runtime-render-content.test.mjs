@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PNG } from 'pngjs';
-import { assertOfficePixels, renderOfficeCliContent, renderOfficeContent } from './runtime-render-content.mjs';
+import { assertOfficePixels, renderOfficeCliContent, renderOfficeContent, verifyFontCacheContent } from './runtime-render-content.mjs';
 
 function image(background, paint = () => {}) {
   const png = new PNG({ width: 100, height: 80 });
@@ -115,6 +115,53 @@ if (${fail} && input.endsWith('.xlsx')) {
         ]);
       }
       assert.equal(await readFile(join(directory, 'pptx.cli.stderr.txt'), 'utf8'), 'CLI rendering diagnostic');
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('cache qualification uses fresh disk readers and one warm converter, rejecting changed pixels or font reports', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'font-cache-render-content-'));
+  try {
+    for (const changed of ['none', 'pixels', 'font-report']) {
+      const created = [];
+      const factory = async options => {
+        const index = created.length;
+        const record = { options, renders: 0, disposed: 0 };
+        created.push(record);
+        const missingFonts = changed === 'font-report' && index === 2 ? ['Changed font'] : [];
+        return {
+          backend: 'native',
+          async render({ outputPath }) {
+            record.renders++;
+            await writeFile(outputPath, '%PDF-fixture');
+            if (options.fontMetadataCacheDirectory !== false) {
+              await mkdir(options.fontMetadataCacheDirectory, { recursive: true });
+              await writeFile(join(options.fontMetadataCacheDirectory, 'font-metadata.json'), '{}');
+            }
+            return { backend: 'native', missingFonts };
+          },
+          async renderImages(request) {
+            await mkdir(request.outputDir);
+            const path = join(request.outputDir, 'page.png');
+            await writeFile(path, image([255, 255, 255, 255], (x, y) => changed === 'pixels' && index === 2 && x === 50 && y === 50
+              ? [0, 0, 0, 255] : blocks(x, y)));
+            return { backend: 'native', rasterEngine: request.inputPath.endsWith('.pdf') ? 'pdfium' : 'libreoffice',
+              source: 'saved', missingFonts, pageCount: 1, images: [{ path, width: 100, height: 80 }] };
+          },
+          async dispose() { record.disposed++; },
+        };
+      };
+      const directory = join(root, changed);
+      const result = verifyFontCacheContent(factory, directory, 'native');
+      if (changed === 'none') {
+        const content = await result;
+        assert.equal(content.identical, true);
+        assert.deepEqual(Object.keys(content.modes), ['disabled', 'empty', 'disk', 'memory']);
+      } else await assert.rejects(result, error => error instanceof AggregateError && error.errors.length === 2
+        && error.errors.every(mode => mode.errors.every(format => /font metadata caching changed/.test(format.message))));
+      assert.deepEqual(created.map(record => record.options.fontMetadataCacheDirectory), [false, join(directory, 'cache'), join(directory, 'cache')]);
+      assert.deepEqual(created.map(record => record.renders), [3, 3, 6]);
+      assert.deepEqual(created.map(record => record.disposed), [1, 1, 1]);
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

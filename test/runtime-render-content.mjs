@@ -1,9 +1,10 @@
 /** Shared visible-content checks for real Office renders and offline release rehearsals. */
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { cp, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { dirname, extname, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createHash } from 'node:crypto';
 import { PNG } from 'pngjs';
 import { assertRenderingEvidence, assertRenderingPixels } from '../scripts/rendering-evidence.mjs';
 const executeFile = promisify(execFile);
@@ -55,6 +56,60 @@ export async function renderOfficeCliContent(cliPath, directory, expectedBackend
     await writeFile(`${outputPrefix}.stderr.txt`, output.stderr);
     return JSON.parse(output.stdout);
   }, directory, expectedBackend, 'cli');
+}
+
+async function rasterSignature(result, backend, rasterEngine) {
+  assert.equal(result.backend, backend);
+  assert.equal(result.rasterEngine, rasterEngine);
+  assert.equal(result.pageCount, 1);
+  assert.equal(result.images.length, 1);
+  const images = [];
+  for (const image of result.images) {
+    const bytes = await readFile(image.path);
+    assertOfficePixels(bytes, `${backend} ${rasterEngine}`);
+    const { width, height, data } = PNG.sync.read(bytes);
+    images.push({ width, height, rectangle: image.rectangle, page: image.page, sheet: image.sheet, range: image.range, rtl: image.rtl,
+      pixels: createHash('sha256').update(data).digest('hex') });
+  }
+  return { pageCount: result.pageCount, missingFonts: result.missingFonts, images };
+}
+
+/** Compare one candidate's pixels and font reports with disk caching disabled, cold, warm, and reused in memory. */
+export async function verifyFontCacheContent(createConverter, directory, expectedBackend) {
+  await mkdir(directory);
+  const cache = join(directory, 'cache');
+  const references = new Map();
+  const modes = {};
+  const errors = [];
+  let converter;
+  try {
+    for (const mode of ['disabled', 'empty', 'disk', 'memory']) {
+      if (mode !== 'memory') {
+        await converter?.dispose();
+        converter = await createConverter({ fontMetadataCacheDirectory: mode === 'disabled' ? false : cache });
+      }
+      assert.equal(converter.backend, expectedBackend);
+      try {
+        modes[mode] = await renderContent(async request => {
+          const extension = extname(request.inputPath).slice(1);
+          const outputPath = `${request.inputPath}.pdf`;
+          const converted = await converter.render({ inputPath: request.inputPath, outputPath });
+          assert.equal(converted.backend, expectedBackend);
+          const direct = await converter.renderImages(request);
+          const pdf = await converter.renderImages({ inputPath: outputPath, outputDir: join(dirname(request.inputPath), `${extension}-pdf-images`), pages: [1], dpi: request.dpi });
+          const signature = { conversionMissingFonts: converted.missingFonts,
+            direct: await rasterSignature(direct, expectedBackend, 'libreoffice'), pdf: await rasterSignature(pdf, expectedBackend, 'pdfium') };
+          await writeFile(join(dirname(request.inputPath), `${extension}.cache.json`), `${JSON.stringify(signature, null, 2)}\n`);
+          if (mode === 'disabled') references.set(extension, signature);
+          else assert.deepEqual(signature, references.get(extension), `${mode} font metadata caching changed ${extension} pixels, geometry, or missing fonts`);
+          return direct;
+        }, join(directory, mode), expectedBackend, `cache-${mode}`);
+        if (mode === 'empty') assert.ok((await stat(join(cache, 'font-metadata.json'))).isFile(), 'Cold metadata scan must populate the private disk cache');
+      } catch (error) { errors.push(error); }
+    }
+  } finally { await converter?.dispose(); }
+  if (errors.length) throw new AggregateError(errors, 'Font metadata cache rendering differs from the uncached candidate');
+  return { backend: expectedBackend, identical: true, modes };
 }
 
 async function renderContent(render, directory, expectedBackend, entryPoint) {

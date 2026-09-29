@@ -49,7 +49,7 @@ if (expectedBackend === 'native') {
   assert(records.length > 0, 'No native ELF files were inspected');
 }
 const lifecycle = run(process.execPath, ['--test', join(root, 'test/runtime-engine.test.mjs')], {
-  timeout: 300_000,
+  timeout: 900_000,
   env: { ...process.env, NODE_OPTIONS: '', NODE_PATH: '',
     LIBREOFFICE_RUNTIME_ENTRY: join(result.retainedInstallation, 'node_modules', ...kitPackageName.split('/'), 'lib/index.js'),
     LIBREOFFICE_RUNTIME_EXPECT_BACKEND: expectedBackend },

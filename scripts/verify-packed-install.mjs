@@ -78,9 +78,10 @@ export function verifyPackedInstall(directory, options = {}) {
     // The zero-dependency PNG decoder is qualification tooling, outside the released package.
     cpSync(dirname(createRequire(import.meta.url).resolve('pngjs/package.json')), join(consumer, 'node_modules/pngjs'), { recursive: true });
     cpSync(join(root, 'test/fixtures'), join(consumer, 'test/fixtures'), { recursive: true });
+    // Four cache states add 36 operations to the 14 conversion/raster checks.
     run(process.execPath, ['smoke.mjs', expectedBackend], { cwd: consumer,
       env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '',
-        ...(process.env.LIBREOFFICE_RENDER_ARTIFACTS ? { LIBREOFFICE_RENDER_ARTIFACTS: resolve(process.env.LIBREOFFICE_RENDER_ARTIFACTS) } : {}) }, timeout: 180_000 });
+        ...(process.env.LIBREOFFICE_RENDER_ARTIFACTS ? { LIBREOFFICE_RENDER_ARTIFACTS: resolve(process.env.LIBREOFFICE_RENDER_ARTIFACTS) } : {}) }, timeout: 720_000 });
     const result = readJson(join(consumer, 'smoke-result.json'));
     const windowsLongPaths = process.platform === 'win32' ? JSON.parse(run(process.execPath,
       [join(root, 'scripts/verify-windows-long-paths.mjs'), join(consumer, 'node_modules', '@deepseek-ai', `libreoffice-kit-${platform}`)],
@@ -99,6 +100,7 @@ export function verifyPackedInstall(directory, options = {}) {
       rmSync(join(consumer, 'scripts'), { recursive: true });
       rmSync(join(consumer, 'rendering'), { recursive: true });
       rmSync(join(consumer, 'cli-rendering'), { recursive: true });
+      rmSync(join(consumer, 'font-cache-rendering'), { recursive: true });
       rmSync(join(consumer, 'node_modules/pngjs'), { recursive: true });
       try { renameSync(consumer, keep); }
       catch (error) {

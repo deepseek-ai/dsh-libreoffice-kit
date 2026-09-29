@@ -9,7 +9,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
 import { embeddedPdfDocumentParts } from './runtime-embedded-pdf-fixture.mjs';
-import { renderOfficeCliContent, renderOfficeContent } from './test/runtime-render-content.mjs';
+import { renderOfficeCliContent, renderOfficeContent, verifyFontCacheContent } from './test/runtime-render-content.mjs';
 
 const parts = {
   '[Content_Types].xml': '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
@@ -45,6 +45,8 @@ try {
   }
   if (rasterErrors.length) throw new AggregateError(rasterErrors, 'Installed Office raster checks failed');
   const { rendering, cliRendering } = rasterChecks;
+  console.log(`Installed ${converter.backend}: identical pixels across metadata cache states`);
+  const fontCacheContent = await verifyFontCacheContent(createConverter, resolve('font-cache-rendering'), process.argv[2]);
   console.log(`Installed ${converter.backend}: DOCX conversion`);
   const result = await converter.render({ inputPath, outputPath });
   const pdf = await readFile(outputPath);
@@ -84,7 +86,7 @@ try {
   await converter.render({ inputPath: externalInput, outputPath: externalOutput });
   assert.equal((await readFile(externalOutput)).subarray(0, 5).toString('ascii'), '%PDF-');
   assert.equal(requests, 0, 'Document conversion fetched an external HTTP image');
-  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, rendering, cliRendering, embeddedGraphics })}\n`);
+  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, rendering, cliRendering, fontCacheContent, embeddedGraphics })}\n`);
 } finally {
   await converter.dispose();
   if (server.listening) {

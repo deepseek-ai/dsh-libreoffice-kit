@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { documentFixture, officeFuzzFixture } from './runtime-fixture.mjs';
-import { renderOfficeCliContent, renderOfficeContent } from './runtime-render-content.mjs';
+import { renderOfficeCliContent, renderOfficeContent, verifyFontCacheContent } from './runtime-render-content.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 test('real engine paints visible DOCX, XLSX, and PPTX content with the expected colors', { skip: !enabled, timeout: 240_000 }, async () => {
@@ -25,6 +25,16 @@ test('real CLI paints visible DOCX, XLSX, and PPTX content with literal argument
     const expectedBackend = process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND ?? (await discoverRuntime()).backend;
     const cliRendering = await renderOfficeCliContent(join(dirname(enabled), 'cli.js'), join(root, 'rendering'), expectedBackend);
     console.log(JSON.stringify({ cliRendering }));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('real engine keeps Office pixels and font reports identical across metadata cache states', { skip: !enabled, timeout: 720_000 }, async () => {
+  const { createConverter, discoverRuntime } = await import(pathToFileURL(enabled).href);
+  const root = await mkdtemp(join(tmpdir(), 'libreoffice-font-cache-content-'));
+  try {
+    const backend = process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND ?? (await discoverRuntime()).backend;
+    const fontCacheContent = await verifyFontCacheContent(createConverter, join(root, 'rendering'), backend);
+    console.log(JSON.stringify({ fontCacheContent }));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
