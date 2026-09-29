@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { documentFixture, officeFuzzFixture } from './runtime-fixture.mjs';
-import { renderOfficeContent } from './runtime-render-content.mjs';
+import { renderOfficeCliContent, renderOfficeContent } from './runtime-render-content.mjs';
 
 const enabled = process.env.LIBREOFFICE_RUNTIME_ENTRY;
 test('real engine paints visible DOCX, XLSX, and PPTX content with the expected colors', { skip: !enabled, timeout: 240_000 }, async () => {
@@ -16,6 +16,16 @@ test('real engine paints visible DOCX, XLSX, and PPTX content with the expected 
     const rendering = await renderOfficeContent(converter, join(root, 'rendering'), process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND ?? converter.backend);
     console.log(JSON.stringify({ rendering }));
   } finally { await converter.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('real CLI paints visible DOCX, XLSX, and PPTX content with literal arguments', { skip: !enabled, timeout: 360_000 }, async () => {
+  const { discoverRuntime } = await import(pathToFileURL(enabled).href);
+  const root = await mkdtemp(join(tmpdir(), 'libreoffice CLI 渲染 & '));
+  try {
+    const expectedBackend = process.env.LIBREOFFICE_RUNTIME_EXPECT_BACKEND ?? (await discoverRuntime()).backend;
+    const cliRendering = await renderOfficeCliContent(join(dirname(enabled), 'cli.js'), join(root, 'rendering'), expectedBackend);
+    console.log(JSON.stringify({ cliRendering }));
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('real engine converts disk DOCX, XLSX, and PPTX, rejects unsafe inputs, and drains cancellation', { skip: !enabled, timeout: 240_000 }, async () => {

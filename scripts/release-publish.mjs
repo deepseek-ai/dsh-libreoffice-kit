@@ -44,6 +44,7 @@ export function validatePublication(directory, env = process.env, { target = 'gi
     assert(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].every(format => conversion?.formats?.[format]?.backend === (platform === 'wasm' ? 'wasm' : 'native')
       && conversion.formats[format].pdfBytes > 100), `Missing Office format conversion evidence: ${platform}`);
     assertRenderingEvidence(conversion?.rendering, platform === 'wasm' ? 'wasm' : 'native');
+    assertRenderingEvidence(conversion?.cliRendering, platform === 'wasm' ? 'wasm' : 'native');
     assert(conversion?.adapter?.sha256 === adapterSha256,
       `Verification belongs to different adapter bytes: ${platform}`);
     assert(conversion?.embeddedGraphics?.pdfInEmf === true,

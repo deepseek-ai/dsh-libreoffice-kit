@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PNG } from 'pngjs';
-import { assertOfficePixels, renderOfficeContent } from './runtime-render-content.mjs';
+import { assertOfficePixels, renderOfficeCliContent, renderOfficeContent } from './runtime-render-content.mjs';
 
 function image(background, paint = () => {}) {
   const png = new PNG({ width: 100, height: 80 });
@@ -76,5 +76,45 @@ test('Office qualification retains later format results when earlier pixels or e
     assert.match(await readFile(join(directory, 'xlsx.error.txt'), 'utf8'), /Calc painting failed/);
     assert.deepEqual(Object.keys(JSON.parse(await readFile(join(directory, 'pixels.json'), 'utf8'))), ['pptx']);
     assert.equal(JSON.parse(await readFile(join(directory, 'pptx.json'), 'utf8')).rasterEngine, 'libreoffice');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('CLI qualification preserves literal paths and selection flags, rejects exit failures, and saves diagnostics', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'office CLI 测试 & '));
+  try {
+    for (const fail of [false, true]) {
+      const cliPath = join(root, `test CLI ${fail}.mjs`);
+      await writeFile(cliPath, `import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+const args = process.argv.slice(2);
+const input = args[args.indexOf('--input') + 1];
+const output = args[args.indexOf('--output-dir') + 1];
+await writeFile(input + '.args.json', JSON.stringify(args));
+if (${fail} && input.endsWith('.xlsx')) {
+  process.stderr.write('Calc CLI rejected this input');
+  process.exitCode = 3;
+} else {
+  await mkdir(output);
+  const path = join(output, 'page.png');
+  await writeFile(path, Buffer.from('${image([255, 255, 255, 255], blocks).toString('base64')}', 'base64'));
+  process.stderr.write('CLI rendering diagnostic');
+  process.stdout.write(JSON.stringify({ backend: 'native', rasterEngine: 'libreoffice', source: 'saved', pageCount: 1, images: [{ path, width: 100, height: 80 }] }));
+}
+`);
+      const directory = join(root, `rendering-${fail}`);
+      const result = renderOfficeCliContent(cliPath, directory, 'native');
+      if (fail) {
+        await assert.rejects(result, error => error instanceof AggregateError && error.errors.length === 1 && error.errors[0].code === 3);
+        assert.equal(await readFile(join(directory, 'xlsx.cli.stderr.txt'), 'utf8'), 'Calc CLI rejected this input');
+      } else assert.deepEqual(Object.keys(await result), ['docx', 'xlsx', 'pptx']);
+      for (const extension of ['docx', 'xlsx', 'pptx']) {
+        const input = join(directory, `color-blocks.${extension}`);
+        assert.deepEqual(JSON.parse(await readFile(`${input}.args.json`, 'utf8')), [
+          'render', '--input', input, '--output-dir', join(directory, `${extension}-images`), '--dpi', '72', '--timeout-ms', '90000',
+          ...(extension === 'xlsx' ? ['--sheet', 'Render', '--range', 'A1:B2'] : ['--pages', '1']),
+        ]);
+      }
+      assert.equal(await readFile(join(directory, 'pptx.cli.stderr.txt'), 'utf8'), 'CLI rendering diagnostic');
+    }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -56,6 +56,7 @@ function fixture(t, platforms = releaseTargets([])) {
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
       rendering: renderingEvidenceFixture(platform === 'wasm' ? 'wasm' : 'native'),
+      cliRendering: renderingEvidenceFixture(platform === 'wasm' ? 'wasm' : 'native'),
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
   })) };
   save('verification.json', evidence);
@@ -105,11 +106,11 @@ test('publication requires embedded graphics evidence from every installed engin
 test('publication rejects missing, blank, or PDF-derived Office rendering receipts', t => {
   const { directory, env, evidence, save } = fixture(t);
   for (const platform of evidence.platforms) {
-    for (const extension of ['docx', 'xlsx', 'pptx']) {
+    for (const [entry, extension] of ['rendering', 'cliRendering'].flatMap(entry => ['docx', 'xlsx', 'pptx'].map(format => [entry, format]))) {
       for (const change of ['missing', 'blank', 'pdfium']) {
         const invalid = structuredClone(evidence);
         const record = invalid.platforms.find(entry => entry.platform === platform.platform);
-        const rendering = record[platform.platform === 'wasm' ? 'wasm' : 'native'].rendering;
+        const rendering = record[platform.platform === 'wasm' ? 'wasm' : 'native'][entry];
         if (change === 'missing') delete rendering[extension];
         else if (change === 'blank') Object.assign(rendering[extension], { visiblePixels: 0, redPixels: 0, bluePixels: 0, darkPixels: 0 });
         else rendering[extension].rasterEngine = 'pdfium';

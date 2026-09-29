@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { zipSync, strToU8 } from 'fflate';
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
 import { embeddedPdfDocumentParts } from './runtime-embedded-pdf-fixture.mjs';
-import { renderOfficeContent } from './test/runtime-render-content.mjs';
+import { renderOfficeCliContent, renderOfficeContent } from './test/runtime-render-content.mjs';
 
 const parts = {
   '[Content_Types].xml': '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
@@ -26,8 +27,18 @@ const server = createServer((_request, response) => {
 });
 try {
   assert.equal(converter.backend, process.argv[2]);
-  console.log(`Installed ${converter.backend}: DOCX, XLSX, and PPTX direct raster content`);
-  const rendering = await renderOfficeContent(converter, resolve('rendering'), process.argv[2]);
+  const rasterChecks = {};
+  const rasterErrors = [];
+  for (const [name, render] of [
+    ['rendering', () => renderOfficeContent(converter, resolve('rendering'), process.argv[2])],
+    ['cliRendering', () => renderOfficeCliContent(createRequire(import.meta.url).resolve('@deepseek-ai/libreoffice-kit/cli'), resolve('cli-rendering'), process.argv[2])],
+  ]) {
+    console.log(`Installed ${converter.backend} ${name}: DOCX, XLSX, and PPTX direct raster content`);
+    try { rasterChecks[name] = await render(); }
+    catch (error) { rasterErrors.push(error); }
+  }
+  if (rasterErrors.length) throw new AggregateError(rasterErrors, 'Installed Office raster checks failed');
+  const { rendering, cliRendering } = rasterChecks;
   console.log(`Installed ${converter.backend}: DOCX conversion`);
   const result = await converter.render({ inputPath, outputPath });
   const pdf = await readFile(outputPath);
@@ -67,7 +78,7 @@ try {
   await converter.render({ inputPath: externalInput, outputPath: externalOutput });
   assert.equal((await readFile(externalOutput)).subarray(0, 5).toString('ascii'), '%PDF-');
   assert.equal(requests, 0, 'Document conversion fetched an external HTTP image');
-  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, rendering, embeddedGraphics })}\n`);
+  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, rendering, cliRendering, embeddedGraphics })}\n`);
 } finally {
   await converter.dispose();
   if (server.listening) {

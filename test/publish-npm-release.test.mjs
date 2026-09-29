@@ -43,6 +43,7 @@ function fixture(t, changeManifest = manifest => manifest) {
     platform, sourceCommit: env.GITHUB_SHA, releaseManifestSha256, nativeInstalled: platform !== 'wasm', wasmInstalled: platform === 'wasm', passed: true,
     [platform === 'wasm' ? 'wasm' : 'native']: { adapter, embeddedGraphics: { pdfInEmf: true },
       rendering: renderingEvidenceFixture(platform === 'wasm' ? 'wasm' : 'native'),
+      cliRendering: renderingEvidenceFixture(platform === 'wasm' ? 'wasm' : 'native'),
       formats: Object.fromEntries(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].map(format => [format, { backend: platform === 'wasm' ? 'wasm' : 'native', pdfBytes: 200 }])) },
   })) });
   const publication = prepareNpmRelease(directory, destination, env);

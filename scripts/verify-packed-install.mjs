@@ -90,6 +90,7 @@ export function verifyPackedInstall(directory, options = {}) {
       'Installed conversion must include DOC, DOCX, XLS, XLSX, PPT, and PPTX PDFs');
     assert(result.embeddedGraphics?.pdfInEmf === true, 'Installed conversion must preserve embedded PDF graphics');
     assertRenderingEvidence(result.rendering, expectedBackend);
+    assertRenderingEvidence(result.cliRendering, expectedBackend);
     if (keep) {
       mkdirSync(dirname(keep), { recursive: true });
       for (const file of ['smoke.mjs', 'runtime-linked-fixture.mjs', 'runtime-embedded-pdf-fixture.mjs', 'smoke-result.json', 'roundtrip.docx', 'roundtrip.pdf', 'roundtrip.doc.pdf', 'roundtrip.xls.pdf', 'roundtrip.ppt.pdf', 'roundtrip.xlsx.pdf', 'roundtrip.pptx.pdf', 'external.docx', 'external.pdf', 'embedded-pdf.docx', 'embedded-pdf.pdf'])
@@ -97,6 +98,7 @@ export function verifyPackedInstall(directory, options = {}) {
       rmSync(join(consumer, 'test'), { recursive: true });
       rmSync(join(consumer, 'scripts'), { recursive: true });
       rmSync(join(consumer, 'rendering'), { recursive: true });
+      rmSync(join(consumer, 'cli-rendering'), { recursive: true });
       rmSync(join(consumer, 'node_modules/pngjs'), { recursive: true });
       try { renameSync(consumer, keep); }
       catch (error) {
