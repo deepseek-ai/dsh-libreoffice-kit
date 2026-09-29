@@ -6,14 +6,14 @@ Convert, recalculate, and directly render local Office documents with prebuilt L
 
 Binary `.doc`, `.xls`, and `.ppt` inputs must be OLE compound documents, such as Office 97–2003 files. Renamed RTF/HTML and `.wps` inputs are unsupported. `missingFonts` is empty for binary inputs because their font tables are interpreted by LibreOffice rather than the OOXML inspector.
 
-The Node API version is independent of its platform engine versions. Version 0.1.2 uses Windows engines 0.1.2 and retains macOS/WASM engines 0.1.1. `ENGINE_VERSION` and `discoverRuntime().version` identify the Node API; `ENGINE_VERSIONS` lists the exact compatible engine versions.
+The Node API version is independent of its platform engine versions. Version 0.1.3 uses macOS, Windows and WASM engines 0.1.3. `ENGINE_VERSION` and `discoverRuntime().version` identify the Node API; `ENGINE_VERSIONS` lists the exact compatible engine versions.
 
 ## Installation and usage
 
 Install with Node.js 22.19.0 or newer:
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.1.2
+npm install @deepseek-ai/libreoffice-kit@0.1.3
 ```
 
 npm installs the matching native engine on macOS/Windows ARM64 or x64, and the shared WASM engine on Linux. macOS and Windows require their native package; a missing or invalid package rejects `createConverter` with `unavailable`, without switching to WASM. Linux uses WASM unless a compatible development native package was installed explicitly. Conversion failures never switch engines.
@@ -41,9 +41,18 @@ Converters created through the compatibility `createConverter(options)` API tran
 
 For a long-lived service that wants one explicit lifecycle owner for concurrent conversion slots, create one `createConverterFactory(options)` and obtain converters through `factory.create()`. Those converters use a factory-private cache while retaining separate Workers, native helpers, profiles, and output ownership. Dispose the factory to stop and join every converter it created.
 
-`convert()` exports the format named by the output suffix, `recalculate()` refreshes spreadsheet formula results before saving, and `renderImages()` writes a fresh directory containing PNG tiles plus `manifest.json`. Office images are painted directly from one loaded model; PDF images use PDFium. The CLI exposes the same operations through `libreoffice-kit capabilities|convert|recalculate|render`.
+`convert()` exports the format named by the output suffix, `recalculate()` refreshes spreadsheet formula results before saving, and `renderImages()` writes a fresh directory containing PNG tiles plus `manifest.json`. Office images are painted directly from one loaded model; PDF images use PDFium. The CLI exposes the same operations through `dsoffice capabilities|convert|recalculate|render`.
+
+```sh
+npm exec -- dsoffice render --input report.docx --output-dir report-pages --pages 1
+npm exec -- dsoffice render --input budget.xlsx --output-dir budget-preview --sheet Summary --range A1:D20
+npm exec -- dsoffice convert --input report.docx --output report.pdf
+npm exec -- dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
+```
 
 Conversion workers run the package's shipped JavaScript with an empty `execArgv`; consumer launch flags such as `--input-type=module` are not inherited.
+
+On Windows, an engine executable or program path of 260 or more characters uses a temporary helper copy and a junction to the installed resources inside the private operation directory. Resources stay in their installation, and the junction remains until the helper closes. A renderer that exits before returning a protocol response rejects with its exit status and captured diagnostics.
 
 On Linux, the native child searches the selected engine's program directory before system paths for shared libraries. Caller-provided `LD_LIBRARY_PATH` and `LD_PRELOAD` are not inherited.
 
@@ -53,7 +62,7 @@ The caller authorizes input access and owns private input/output directories; pa
 
 ## Engines, fonts, and runtime behavior
 
-The Node API and engine packages share the kit release version. `ENGINE_VERSION` pins both WASM and native optional dependencies to the exact engine version. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
+The Node API reports its release version through `ENGINE_VERSION`; `ENGINE_VERSIONS` pins each platform engine independently. npm installs prepared engines; installation and conversion never compile LibreOffice or download additional engine payloads. Each engine includes its matching source recipes, patches, build information, and third-party license notices under `sources/` and `licenses/`.
 
 Defaults and all options are documented in the shipped TypeScript declarations in `lib/types/index.d.ts`. Font directories use conventional system/user paths for the selected OS. Indexing skips missing or protected sources and propagates other filesystem errors. `fontkit` indexes original font files and selects installed faces and glyph coverage; it does not rewrite fonts. Each operation discovers font candidates again and revalidates cached file identities. It uses one ordered metadata snapshot; matching entries are invalidated when that snapshot changes. A detected font change during conversion rejects the operation and removes its output. Original font bytes and decoded glyph coverage remain conversion-local. `missingFonts` contains absent families declared in readable document XML, excluding unrelated engine defaults. Missing glyphs without a named missing family are not a complete document accessibility report.
 
@@ -66,7 +75,7 @@ Both `createConverter()` and `createConverterFactory()` accept:
 | `fontMetadataCacheDirectory` | User system cache directory | Absolute directory path, or `false` to disable disk caching. |
 | `maxFontMetadataCacheBytes` | 32 MiB | Positive safe integer limiting each cache file read/write and retained per-file metadata per shared configuration. |
 
-The default directory is `~/Library/Caches/libreoffice-kit` on macOS, `%LOCALAPPDATA%/libreoffice-kit/Cache` on Windows (falling back to the user's `AppData/Local`), and `$XDG_CACHE_HOME/libreoffice-kit` on Linux (falling back to `~/.cache`). The single `font-metadata.json` file contains canonical file paths, device/inode, size, modification/change times, and all face metadata, including empty parse results. It contains no font bytes, glyph coverage, parsed font objects, document text, or document matching entries. Keep this user-local file private.
+The default directory is `~/Library/Caches/libreoffice-kit` on macOS, `%LOCALAPPDATA%/libreoffice-kit/Cache` on Windows (falling back to the user's `AppData/Local`), and `$XDG_CACHE_HOME/libreoffice-kit` on Linux (falling back to `~/.cache`). The single `font-metadata.json` file contains canonical file paths, exact decimal device/inode identifiers, size, modification/change times, and all face metadata, including empty parse results. It contains no font bytes, glyph coverage, parsed font objects, document text, or document matching entries. Keep this user-local file private.
 
 A first run without reusable metadata performs the full original font inspection. Later processes skip inspection only for discovered files with matching identities. Each operation re-enumerates sources, including supplemental Office sources, so additions, deletions, replacements, and directory changes do not require a restart. Candidate order, file budgets, Office filtering, fallback matching, glyph queries, and original font import remain unchanged. A corrupted, incompatible, oversized, or inaccessible cache falls back to source inspection; unreadable source files never reuse stale records. Format, extractor, and pinned fontkit versions must match.
 

@@ -1,6 +1,7 @@
 /** Host font metadata snapshots and conversion-local glyph matching over original files. */
 import { closeSync, constants, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
-import type { Stats } from 'node:fs'
+import type { BigIntStats, Stats } from 'node:fs'
+import { fontFileIdentity, matchesFontFile } from './font-file-identity.ts'
 import { homedir } from 'node:os'
 import { basename, extname, join, posix, win32 } from 'node:path'
 import { create } from 'fontkit'
@@ -9,8 +10,6 @@ import type { Font, FontCollection } from 'fontkit'
 const FONT_EXTENSIONS: ReadonlySet<string> = new Set(['.ttf', '.otf', '.ttc', '.otc', '.dfont'])
 const VCL_WEIGHTS = [400, 100, 200, 300, 350, 400, 500, 600, 700, 800, 900]
 const GENERIC_FAMILIES: ReadonlySet<string> = new Set(['serif', 'sansserif', 'monospace', 'cursive', 'fantasy', 'systemui', 'symbol'])
-/** File identity read from the descriptor, before and after, to detect concurrent replacement. */
-const STAT_KEYS = ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'] as const
 
 /** One inclusive Unicode range a physical face renders. */
 export type GlyphRange = [number, number]
@@ -21,8 +20,8 @@ export interface FontFace {
   readonly size: number
   readonly mtimeMs: number
   readonly ctimeMs: number
-  readonly dev: number
-  readonly ino: number
+  readonly dev: string
+  readonly ino: string
   readonly faceIndex: number
   readonly family: string
   readonly style: string
@@ -266,15 +265,15 @@ export function faceMetrics(font: Pick<Font, 'OS/2' | 'post'>): { weight: number
 }
 
 function inspect(path: string, maxBytes: number, observed?: Map<string, FontFileMetadata>): FontFace[] {
-  let status: Stats
+  let status: BigIntStats
   let bytes: Buffer
   try {
     const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
     try {
-      status = fstatSync(fd)
+      status = fstatSync(fd, { bigint: true })
       if (!status.isFile() || status.size > maxBytes)
         return []
-      bytes = Buffer.alloc(status.size)
+      bytes = Buffer.alloc(Number(status.size))
       let offset = 0
       while (offset < bytes.length) {
         const count = readSync(fd, bytes, offset, bytes.length - offset, offset)
@@ -282,9 +281,9 @@ function inspect(path: string, maxBytes: number, observed?: Map<string, FontFile
           throw new Error('A system font was truncated while indexing; reload the font service.')
         offset += count
       }
-      const after = fstatSync(fd)
+      const after = fstatSync(fd, { bigint: true })
       if (after.size !== status.size
-                || after.mtimeMs !== status.mtimeMs || after.ctimeMs !== status.ctimeMs) {
+                || after.mtimeNs !== status.mtimeNs || after.ctimeNs !== status.ctimeNs) {
         throw new Error('A system font changed while indexing; reload the font service.')
       }
     }
@@ -309,8 +308,7 @@ function inspect(path: string, maxBytes: number, observed?: Map<string, FontFile
       const aliases = [...new Set([...names, font.familyName, font.fullName, font.postscriptName]
         .filter((name): name is string => Boolean(name)).map(normalize))]
       return {
-        path, size: status.size, mtimeMs: status.mtimeMs, ctimeMs: status.ctimeMs,
-        dev: status.dev, ino: status.ino, faceIndex,
+        path, ...fontFileIdentity(status), faceIndex,
         family: font.familyName, style: font.subfamilyName, aliases,
         ...faceMetrics(font),
         italic: font.italicAngle !== 0, postscriptName: font.postscriptName,
@@ -321,8 +319,7 @@ function inspect(path: string, maxBytes: number, observed?: Map<string, FontFile
     // fontkit rejects unsupported or damaged font tables; other installed files can still satisfy the request.
     faces = []
   }
-  observed?.set(path, { path, dev: status.dev, ino: status.ino, size: status.size,
-    mtimeMs: status.mtimeMs, ctimeMs: status.ctimeMs, faces })
+  observed?.set(path, { path, ...fontFileIdentity(status), faces })
   return faces
 }
 
@@ -351,8 +348,8 @@ export function indexSystemFonts(options: FontIndexOptions, previous: ReadonlyMa
       try {
         const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
         try {
-          const current = fstatSync(fd)
-          if (current.isFile() && current.size <= options.maxFileBytes && STAT_KEYS.every(key => current[key] === prior[key])) {
+          const current = fstatSync(fd, { bigint: true })
+          if (current.isFile() && current.size <= options.maxFileBytes && matchesFontFile(current, prior)) {
             observed?.set(path, prior)
             return prior.faces
           }
@@ -442,8 +439,8 @@ export class SystemFontCatalog {
 export function readFont(face: FontFace): Buffer {
   const fd = openSync(face.path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
   try {
-    const before = fstatSync(fd)
-    if (!before.isFile() || STAT_KEYS.some(key => before[key] !== face[key]))
+    const before = fstatSync(fd, { bigint: true })
+    if (!before.isFile() || !matchesFontFile(before, face))
       throw new Error('An indexed font changed; recreate the converter.')
     const bytes = Buffer.alloc(face.size)
     for (let offset = 0; offset < bytes.length;) {
@@ -452,8 +449,8 @@ export function readFont(face: FontFace): Buffer {
         throw new Error('An indexed font was truncated.')
       offset += count
     }
-    const after = fstatSync(fd)
-    if (STAT_KEYS.some(key => after[key] !== face[key]))
+    const after = fstatSync(fd, { bigint: true })
+    if (!matchesFontFile(after, face))
       throw new Error('An indexed font changed while reading.')
     return bytes
   }

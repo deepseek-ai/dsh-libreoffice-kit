@@ -33,7 +33,9 @@ node benchmarks/report.mjs \
 
 ## 字体元数据缓存对照
 
-`font-cache.mjs` 让两个已构建 adapter 使用相同的已安装引擎，测量性能。`font-cache-regression.mjs` 单独比较全部 PDF 页面和直接 PNG，并执行第二次基线运行以检测样例自身的不稳定性。源码基线为 `96cc7d8`（文件树与 `2ba08c5` 一致），使用 `0.0.3` 引擎。每份 checkout 执行 `pnpm build:adapter` 后，用 `font-cache-stage.mjs --baseline <基线包目录> --candidate <候选包目录> --dependencies <已安装的node_modules> --output <新目录>` 暂存其 `packages/entry`。依赖目录必须包含 fontkit、fflate、saxes 和宿主平台引擎。两个 adapter 版本不同时添加 `--reuse-engines`：暂存过程为各 adapter 私下复制引擎，对照对应 checkout 验证完整配方，仅修改 package/prebuild 版本。引擎配方变化会拒绝复用；已安装包和引擎 payload 字节保持不变。
+候选引擎测试与离线安装包验收执行[缓存内容检查](../test/runtime-render-content.mjs)，覆盖关闭磁盘缓存、空磁盘缓存、新建 converter 读取已有缓存，以及同一个 converter 的内存复用。每种状态都将三个色块样例转换为 PDF，经 PDFium 渲染 PDF，并直接绘制 Office PNG。解码后的像素、几何信息和缺失字体报告必须与关闭缓存的对照一致；对照自身也必须包含预期的可见颜色和文字。所有比较均使用候选版本实际的 adapter 和引擎，不会让有意修复的引擎输出与过时像素比较。这些检查验证输出一致性；缓存命中单测及以下测量覆盖省去的元数据工作。
+
+历史测量中，`font-cache.mjs` 让两个已构建 adapter 使用相同的已安装引擎，测量性能。`font-cache-regression.mjs` 单独比较全部 PDF 页面和直接 PNG，并执行第二次基线运行以检测样例自身的不稳定性。已记录的基线为 `96cc7d8`（文件树与 `2ba08c5` 一致），使用 `0.0.3` 引擎。每份 checkout 执行 `pnpm build:adapter` 后，用 `font-cache-stage.mjs --baseline <基线包目录> --candidate <候选包目录> --dependencies <已安装的node_modules> --output <新目录>` 暂存其 `packages/entry`。依赖目录必须包含 fontkit、fflate、saxes 和宿主平台引擎。两个 adapter 版本不同时添加 `--reuse-engines`：暂存过程为各 adapter 私下复制引擎，对照对应 checkout 验证完整配方，仅修改 package/prebuild 版本。引擎配方变化会拒绝复用；已安装包和引擎 payload 字节保持不变。
 
 公开输入使用[固定修订版的 Carlito Regular](https://raw.githubusercontent.com/google/fonts/07ace6abab87a122865e5cb82c7540b39551edb2/ofl/carlito/Carlito-Regular.ttf)，下载到私有临时目录。字体按 [SIL Open Font License](https://github.com/google/fonts/blob/07ace6abab87a122865e5cb82c7540b39551edb2/ofl/carlito/OFL.txt) 分发；不要提交下载的字体。`font-cache-fixtures.mjs` 校验 SHA-256 `f6418f708baede9789daef5d458c0f53d2a888af9820e8062934e504fedc6595`，生成使用该字体的 DOCX/PPTX/XLSX 输入：
 
@@ -50,7 +52,7 @@ node benchmarks/font-cache.mjs --baseline /tmp/kit-benchmark/staged/baseline/lib
 
 进程树 RSS 在 POSIX 上每 100 ms 采样，Windows 缺少该采样支持时明确记录。保存父进程操作前、完成时、GC 后和 dispose/GC 后的 `heapUsed`、`external`、`arrayBuffers` 与 RSS。RSS 不等于可达 JavaScript 内存或字体 Buffer 所有权；对象不可达后，分配器和操作系统缓存仍可能保留页面。仅凭 RSS 持平或偏高不能判定泄漏。
 
-所有工作目录均为私有。回归输出包含私有 PDF、图片、路径、含文本的清单和诊断指纹；性能任务也保留私有路径、PDF 和缓存。只发布审核过的 `samples.json`、`environment.json`、回归 `summary.json` 和匿名统计。CI 在 Windows native 和 Linux WASM 上只上传公开样例的匿名摘要，不上传字体或缓存文件。这些样例的像素一致仅是有限证据，不保证所有文档都无误。
+所有工作目录均为私有。历史回归输出包含私有 PDF、图片、路径、含文本的清单和诊断指纹；性能任务也保留私有路径、PDF 和缓存。只发布审核过的 `samples.json`、`environment.json`、回归 `summary.json` 和匿名统计。候选版本验收产物仅包含仓库编写的色块输入及其渲染输出，不含字体或缓存文件。这些样例的像素一致仅是有限证据，不保证所有文档都无误。
 
 真实字体容器验证使用 `font-cache-formats.mjs <字体目录>`，调用已构建的源码扫描器，核对冷态、磁盘命中和内存命中的元数据与匹配结果，并检查命中时字体读取字节为零。除上面的 Carlito 外，使用 [fontkit 修订版 fbf3b9ef](https://github.com/foliojs/fontkit/tree/fbf3b9ef21eebd219eb73e666faed573af0fba09/test/data) 中的 `test/data/NotoSans/NotoSans.dfont`、`test/data/NotoSans/NotoSans.ttc` 和 `test/data/SourceSansPro/SourceSansPro-Regular.otf`，许可证位于相邻源码目录。将 TTC 样例复制为 `.otc` 文件名，以覆盖同一种 OpenType collection 的两种扩展名；这不代表已覆盖所有 collection 编码。SHA-256 分别应为 `6140d7b03a3b1e9b0f3ec6289f1fdf82c30fbb2f27ac97ff53734ce77c162ed6`（dfont）、`ce7c37270d8ab52e445a86ca532bf1864043a4d43f138d83183cdb415ffc994a`（collection）及 `e9eefd0655161b5558b4caf1a0667b3931c55ef8e06b58b034e8955190261d99`（OTF）。
 

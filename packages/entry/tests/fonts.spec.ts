@@ -1,3 +1,4 @@
+import { fontFileIdentity } from '../src/font-file-identity.ts'
 import { expect, it, vi } from 'vitest'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,7 +17,7 @@ function fontFace(family: string, characters: string, overrides: Partial<FontFac
   const coverage = Array.from(characters, character => [character.codePointAt(0) ?? 0, character.codePointAt(0) ?? 0] as [number, number])
   return { family, aliases: [normalize(family)], path: `${family}.ttf`, faceIndex: 0,
     postscriptName: family, style: 'Regular', weight: 400, width: 5, italic: false, fixed: false,
-    size: 0, mtimeMs: 0, ctimeMs: 0, dev: 0, ino: 0, coverage, ...overrides }
+    size: 0, mtimeMs: 0, ctimeMs: 0, dev: '0', ino: '0', coverage, ...overrides }
 }
 
 function matchFonts(faces: FontFace[], family: string, options: Parameters<typeof resolveOptions>[0] = {},
@@ -293,9 +294,8 @@ it('preloading resolves configured, declared, and default families for both engi
   withTemporaryDirectory((root) => {
     const path = join(root, 'fixture.ttf')
     writeFileSync(path, 'font bytes')
-    const status = statSync(path)
-    const faces = [fontFace('Fixture Face', 'A汉', { path, size: status.size, mtimeMs: status.mtimeMs,
-      ctimeMs: status.ctimeMs, dev: status.dev, ino: status.ino })]
+    const status = statSync(path, { bigint: true })
+    const faces = [fontFace('Fixture Face', 'A汉', { path, ...fontFileIdentity(status) })]
     const options = resolveOptions({ fontFallbacks: [], initialFontFamilies: ['Fixture Face'] })
     const document = { families: new Map([['declaredface', 'Declared Face']]), codePoints: [65] }
     const native = createFontLoader(options, document, name => name, faces)
@@ -379,8 +379,8 @@ it('reading a replaced, irregular, or truncated indexed font rejects', () => {
   withTemporaryDirectory((root) => {
     const path = join(root, 'face.ttf')
     writeFileSync(path, 'four')
-    const stat = statSync(path)
-    const face: FontFace = { path, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, dev: stat.dev, ino: stat.ino,
+    const stat = statSync(path, { bigint: true })
+    const face: FontFace = { path, ...fontFileIdentity(stat),
       faceIndex: 0, family: 'Face', style: 'Regular', aliases: ['face'], weight: 400, width: 5, italic: false, fixed: false,
       postscriptName: 'Face', coverage: [] }
     expect(readFont(face).toString()).toBe('four')

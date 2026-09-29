@@ -1,4 +1,5 @@
 /** Derived metadata storage serves only records the current source files still validate. */
+import { fontFileIdentity } from '../src/font-file-identity.ts'
 import { fstatSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -22,7 +23,7 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 
 /** Persisted format fields this package writes; changing either side of the contract updates this fixture. */
-const VERSION = { format: 1, extractor: 1, fontkit: '2.0.4' }
+const VERSION = { format: 1, extractor: 2, fontkit: '2.0.4' }
 const digestOf = (records: readonly unknown[]): string => createHash('sha256').update(JSON.stringify(records)).digest('hex')
 
 const roots: string[] = []
@@ -44,7 +45,7 @@ Pick<ResolvedOptions, 'fontMetadataCacheDirectory' | 'maxFontMetadataCacheBytes'
 
 /** One record whose identity matches the file at `path`. */
 function recordFor(path: string): FontFileMetadata {
-  const { dev, ino, size, mtimeMs, ctimeMs } = statSync(path)
+  const { dev, ino, size, mtimeMs, ctimeMs } = fontFileIdentity(statSync(path, { bigint: true }))
   const face: FontFace = { path, dev, ino, size, mtimeMs, ctimeMs, faceIndex: 0, family: 'Fixture',
     style: 'Regular', aliases: ['fixture'], weight: 400, width: 5, italic: false, fixed: false,
     postscriptName: 'Fixture' }
@@ -130,7 +131,7 @@ it.each([
   ['an array payload', '[]'],
   ['a missing record list', JSON.stringify(VERSION)],
   ['a newer format', JSON.stringify({ ...VERSION, format: 2, records: [] })],
-  ['another extractor', JSON.stringify({ ...VERSION, extractor: 2, records: [] })],
+  ['another extractor', JSON.stringify({ ...VERSION, extractor: 1, records: [] })],
   ['another parser', JSON.stringify({ ...VERSION, fontkit: '2.0.5', records: [] })],
 ])('treats %s as a miss', async (_label, contents) => {
   const directory = await root()
@@ -165,7 +166,9 @@ it.each<[string, Mutation]>([
   ['a path holding a NUL', record => ({ ...record, path: `${record.path}\0.ttf` })],
   ['a relative path', record => ({ ...record, path: 'face.ttf' })],
   ['a non-numeric identity field', record => ({ ...record, size: '4' })],
-  ['a non-finite identity field', record => ({ ...record, dev: Number.NaN })],
+  ['a non-finite identity field', record => ({ ...record, mtimeMs: Number.NaN })],
+  ['a numeric file identifier', record => ({ ...record, ino: 1 })],
+  ['a malformed file identifier', record => ({ ...record, ino: 'invalid' })],
   ['a fractional size', record => ({ ...record, size: 1.5 })],
   ['a negative size', record => ({ ...record, size: -1 })],
   ['a non-array face list', record => ({ ...record, faces: 'none' })],

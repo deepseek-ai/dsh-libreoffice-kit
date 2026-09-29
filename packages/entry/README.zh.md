@@ -6,17 +6,19 @@
 
 二进制 `.doc`、`.xls`、`.ppt` 输入必须是 OLE 复合文档，例如 Office 97–2003 文件。不支持改后缀的 RTF/HTML 和 `.wps`。二进制输入的 `missingFonts` 为空，因为其字体表由 LibreOffice 读取，而不是由 OOXML 检查器读取。
 
-Node API 与各平台引擎独立指定版本。0.1.2 使用 Windows 引擎 0.1.2，保留 macOS/WASM 引擎 0.1.1。`ENGINE_VERSION` 和 `discoverRuntime().version` 表示 Node API 版本；`ENGINE_VERSIONS` 列出各平台兼容的精确引擎版本。
+Node API 与各平台引擎独立指定版本。0.1.3 使用 macOS、Windows 和 WASM 引擎 0.1.3。`ENGINE_VERSION` 和 `discoverRuntime().version` 表示 Node API 版本；`ENGINE_VERSIONS` 列出各平台兼容的精确引擎版本。
 
 ## 安装与使用
 
 使用 Node.js 22.19.0 或更新版本安装：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.1.2
+npm install @deepseek-ai/libreoffice-kit@0.1.3
 ```
 
-npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
+npm 在 macOS/Windows ARM64 或 x64 上安装匹配的原生引擎，Windows 上，引擎可执行文件或程序目录路径达到 260 个字符时，在私有操作目录中使用 helper 临时副本和指向已安装资源的 junction。资源保留在安装目录，junction 在 helper 关闭后清理。渲染器若在返回协议响应前退出，会携带退出状态和捕获的诊断信息拒绝操作。
+
+在 Linux 上安装共享 WASM 引擎。macOS 和 Windows 必须具有对应原生包；包缺失或无效时，`createConverter` 以 `unavailable` 拒绝，不会切换到 WASM。Linux 使用 WASM，除非显式安装了兼容的原生开发包。转换失败不会切换引擎。
 
 ```js
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
@@ -41,7 +43,14 @@ try {
 
 长驻服务如果需要为多个并发转换槽提供一个显式生命周期所有者，可创建 `createConverterFactory(options)`，再通过 `factory.create()` 建立转换器。这些转换器使用 factory 私有缓存，同时仍分别拥有 Worker、原生 helper、配置目录和输出。释放 factory 会停止并等待它创建的全部转换器。
 
-`convert()` 按输出后缀导出格式，`recalculate()` 在保存前刷新电子表格公式结果，`renderImages()` 在全新目录中写入 PNG tile 和 `manifest.json`。Office 图像直接从一次加载的模型绘制，PDF 使用 PDFium。CLI 通过 `libreoffice-kit capabilities|convert|recalculate|render` 提供相同行为。
+`convert()` 按输出后缀导出格式，`recalculate()` 在保存前刷新电子表格公式结果，`renderImages()` 在全新目录中写入 PNG tile 和 `manifest.json`。Office 图像直接从一次加载的模型绘制，PDF 使用 PDFium。CLI 通过 `dsoffice capabilities|convert|recalculate|render` 提供相同行为。
+
+```sh
+npm exec -- dsoffice render --input report.docx --output-dir report-pages --pages 1
+npm exec -- dsoffice render --input budget.xlsx --output-dir budget-preview --sheet Summary --range A1:D20
+npm exec -- dsoffice convert --input report.docx --output report.pdf
+npm exec -- dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
+```
 
 转换 worker 以空的 `execArgv` 运行包内发布的 JavaScript；`--input-type=module` 之类的调用方启动参数不会被继承。
 
@@ -53,7 +62,7 @@ try {
 
 ## 引擎、字体与运行行为
 
-Node API 与引擎包使用相同的 kit 发布版本。`ENGINE_VERSION` 将 WASM 和原生可选依赖固定到精确的引擎版本。npm 安装预编译引擎；安装和转换阶段均不会编译 LibreOffice 或额外下载引擎资源。每个引擎包的 `sources/` 和 `licenses/` 保留匹配的源码配方、补丁、构建信息和第三方许可声明。
+Node API 通过 `ENGINE_VERSION` 报告其发布版本；`ENGINE_VERSIONS` 独立固定各平台的引擎版本。npm 安装预编译引擎；安装和转换阶段均不会编译 LibreOffice 或额外下载引擎资源。每个引擎包的 `sources/` 和 `licenses/` 保留匹配的源码配方、补丁、构建信息和第三方许可声明。
 
 默认值和所有选项记录在随包发布的 `lib/types/index.d.ts` 类型声明中。字体目录使用所选操作系统的常规系统/用户路径。索引会跳过缺失或受保护的来源，并传播其他文件系统错误。`fontkit` 索引原始字体文件并选择已安装的字面和字形覆盖；它不重写字体。每次操作都会重新发现字体候选并验证缓存中的文件身份。一次操作使用一份有序元数据快照；快照变化后字体匹配条目失效。检测到转换期间字体变化时，操作会失败并删除其输出。原始字体字节和解码后的字形覆盖都只在本次转换内有效。精确的 family 匹配优先于 `fontFallbacks`。`missingFonts` 包含可读文档 XML 中声明但缺失的 family，不包含无关的引擎默认值。未命名缺失 family 的缺字并不构成完整的文档可访问性报告。
 
@@ -66,7 +75,7 @@ Node API 与引擎包使用相同的 kit 发布版本。`ENGINE_VERSION` 将 WAS
 | `fontMetadataCacheDirectory` | 用户系统缓存目录 | 目录的绝对路径，或用 `false` 关闭磁盘缓存。 |
 | `maxFontMetadataCacheBytes` | 32 MiB | 正安全整数，限制单个缓存文件的读取、写入及每份共享配置保留的逐文件元数据。 |
 
-macOS 默认使用 `~/Library/Caches/libreoffice-kit`，Windows 使用 `%LOCALAPPDATA%/libreoffice-kit/Cache`（缺省时回退到用户的 `AppData/Local`），Linux 使用 `$XDG_CACHE_HOME/libreoffice-kit`（缺省时回退到 `~/.cache`）。单个 `font-metadata.json` 文件保存规范文件路径、设备/inode、大小、修改/变更时间及全部 face 元数据，包括解析结果为空的记录。它不保存字体字节、字形覆盖、解析对象、文档文本或文档匹配条目。请将此用户级文件保持私有。
+macOS 默认使用 `~/Library/Caches/libreoffice-kit`，Windows 使用 `%LOCALAPPDATA%/libreoffice-kit/Cache`（缺省时回退到用户的 `AppData/Local`），Linux 使用 `$XDG_CACHE_HOME/libreoffice-kit`（缺省时回退到 `~/.cache`）。单个 `font-metadata.json` 文件保存规范文件路径、以十进制字符串精确保留的设备/inode 标识、大小、修改/变更时间及全部 face 元数据，包括解析结果为空的记录。它不保存字体字节、字形覆盖、解析对象、文档文本或文档匹配条目。请将此用户级文件保持私有。
 
 没有可复用元数据的首次运行仍执行原来的完整字体 inspect。后续进程只跳过已发现且文件身份完全匹配的字体。每次操作重新枚举来源，包括 Office 补充字体，因此新增、删除、替换和目录变化无需重启。候选顺序、文件预算、Office 过滤、fallback 匹配、字形查询和原字体导入保持原有行为。缓存损坏、版本不兼容、超限或不可访问时回退到字体源计算；不可读的源字体不会复用旧记录。缓存格式、提取逻辑和固定的 fontkit 版本均须匹配。
 

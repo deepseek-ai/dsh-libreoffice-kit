@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { zipSync, strToU8 } from 'fflate';
 import { createConverter } from '@deepseek-ai/libreoffice-kit';
 import { linkedDocumentParts } from './runtime-linked-fixture.mjs';
 import { embeddedPdfDocumentParts } from './runtime-embedded-pdf-fixture.mjs';
+import { renderOfficeCliContent, renderOfficeContent, verifyFontCacheContent } from './test/runtime-render-content.mjs';
 
 const parts = {
   '[Content_Types].xml': '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
@@ -25,6 +28,25 @@ const server = createServer((_request, response) => {
 });
 try {
   assert.equal(converter.backend, process.argv[2]);
+  // Exercise the installed command shim as well as the CLI's literal-argument entry.
+  const capabilities = process.platform === 'win32'
+    ? execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'node_modules\\.bin\\dsoffice.cmd capabilities --json'], { encoding: 'utf8', timeout: 30_000 })
+    : execFileSync('./node_modules/.bin/dsoffice', ['capabilities', '--json'], { encoding: 'utf8', timeout: 30_000 });
+  assert.equal(JSON.parse(capabilities).runtime.backend, process.argv[2]);
+  const rasterChecks = {};
+  const rasterErrors = [];
+  for (const [name, render] of [
+    ['rendering', () => renderOfficeContent(converter, resolve('rendering'), process.argv[2])],
+    ['cliRendering', () => renderOfficeCliContent(createRequire(import.meta.url).resolve('@deepseek-ai/libreoffice-kit/cli'), resolve('cli-rendering'), process.argv[2])],
+  ]) {
+    console.log(`Installed ${converter.backend} ${name}: DOCX, XLSX, and PPTX direct raster content`);
+    try { rasterChecks[name] = await render(); }
+    catch (error) { rasterErrors.push(error); }
+  }
+  if (rasterErrors.length) throw new AggregateError(rasterErrors, 'Installed Office raster checks failed');
+  const { rendering, cliRendering } = rasterChecks;
+  console.log(`Installed ${converter.backend}: identical pixels across metadata cache states`);
+  const fontCacheContent = await verifyFontCacheContent(createConverter, resolve('font-cache-rendering'), process.argv[2]);
   console.log(`Installed ${converter.backend}: DOCX conversion`);
   const result = await converter.render({ inputPath, outputPath });
   const pdf = await readFile(outputPath);
@@ -34,7 +56,7 @@ try {
   for (const [extension, fixture] of [['doc', 'one-page.doc'], ['xls', 'one-sheet.xls'], ['ppt', 'one-slide.ppt'], ['xlsx', 'one-sheet.xlsx'], ['pptx', 'one-slide.pptx']]) {
     console.log(`Installed ${converter.backend}: ${extension.toUpperCase()} conversion`);
     const formatOutput = resolve(`roundtrip.${extension}.pdf`);
-    const converted = await converter.render({ inputPath: resolve('fixtures', fixture), outputPath: formatOutput });
+    const converted = await converter.render({ inputPath: resolve('test', 'fixtures', fixture), outputPath: formatOutput });
     const bytes = await readFile(formatOutput);
     assert.equal(converted.backend, converter.backend);
     assert.equal(bytes.subarray(0, 5).toString('ascii'), '%PDF-', `${extension} output is not PDF`);
@@ -64,7 +86,7 @@ try {
   await converter.render({ inputPath: externalInput, outputPath: externalOutput });
   assert.equal((await readFile(externalOutput)).subarray(0, 5).toString('ascii'), '%PDF-');
   assert.equal(requests, 0, 'Document conversion fetched an external HTTP image');
-  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, embeddedGraphics })}\n`);
+  await writeFile(resolve('smoke-result.json'), `${JSON.stringify({ backend: result.backend, pdfBytes: pdf.length, missingFonts: result.missingFonts, externalRequests: requests, formats, rendering, cliRendering, fontCacheContent, embeddedGraphics })}\n`);
 } finally {
   await converter.dispose();
   if (server.listening) {

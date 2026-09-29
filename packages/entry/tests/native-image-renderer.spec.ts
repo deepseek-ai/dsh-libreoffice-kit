@@ -2,19 +2,19 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { SpawnOptions } from 'node:child_process'
+import { spawn, type SpawnOptions } from 'node:child_process'
 import { renderImagesWithNative } from '../src/native-image-renderer.ts'
 import { resolveImageRender } from '../src/image-operations.ts'
 import { resolveOptions } from '../src/options.ts'
 
 vi.mock('node:child_process', async importOriginal => {
   const actual = await importOriginal<typeof import('node:child_process')>()
-  return { ...actual, spawn: (file: string, args: readonly string[], options: SpawnOptions) =>
-    actual.spawn(process.execPath, [file, ...args], options) }
+  return { ...actual, spawn: vi.fn((file: string, args: readonly string[], options: SpawnOptions) =>
+    actual.spawn(process.execPath, [file, ...args], options)) }
 })
 
 const roots: string[] = []
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
+afterEach(async () => { vi.clearAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 it.each(['text', 'pdf'] as const)('renders a native %s tile through the private helper protocol', async documentType => {
   const root = await mkdtemp(join(tmpdir(), 'libreoffice-native-images-'))
@@ -54,4 +54,41 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   expect(result).toMatchObject({ backend: 'native', rasterEngine: documentType === 'pdf' ? 'pdfium' : 'libreoffice',
     pageCount: 1, images: [{ index: 1, width: 10, height: 10 }] })
   expect((await readFile(result.images[0]!.path)).subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+})
+
+
+it.each(['before-ready', 'before-paint', 'spawn-error'] as const)('rejects %s failures after the helper closes', async stage => {
+  const root = await mkdtemp(join(tmpdir(), 'libreoffice-native-exit-'))
+  roots.push(root)
+  const inputPath = join(root, 'input.docx')
+  const outputDir = join(root, 'images')
+  const scratch = join(root, 'scratch')
+  const profile = join(root, 'profile')
+  await Promise.all([mkdir(outputDir), mkdir(scratch)])
+  const helper = join(root, 'helper.cjs')
+  await writeFile(helper, stage === 'before-paint' ? `
+console.log(JSON.stringify({ ok: true, kind: 'ready', documentType: 'text', tileMode: 0, writerRectangles: '0,0,150,150' }))
+require('node:readline').createInterface({ input: process.stdin }).once('line', () => {
+  process.stderr.write('fixture renderer exited during paint')
+  process.exitCode = 17
+  process.stdin.destroy()
+})
+` : "process.stderr.write('fixture renderer exited during initialization'); process.exitCode = 17;")
+  const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+  let closed = false
+  vi.mocked(spawn).mockImplementationOnce((file, args, options) => {
+    const child = stage === 'spawn-error' ? actual.spawn(join(root, 'absent-executable'), [], options)
+      : actual.spawn(process.execPath, [file, ...args], options)
+    child.once('close', () => { closed = true })
+    return child
+  })
+  const operation = renderImagesWithNative({
+    engine: { backend: 'native', root, programDirectory: root, executable: helper },
+    options: resolveOptions({ fontDirectories: [] }), inputPath, source: new Uint8Array(),
+    scratch, profile, fonts: [], substitutions: [], missingFonts: [],
+    operation: resolveImageRender({ inputPath, outputDir, dpi: 96 }), signal: new AbortController().signal,
+  })
+  if (stage === 'spawn-error') await expect(operation).rejects.toMatchObject({ code: 'ENOENT' })
+  else await expect(operation).rejects.toThrow(/exited 17 before responding.*fixture renderer exited/)
+  expect(closed).toBe(true)
 })

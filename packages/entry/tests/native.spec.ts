@@ -4,7 +4,7 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SaxesParser } from 'saxes'
-import { nativeEnvironment, prepareNativeFontProfile, runNative } from '../src/native.ts'
+import { nativeEnvironment, prepareNativeFontProfile, runNative, withNativeEngine } from '../src/native.ts'
 import { resolveOptions } from '../src/options.ts'
 import type { NativeEngine } from '../src/engine.ts'
 import type { FontSubstitution } from '../src/font-loader.ts'
@@ -19,7 +19,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   }
 })
 
-afterEach(() => { vi.resetAllMocks() })
+afterEach(() => { vi.resetAllMocks(); vi.unstubAllGlobals() })
 
 /** One private directory removed after `body` settles. */
 async function withTemporaryDirectory<T>(body: (root: string) => Promise<T>): Promise<T> {
@@ -262,6 +262,62 @@ setInterval(() => {}, 1000);\n`))
       writeFileSync(fontFile, 'font bytes')
       const { engine, profile } = await helperEngine(root, helperScript('console.log(JSON.stringify({ ok: true }));\n'))
       await runNative(engine, options, join(root, 'input.docx'), join(root, 'out.pdf'), profile, [fontFile], [], new AbortController().signal, { format: 'pdf', recalculate: false })
+    })
+  })
+})
+
+
+describe('Windows engine installation paths', () => {
+  it.each(['executable', 'programDirectory'] as const)('keeps a long %s reachable until the operation settles', async field => {
+    await withTemporaryDirectory(async root => {
+      const host = process
+      const directory = join(root, 'native')
+      const deep = join(directory, 'a'.repeat(100), 'b'.repeat(100), 'c'.repeat(60))
+      await mkdir(deep, { recursive: true })
+      const executable = join(field === 'executable' ? deep : directory, 'helper.exe')
+      const programDirectory = field === 'programDirectory' ? deep : directory
+      await writeFile(executable, 'helper fixture')
+      await writeFile(join(programDirectory, 'resource'), 'engine resource')
+      const profile = join(root, 'profile')
+      await mkdir(profile)
+      const engine: NativeEngine = { backend: 'native', root: directory, executable, programDirectory }
+      vi.stubGlobal('process', { ...host, platform: 'win32' })
+      let release!: () => void
+      const finished = new Promise<void>(resolve => { release = resolve })
+      let entered!: () => void
+      const ready = new Promise<void>(resolve => { entered = resolve })
+      const operation = withNativeEngine(engine, profile, async selected => {
+        expect(selected.executable.length).toBeLessThan(260)
+        expect(await readFile(selected.executable, 'utf8')).toBe('helper fixture')
+        expect(await readFile(join(selected.programDirectory, 'resource'), 'utf8')).toBe('engine resource')
+        entered()
+        await finished
+        return 'done'
+      })
+      try {
+        await Promise.race([ready, operation])
+        expect((await stat(join(profile, 'engine'))).isDirectory()).toBe(true)
+      } finally { release() }
+      expect(await operation).toBe('done')
+      expect(existsSync(join(profile, 'engine'))).toBe(false)
+      expect(await readFile(join(programDirectory, 'resource'), 'utf8')).toBe('engine resource')
+    })
+  })
+
+  it('keeps short Windows paths unchanged and removes junctions after copy or operation failures', async () => {
+    await withTemporaryDirectory(async root => {
+      vi.stubGlobal('process', { ...process, platform: 'win32' })
+      const short: NativeEngine = { backend: 'native', root, executable: join(root, 'helper.exe'), programDirectory: root }
+      await expect(withNativeEngine(short, root, async selected => selected)).resolves.toBe(short)
+      const programDirectory = join(root, 'a'.repeat(100), 'b'.repeat(100), 'c'.repeat(60))
+      await mkdir(programDirectory, { recursive: true })
+      const engine = { ...short, programDirectory }
+      await expect(withNativeEngine(engine, root, async () => undefined)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(existsSync(join(root, 'engine'))).toBe(false)
+      await writeFile(engine.executable, 'helper fixture')
+      await expect(withNativeEngine(engine, root, async () => { throw new Error('operation failed') })).rejects.toThrow('operation failed')
+      expect(existsSync(join(root, 'engine'))).toBe(false)
+      expect(await readFile(engine.executable, 'utf8')).toBe('helper fixture')
     })
   })
 })

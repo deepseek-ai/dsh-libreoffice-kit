@@ -1,7 +1,8 @@
 /** Per-render native helper process ownership and bounded result transport. */
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { copyFile, mkdir, symlink, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { join, relative } from 'node:path'
 import { ConversionError, failureCode } from './errors.ts'
 import { profileXml } from './profile.ts'
 import { LOCALIZED_FONT_SEARCH_NAMES } from './native-font-names.ts'
@@ -69,6 +70,25 @@ export function nativeEnvironment(profile: string, programDirectory: string, sou
 }
 
 /**
+ * Keep Windows engine resources reachable through a short profile-owned path until the helper exits.
+ * @param engine - Verified engine installation; its resources remain in place.
+ * @param profile - Private operation directory that owns the temporary executable and junction.
+ * @param run - Operation that settles only after its helper closes.
+ * @returns The operation result after removing the resource junction.
+ */
+export async function withNativeEngine<T>(engine: NativeEngine, profile: string,
+  run: (engine: NativeEngine) => Promise<T>): Promise<T> {
+  if (process.platform !== 'win32' || (engine.executable.length < 260 && engine.programDirectory.length < 260)) return run(engine)
+  const root = join(profile, 'engine')
+  await symlink(engine.root, root, 'junction')
+  try {
+    const executable = join(profile, 'libreoffice-kit.exe')
+    await copyFile(engine.executable, executable, constants.COPYFILE_EXCL)
+    return await run({ ...engine, root, executable, programDirectory: join(root, relative(engine.root, engine.programDirectory)) })
+  } finally { await unlink(root) }
+}
+
+/**
  * Run one native conversion and await bounded result transport.
  * @param engine - Resolved native engine installation.
  * @param options - Validated conversion limits.
@@ -87,35 +107,38 @@ export async function runNative(engine: NativeEngine, options: ResolvedOptions, 
   signal.throwIfAborted()
   await prepareNativeFontProfile(profile, substitutions)
   signal.throwIfAborted()
-  const env = nativeEnvironment(profile, engine.programDirectory)
-  const child = spawn(engine.executable, ['--program-directory', engine.programDirectory, '--input-path', input,
-    '--output-path', output, '--profile-directory', profile, '--max-output-bytes', String(options.maxOutputBytes),
-    '--max-image-resolution', String(options.maxImageResolution), '--format', operation.format, '--recalculate', String(operation.recalculate),
-    ...(operation.sheet === undefined ? [] : ['--sheet', operation.sheet]), ...fonts.flatMap(path => ['--font-file', path])],
-  { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env })
-  let stdout = ''
-  let stderr = ''
-  let failure: Error | undefined
-  const abort = () => { failure ??= signal.reason; child.kill('SIGKILL') }
-  signal.addEventListener('abort', abort, { once: true })
-  child.stdout.setEncoding('utf8')
-  child.stderr.setEncoding('utf8')
-  child.stdout.on('data', (chunk: string) => {
-    stdout += chunk
-    if (stdout.length > 65_536) { failure ??= new Error('LibreOffice helper exceeded its response limit.'); child.kill('SIGKILL') }
-  })
-  child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-65_536) })
-  try {
-    const code = await new Promise<number | null>((resolve, reject) => {
-      child.once('error', (error) => { failure ??= error })
-      child.once('close', (code, signal) => {
-        if (signal === 'SIGXFSZ') failure ??= new ConversionError('output-too-large', 'LibreOffice exceeded its output file-size limit.')
-        if (failure) reject(failure); else resolve(code)
-      })
-    })
+  return withNativeEngine(engine, profile, async engine => {
     signal.throwIfAborted()
-    let result: { ok?: boolean; error?: string }
-    try { result = JSON.parse(stdout) as { ok?: boolean; error?: string } } catch (cause) { throw new Error(`LibreOffice helper returned an invalid response (exit ${code}). ${stderr}`, { cause }) }
-    if (code !== 0 || result.ok !== true) throw new ConversionError(failureCode(result), `LibreOffice native conversion failed: ${result.error ?? stderr}`)
-  } finally { signal.removeEventListener('abort', abort) }
+    const env = nativeEnvironment(profile, engine.programDirectory)
+    const child = spawn(engine.executable, ['--program-directory', engine.programDirectory, '--input-path', input,
+      '--output-path', output, '--profile-directory', profile, '--max-output-bytes', String(options.maxOutputBytes),
+      '--max-image-resolution', String(options.maxImageResolution), '--format', operation.format, '--recalculate', String(operation.recalculate),
+      ...(operation.sheet === undefined ? [] : ['--sheet', operation.sheet]), ...fonts.flatMap(path => ['--font-file', path])],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env })
+    let stdout = ''
+    let stderr = ''
+    let failure: Error | undefined
+    const abort = () => { failure ??= signal.reason; child.kill('SIGKILL') }
+    signal.addEventListener('abort', abort, { once: true })
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+      if (stdout.length > 65_536) { failure ??= new Error('LibreOffice helper exceeded its response limit.'); child.kill('SIGKILL') }
+    })
+    child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-65_536) })
+    try {
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once('error', (error) => { failure ??= error })
+        child.once('close', (code, signal) => {
+          if (signal === 'SIGXFSZ') failure ??= new ConversionError('output-too-large', 'LibreOffice exceeded its output file-size limit.')
+          if (failure) reject(failure); else resolve(code)
+        })
+      })
+      signal.throwIfAborted()
+      let result: { ok?: boolean; error?: string }
+      try { result = JSON.parse(stdout) as { ok?: boolean; error?: string } } catch (cause) { throw new Error(`LibreOffice helper returned an invalid response (exit ${code}). ${stderr}`, { cause }) }
+      if (code !== 0 || result.ok !== true) throw new ConversionError(failureCode(result), `LibreOffice native conversion failed: ${result.error ?? stderr}`)
+    } finally { signal.removeEventListener('abort', abort) }
+  })
 }

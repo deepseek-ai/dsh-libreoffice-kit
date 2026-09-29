@@ -18,10 +18,18 @@ API 支持 Office 导出与重算，以及 Office/PDF 输入的直接 PNG 渲染
 
 ## 快速开始
 
-需要 **Node.js 22.19.0 或更新版本**。安装 `0.1.0` 及其可选引擎依赖：
+需要 **Node.js 22.19.0 或更新版本**。安装 `0.1.3` 及其可选引擎依赖：
 
 ```sh
-npm install @deepseek-ai/libreoffice-kit@0.1.0
+npm install @deepseek-ai/libreoffice-kit@0.1.3
+```
+
+此包安装 `dsoffice` 命令。使用本地安装的命令：
+
+```sh
+npm exec -- dsoffice render --input report.docx --output-dir report-pages --pages 1
+npm exec -- dsoffice convert --input report.docx --output report.pdf
+npm exec -- dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 ```
 
 ```js

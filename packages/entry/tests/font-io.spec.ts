@@ -1,4 +1,5 @@
 /** Font reads reject interrupted files and release every acquired descriptor. */
+import { fontFileIdentity } from '../src/font-file-identity.ts'
 import { closeSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -37,7 +38,7 @@ async function fontFile(): Promise<FontFace> {
   directories.push(directory)
   const path = join(directory, 'font.ttf')
   await writeFile(path, 'font bytes')
-  const { dev, ino, size, mtimeMs, ctimeMs } = statSync(path)
+  const { dev, ino, size, mtimeMs, ctimeMs } = fontFileIdentity(statSync(path, { bigint: true }))
   return {
     path, dev, ino, size, mtimeMs, ctimeMs,
     faceIndex: 0, family: 'Fixture', style: 'Regular', aliases: ['fixture'],
@@ -57,7 +58,7 @@ it('indexes each canonical font path once even when roots overlap', async () => 
 
 it('skips nonregular sources and regular files without a font extension', async () => {
   const face = await fontFile()
-  const status = statSync(face.path)
+  const status = statSync(face.path, { bigint: true })
   status.isFile = () => false
   vi.mocked(statSync).mockReturnValueOnce(status)
   expect(index(face.path)).toEqual([])
@@ -125,12 +126,11 @@ it('rejects truncated files while indexing and closes their descriptors', async 
   expect(closeSync).toHaveBeenCalledOnce()
 })
 
-it.each(['size', 'mtimeMs', 'ctimeMs'] as const)('rejects an indexed file whose %s changes during reading', async (key) => {
+it.each(['size', 'mtimeNs', 'ctimeNs'] as const)('rejects an indexed file whose %s changes during reading', async (key) => {
   const face = await fontFile()
-  const before = statSync(face.path)
-  const after = statSync(face.path)
-  // NTFS inode numbers can exceed Number.MAX_SAFE_INTEGER, where adding one is unchanged.
-  after[key] = before[key] === 0 ? 1 : 0
+  const before = statSync(face.path, { bigint: true })
+  const after = statSync(face.path, { bigint: true })
+  after[key] = before[key] + 1_000_000n
   vi.mocked(fstatSync).mockReturnValueOnce(before).mockReturnValueOnce(after)
   expect(() => index(face.path)).toThrow('changed while indexing')
   expect(closeSync).toHaveBeenCalledOnce()
@@ -151,12 +151,11 @@ it('rejects truncation after matching an indexed font identity and closes the de
   expect(closeSync).toHaveBeenCalledOnce()
 })
 
-it.each(['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'] as const)('rejects font %s mutation after reading', async (key) => {
+it.each(['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'] as const)('rejects font %s mutation after reading', async (key) => {
   const face = await fontFile()
-  const before = statSync(face.path)
-  const after = statSync(face.path)
-  // NTFS inode numbers can exceed Number.MAX_SAFE_INTEGER, where adding one is unchanged.
-  after[key] = before[key] === 0 ? 1 : 0
+  const before = statSync(face.path, { bigint: true })
+  const after = statSync(face.path, { bigint: true })
+  after[key] = before[key] + 1_000_000n
   vi.mocked(fstatSync).mockReturnValueOnce(before).mockReturnValueOnce(after)
   expect(() => readFont(face)).toThrow('An indexed font changed while reading.')
   expect(closeSync).toHaveBeenCalledOnce()
