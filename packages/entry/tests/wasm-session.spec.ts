@@ -1,11 +1,12 @@
 /** A retained raster session must reach a real idle barrier and release every engine allocation. */
 import { afterEach, expect, it } from 'vitest'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWasmSession, type WasmSession } from '../src/wasm.ts'
 import { resolveOptions } from '../src/options.ts'
-import { indexSystemFonts, systemFontDirectories } from '../src/fonts.ts'
+import { fontFileIdentity } from '../src/font-file-identity.ts'
+import type { FontFace } from '../src/fonts.ts'
 import type { WasmEngine } from '../src/engine.ts'
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
@@ -44,7 +45,15 @@ module.exports=async options=>{
  options.preRun.forEach(hook=>hook(module));return module;
 }`)
   const engine: WasmEngine = { backend: 'wasm', root, loader, data, wasm: join(root, 'dsh-office.wasm'), metadata: join(root, 'soffice.metadata'), programDirectory: '/instdir/program' }
-  const faces = behavior.preloadFonts ? indexSystemFonts({ directories: systemFontDirectories(), maxFiles: 20_000, maxFileBytes: 256 * 1024 * 1024 }).slice(0, 1) : []
+  const faces: FontFace[] = []
+  if (behavior.preloadFonts) {
+    const path = join(root, 'fixture.otf')
+    // The scripted PDF engine records the complete sfnt payload without parsing its tables.
+    await writeFile(path, Buffer.concat([Buffer.from('OTTO'), Buffer.alloc(32)]))
+    faces.push({ path, ...fontFileIdentity(await stat(path, { bigint: true })), faceIndex: 0,
+      family: 'Fixture', style: 'Regular', aliases: ['fixture'], weight: 400, width: 5,
+      italic: false, fixed: false, postscriptName: 'Fixture' })
+  }
   const options = resolveOptions({ fontDirectories: [], fontFallbacks: [], initialFontFamilies: faces.slice(0, 1).map(face => face.family), timeoutMs: behavior.timeoutMs ?? 100 })
   const request = { engine, bytes: new Uint8Array([1, 2, 3]), extension: behavior.extension ?? 'docx', options, faces,
     document: { families: new Map<string, string>(), codePoints: [] } }
@@ -71,7 +80,8 @@ it('mounts complete PDF fonts before opening and lets immutable PDF sessions ski
   const f = await fixture({ extension: 'pdf', preloadFonts: true })
   await f.run(async session => { expect(session.pdf).toBe(true); await session.idle() })
   const calls = await f.calls(), opened = calls.findIndex(([name]) => name === 'dsh_pdf_open')
-  expect(calls.slice(0, opened).some(([name, path]) => name === 'write' && String(path).startsWith('/usr/share/fonts/dsh-pdfium/'))).toBe(true)
+  expect(calls.slice(0, opened).find(([name, path]) => name === 'write' && String(path).startsWith('/usr/share/fonts/dsh-pdfium/')))
+    .toEqual(['write', expect.stringMatching(/^\/usr\/share\/fonts\/dsh-pdfium\/.*\.otf$/), 36])
   expect(calls.some(([name]) => name === 'dsh_lok_pump' || name === 'dsh_lok_initialize')).toBe(false)
   expect(calls.slice(-2).map(([name]) => name)).toEqual(['dsh_pdf_destroy', 'terminate'])
 })
