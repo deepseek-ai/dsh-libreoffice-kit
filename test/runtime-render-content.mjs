@@ -61,7 +61,7 @@ export async function renderOfficeCliContent(cliPath, directory, expectedBackend
 async function rasterSignature(result, backend, rasterEngine) {
   assert.equal(result.backend, backend);
   assert.equal(result.rasterEngine, rasterEngine);
-  assert.equal(result.pageCount, 1);
+  assert.ok(Number.isInteger(result.pageCount) && result.pageCount > 0, 'The source must have at least one page');
   assert.equal(result.images.length, 1);
   const images = [];
   for (const image of result.images) {

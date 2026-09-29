@@ -119,10 +119,10 @@ if (${fail} && input.endsWith('.xlsx')) {
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('cache qualification uses fresh disk readers and one warm converter, rejecting changed pixels or font reports', async () => {
+test('cache qualification uses fresh disk readers and one warm converter, rejecting changed pixels, page counts, or font reports', async () => {
   const root = await mkdtemp(join(tmpdir(), 'font-cache-render-content-'));
   try {
-    for (const changed of ['none', 'pixels', 'font-report']) {
+    for (const changed of ['none', 'pixels', 'font-report', 'page-count']) {
       const created = [];
       const factory = async options => {
         const index = created.length;
@@ -145,8 +145,10 @@ test('cache qualification uses fresh disk readers and one warm converter, reject
             const path = join(request.outputDir, 'page.png');
             await writeFile(path, image([255, 255, 255, 255], (x, y) => changed === 'pixels' && index === 2 && x === 50 && y === 50
               ? [0, 0, 0, 255] : blocks(x, y)));
-            return { backend: 'native', rasterEngine: request.inputPath.endsWith('.pdf') ? 'pdfium' : 'libreoffice',
-              source: 'saved', missingFonts, pageCount: 1, images: [{ path, width: 100, height: 80 }] };
+            const pdf = request.inputPath.endsWith('.pdf');
+            const pageCount = pdf ? changed === 'page-count' && index === 2 ? 3 : 2 : 1;
+            return { backend: 'native', rasterEngine: pdf ? 'pdfium' : 'libreoffice',
+              source: 'saved', missingFonts, pageCount, images: [{ path, width: 100, height: 80 }] };
           },
           async dispose() { record.disposed++; },
         };
