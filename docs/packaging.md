@@ -134,6 +134,8 @@ transfer, then runs conversion tests on the matching hosted architecture. Only a
 successful test job uploads `core-payload-<platform>`; transfer artifacts are named
 `unverified-native-<platform>`. This workflow does not publish npm or Releases.
 
+Windows ICU builds forward the owned C++ flags into their configure command, including `_CRT_USE_BUILTIN_OFFSETOF` for SDK headers used by both the target engine and its build tools.
+
 Windows configure reports active antivirus software without writing EICAR test
 files or requiring scanner exclusions. Antivirus protection remains enabled
 during compilation.
