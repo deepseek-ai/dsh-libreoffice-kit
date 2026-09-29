@@ -23,7 +23,7 @@ vi.mock('node:worker_threads', () => ({
       if (entry.pathname.endsWith('/font-snapshot-worker.js')) {
         scans.count++
         queueMicrotask(() => this.emit('message', { ok: true, snapshot: { generation: 'fixture', records: [], faces: [{
-          path: '/font.ttf', size: 4, mtimeMs: 1, ctimeMs: 1, dev: 1, ino: 1, faceIndex: 0,
+          path: '/font.ttf', size: 4, mtimeMs: 1, ctimeMs: 1, dev: '1', ino: '1', faceIndex: 0,
           family: 'Fixture', style: 'Regular', aliases: ['fixture'], weight: 400, width: 5,
           italic: false, fixed: false, postscriptName: 'Fixture',
         }] } }))

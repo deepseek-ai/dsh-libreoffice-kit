@@ -95,7 +95,7 @@ it('records parser rejection and empty collections, but rechecks file limits on 
 it('rejects a physical font changed between primary and supplemental discovery', async () => {
   const { options, path } = await fixture()
   vi.mocked(officeFontFiles).mockImplementation(() => {
-    const status = statSync(path); status.size++
+    const status = statSync(path, { bigint: true }); status.size++
     vi.mocked(fstatSync).mockReturnValueOnce(status)
     return [path]
   })
@@ -117,6 +117,22 @@ it('finds additions, deletions, same-size replacements, and renames without a TT
   await expect(validateFontSnapshot(initial)).rejects.toThrow('changed during conversion')
   await rename(path, added)
   expect(scanFontSnapshot(options, replaced.records).faces[0]?.path).toBe(added)
+})
+
+it('distinguishes file identifiers that collide as JavaScript numbers', async () => {
+  const { options, path } = await fixture()
+  const original = statSync(path, { bigint: true }), replacement = statSync(path, { bigint: true })
+  original.ino = 2n ** 60n
+  replacement.ino = original.ino + 1n
+  expect(Number(original.ino)).toBe(Number(replacement.ino))
+  vi.mocked(fstatSync).mockReturnValueOnce(original).mockReturnValueOnce(original)
+  const initial = scanFontSnapshot({ ...options, fontMetadataCacheDirectory: false })
+  vi.mocked(create).mockClear()
+  vi.mocked(fstatSync).mockReturnValueOnce(replacement).mockReturnValueOnce(replacement).mockReturnValueOnce(replacement)
+  const replaced = scanFontSnapshot({ ...options, fontMetadataCacheDirectory: false }, initial.records)
+  expect(replaced.generation).not.toBe(initial.generation)
+  expect(replaced.records[0]?.ino).toBe(replacement.ino.toString())
+  expect(create).toHaveBeenCalledOnce()
 })
 
 it.skipIf(process.platform === 'win32')('rediscovers link targets and permission changes', async () => {
@@ -155,7 +171,7 @@ it.each(['ENOENT', 'EACCES', 'EIO'])('preserves %s source errors while revalidat
 it('skips cached sources that stop being regular and rejects mutation during an uncached read', async () => {
   const { options, path } = await fixture()
   const before = scanFontSnapshot({ ...options, fontMetadataCacheDirectory: false })
-  const status = statSync(path); status.isFile = () => false
+  const status = statSync(path, { bigint: true }); status.isFile = () => false
   vi.mocked(fstatSync).mockReturnValueOnce(status).mockReturnValueOnce(status)
   expect(indexSystemFonts({ directories: [path], maxFiles: 1, maxFileBytes: 1024 }, new Map(before.records.map(record => [record.path, record])))).toEqual([])
   vi.mocked(readSync).mockReturnValueOnce(0)

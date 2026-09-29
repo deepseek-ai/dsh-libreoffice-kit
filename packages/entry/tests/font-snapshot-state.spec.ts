@@ -90,7 +90,7 @@ it.each(['error', 'exit', 'message'] as const)('clears a failed %s scan and retr
 
 it('retains only records within the byte limit and releases them on clear', async () => {
   const state = new FontSnapshotState()
-  const records = [{ path: '/font.ttf', dev: 1, ino: 1, size: 1, mtimeMs: 1, ctimeMs: 1, faces: [] }]
+  const records = [{ path: '/font.ttf', dev: '1', ino: '1', size: 1, mtimeMs: 1, ctimeMs: 1, faces: [] }]
   let pending = state.acquire(options, signal()); last().succeed({ ...empty, records }); await pending
   pending = state.acquire(options, signal()); expect(last().data.previous).toEqual(records); last().succeed({ ...empty, records }); await pending
   state.clear()

@@ -1,3 +1,4 @@
+import { fontFileIdentity } from '../src/font-file-identity.ts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,8 +13,8 @@ afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSy
 function face(bytes: Buffer): FontFace {
   const root = mkdtempSync(join(tmpdir(), 'kit-full-font-')); roots.push(root)
   const path = join(root, 'Face.otf'); writeFileSync(path, bytes)
-  const status = statSync(path)
-  return { path, size: status.size, mtimeMs: status.mtimeMs, ctimeMs: status.ctimeMs, dev: status.dev, ino: status.ino,
+  const status = statSync(path, { bigint: true })
+  return { path, ...fontFileIdentity(status),
     faceIndex: 0, family: 'Face', style: 'Regular', aliases: [normalize('Face')], weight: 400, width: 5,
     italic: false, fixed: false, postscriptName: 'Face', coverage: [] }
 }

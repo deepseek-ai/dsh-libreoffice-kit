@@ -1,5 +1,6 @@
 /** Verify the operation's source versions before publishing its output. */
 import { lstat } from 'node:fs/promises'
+import { matchesFontFile } from './font-file-identity.ts'
 import { ConversionError } from './errors.ts'
 import type { FontSnapshot } from './font-snapshot.ts'
 
@@ -7,9 +8,8 @@ import type { FontSnapshot } from './font-snapshot.ts'
 export async function validateFontSnapshot(snapshot: FontSnapshot): Promise<void> {
   await Promise.all(snapshot.records.map(async record => {
     try {
-      const current = await lstat(record.path)
-      if (current.isFile() && (['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'] as const)
-        .every(key => current[key] === record[key])) return
+      const current = await lstat(record.path, { bigint: true })
+      if (current.isFile() && matchesFontFile(current, record)) return
     } catch {
       // A source that cannot be verified cannot authorize publishing this operation's output.
     }

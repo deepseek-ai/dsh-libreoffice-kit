@@ -75,7 +75,7 @@ Node API 通过 `ENGINE_VERSION` 报告其发布版本；`ENGINE_VERSIONS` 独�
 | `fontMetadataCacheDirectory` | 用户系统缓存目录 | 目录的绝对路径，或用 `false` 关闭磁盘缓存。 |
 | `maxFontMetadataCacheBytes` | 32 MiB | 正安全整数，限制单个缓存文件的读取、写入及每份共享配置保留的逐文件元数据。 |
 
-macOS 默认使用 `~/Library/Caches/libreoffice-kit`，Windows 使用 `%LOCALAPPDATA%/libreoffice-kit/Cache`（缺省时回退到用户的 `AppData/Local`），Linux 使用 `$XDG_CACHE_HOME/libreoffice-kit`（缺省时回退到 `~/.cache`）。单个 `font-metadata.json` 文件保存规范文件路径、设备/inode、大小、修改/变更时间及全部 face 元数据，包括解析结果为空的记录。它不保存字体字节、字形覆盖、解析对象、文档文本或文档匹配条目。请将此用户级文件保持私有。
+macOS 默认使用 `~/Library/Caches/libreoffice-kit`，Windows 使用 `%LOCALAPPDATA%/libreoffice-kit/Cache`（缺省时回退到用户的 `AppData/Local`），Linux 使用 `$XDG_CACHE_HOME/libreoffice-kit`（缺省时回退到 `~/.cache`）。单个 `font-metadata.json` 文件保存规范文件路径、以十进制字符串精确保留的设备/inode 标识、大小、修改/变更时间及全部 face 元数据，包括解析结果为空的记录。它不保存字体字节、字形覆盖、解析对象、文档文本或文档匹配条目。请将此用户级文件保持私有。
 
 没有可复用元数据的首次运行仍执行原来的完整字体 inspect。后续进程只跳过已发现且文件身份完全匹配的字体。每次操作重新枚举来源，包括 Office 补充字体，因此新增、删除、替换和目录变化无需重启。候选顺序、文件预算、Office 过滤、fallback 匹配、字形查询和原字体导入保持原有行为。缓存损坏、版本不兼容、超限或不可访问时回退到字体源计算；不可读的源字体不会复用旧记录。缓存格式、提取逻辑和固定的 fontkit 版本均须匹配。
 

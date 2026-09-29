@@ -11,7 +11,9 @@ const faces = []
 if (directory !== undefined) {
   const path = join(directory, 'fixture.ttf')
   try {
-    const { size, mtimeMs, ctimeMs, dev, ino } = statSync(path)
+    const status = statSync(path, { bigint: true })
+    const size = Number(status.size), mtimeMs = Number(status.mtimeNs) / 1e6, ctimeMs = Number(status.ctimeNs) / 1e6
+    const dev = status.dev.toString(), ino = status.ino.toString()
     faces.push({ path, size, mtimeMs, ctimeMs, dev, ino, faceIndex: 0, family: 'Fixture Face',
       aliases: ['fixtureface'], style: 'Regular', weight: 400, width: 5, italic: false, fixed: false,
       postscriptName: 'FixtureFace', coverage: [[0, 0x10ffff]] })

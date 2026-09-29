@@ -8,7 +8,7 @@ import type { ResolvedOptions } from './options.ts'
 
 type CacheOptions = Pick<ResolvedOptions, 'fontMetadataCacheDirectory' | 'maxFontMetadataCacheBytes'>
 // Increment extractor when indexed fields or their derivation changes; parser stays pinned in package.json.
-const VERSION = { format: 1, extractor: 1, fontkit: '2.0.4' }
+const VERSION = { format: 1, extractor: 2, fontkit: '2.0.4' }
 const digest = (records: readonly FontFileMetadata[]): string => createHash('sha256').update(JSON.stringify(records)).digest('hex')
 
 /** Resolve the platform's user-local cache, independently of font discovery. */
@@ -27,7 +27,8 @@ const IDENTITY = ['size', 'mtimeMs', 'ctimeMs', 'dev', 'ino'] as const
 
 function record(value: unknown): value is FontFileMetadata {
   if (!object(value) || !text(value.path) || !isAbsolute(value.path)
-    || !IDENTITY.every(key => finite(value[key])) || !Number.isSafeInteger(value.size) || Number(value.size) < 0
+    || !['size', 'mtimeMs', 'ctimeMs'].every(key => finite(value[key]))
+    || !['dev', 'ino'].every(key => typeof value[key] === 'string' && /^\d+$/.test(value[key])) || !Number.isSafeInteger(value.size) || Number(value.size) < 0
     || !Object.keys(value).every(key => ['path', ...IDENTITY, 'faces'].includes(key))
     || !Array.isArray(value.faces)) return false
   return value.faces.every((face: unknown, index: number): face is FontFace => object(face)

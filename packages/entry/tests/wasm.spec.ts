@@ -1,3 +1,4 @@
+import { fontFileIdentity } from '../src/font-file-identity.ts'
 import { describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { statSync, writeFileSync } from 'node:fs'
@@ -110,9 +111,8 @@ async function wasmFixture(root: string, behavior: LoaderBehavior) {
   const engine: WasmEngine = { backend: 'wasm', root: directory, programDirectory: '/instdir/program', loader, wasm, data, metadata }
   const fontPath = join(root, 'fixture.ttf')
   writeFileSync(fontPath, 'font bytes')
-  const status = statSync(fontPath)
-  const face: FontFace = { path: fontPath, size: status.size, mtimeMs: status.mtimeMs, ctimeMs: status.ctimeMs,
-    dev: status.dev, ino: status.ino, faceIndex: 0, family: 'Fixture Face', style: 'Regular', aliases: ['fixtureface'],
+  const status = statSync(fontPath, { bigint: true })
+  const face: FontFace = { path: fontPath, ...fontFileIdentity(status), faceIndex: 0, family: 'Fixture Face', style: 'Regular', aliases: ['fixtureface'],
     weight: 400, width: 5, italic: false, fixed: false, decorative: false, postscriptName: 'FixtureFace', coverage: [[65, 65]] }
   return { engine, face }
 }
